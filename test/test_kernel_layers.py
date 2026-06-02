@@ -8,6 +8,13 @@ REPO_ROOT = Path(__file__).parents[1]
 PACKAGE_ROOT = REPO_ROOT / "src" / "subschema"
 KERNEL_ROOT = PACKAGE_ROOT / "kernel"
 KERNEL_PREFIX = "subschema.kernel"
+BACKEND_OWNERS = {
+    "greenery": "subschema.kernel.regex",
+    "json": "subschema.kernel.json_data",
+    "jsonschema": "subschema.kernel.validation",
+    "jsonschema_rs": "subschema.kernel.validation",
+    "z3": "subschema.kernel.symbolic",
+}
 
 
 @dataclass(frozen=True)
@@ -43,18 +50,26 @@ def test_kernel_type_checking_imports_do_not_leak_domain_types_into_context():
     )
 
 
-def test_symbolic_solver_owns_z3_and_object_presence_products():
+def test_backend_imports_are_owned_by_backend_modules():
+    violations: list[str] = []
+    for edge in _runtime_import_edges():
+        target_root = edge.target.split(".", 1)[0]
+        owner = BACKEND_OWNERS.get(target_root)
+        if owner is not None and edge.source != owner:
+            violations.append(
+                f"{edge.format()}: {target_root} is owned by {owner}"
+            )
+
+    assert not violations, "backend imports must stay isolated:\n" + "\n".join(
+        violations
+    )
+
+
+def test_symbolic_solver_owns_object_presence_products():
     runtime_sources = {
         path.relative_to(REPO_ROOT).as_posix(): path.read_text()
         for path in sorted(KERNEL_ROOT.rglob("*.py"))
     }
-
-    z3_importers = [
-        path
-        for path, source in runtime_sources.items()
-        if "import z3" in source or "from z3" in source
-    ]
-    assert z3_importers == ["src/subschema/kernel/symbolic.py"]
 
     forbidden_presence_products = (
         "_object_presence_property_sets",
@@ -81,23 +96,6 @@ def test_validation_backend_owns_runtime_validator_compilation():
         for path in sorted(KERNEL_ROOT.rglob("*.py"))
     }
 
-    jsonschema_importers = [
-        path
-        for path, source in runtime_sources.items()
-        if path != "src/subschema/kernel/validation.py"
-        if "import jsonschema\n" in source
-        or "import jsonschema as " in source
-        or "from jsonschema " in source
-    ]
-    assert jsonschema_importers == []
-
-    jsonschema_rs_importers = [
-        path
-        for path, source in runtime_sources.items()
-        if "import jsonschema_rs" in source
-    ]
-    assert jsonschema_rs_importers == ["src/subschema/kernel/validation.py"]
-
     forbidden_runtime_calls = (
         "instance_validator_" + "for(",
         "normalize_for_validation(",
@@ -117,34 +115,8 @@ def test_validation_backend_owns_runtime_validator_compilation():
     )
 
 
-def test_regex_backend_owns_greenery_imports():
-    runtime_sources = {
-        path.relative_to(REPO_ROOT).as_posix(): path.read_text()
-        for path in sorted(KERNEL_ROOT.rglob("*.py"))
-    }
-
-    greenery_importers = [
-        path
-        for path, source in runtime_sources.items()
-        if "from greenery" in source or "import greenery" in source
-    ]
-    assert greenery_importers == ["src/subschema/kernel/regex.py"]
-
-
 def test_strict_json_helpers_own_runtime_json_serialization():
-    runtime_sources = {
-        path.relative_to(REPO_ROOT).as_posix(): path.read_text()
-        for path in sorted(KERNEL_ROOT.rglob("*.py"))
-    }
-
-    allowed_json_module = "src/subschema/kernel/json_data.py"
-    violations = [
-        f"{path}: {pattern}"
-        for path, source in runtime_sources.items()
-        if path != allowed_json_module
-        for pattern in ("json.dumps", "json.dump", "json.loads", "json.load")
-        if pattern in source
-    ]
+    violations = _json_call_violations()
     assert not violations, (
         "kernel JSON serialization must use strict json_data helpers:\n"
         + "\n".join(violations)
@@ -210,7 +182,7 @@ def _kernel_import_edges() -> list[ImportEdge]:
 
 
 def _module_name(path: Path) -> str:
-    relative = path.relative_to(REPO_ROOT).with_suffix("")
+    relative = path.relative_to(PACKAGE_ROOT.parent).with_suffix("")
     parts = list(relative.parts)
     if parts[-1] == "__init__":
         parts.pop()
@@ -317,3 +289,24 @@ def _source_is_domain_math(source: str) -> bool:
         "subschema.kernel.difference",
         "subschema.kernel.evaluation",
     }
+
+
+def _json_call_violations() -> list[str]:
+    violations: list[str] = []
+    for path in sorted(KERNEL_ROOT.rglob("*.py")):
+        source = _module_name(path)
+        if source == BACKEND_OWNERS["json"]:
+            continue
+        tree = ast.parse(path.read_text(), filename=str(path))
+        violations.extend(
+            f"{source}: json.{node.func.attr} call at line {node.lineno}"
+            for node in ast.walk(tree)
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "json"
+                and node.func.attr in {"dump", "dumps", "load", "loads"}
+            )
+        )
+    return violations
