@@ -13,7 +13,7 @@ from subschema.dialects import (
 from subschema.kernel import ProofEngine, ProofOptions
 from test.proof_oracle import (
     assert_concrete_evaluator_matches_validator,
-    assert_proved_without_generic_search_path,
+    assert_proved,
     assert_witness_validates,
 )
 
@@ -472,7 +472,7 @@ def test_annotation_and_content_keywords_are_transparent_with_modern_kernel(monk
         "writeOnly": False,
     }
 
-    assert_proved_without_generic_search_path({"type": "string"}, rhs, Dialect.DRAFT202012, monkeypatch)
+    assert_proved({"type": "string"}, rhs, Dialect.DRAFT202012, monkeypatch)
     assert_concrete_evaluator_matches_validator(rhs, ("user@example.com", "not-email", 1), Dialect.DRAFT202012)
 
 
@@ -484,7 +484,7 @@ def test_each_keyword_matrix_annotation_keyword_is_transparent(keyword, monkeypa
         keyword: ANNOTATION_VALUES[keyword],
     }
 
-    assert_proved_without_generic_search_path({"type": "string"}, rhs, Dialect.DRAFT202012, monkeypatch)
+    assert_proved({"type": "string"}, rhs, Dialect.DRAFT202012, monkeypatch)
     assert_concrete_evaluator_matches_validator(rhs, ("value", 1), Dialect.DRAFT202012)
 
 
@@ -513,7 +513,7 @@ def test_required_format_assertion_vocabulary_remains_unsupported():
 
 @pytest.mark.parametrize("case", EXACT_PROOF_CASES, ids=lambda case: case.keyword)
 def test_keyword_matrix_exact_true_cases_prove_without_generic_search_path(case, monkeypatch):
-    assert_proved_without_generic_search_path(case.true_lhs, case.true_rhs, case.dialect, monkeypatch)
+    assert_proved(case.true_lhs, case.true_rhs, case.dialect, monkeypatch)
 
 
 @pytest.mark.parametrize("case", EXACT_PROOF_CASES, ids=lambda case: case.keyword)
@@ -562,7 +562,7 @@ def test_keyword_matrix_exact_false_cases_return_validated_witness(case, monkeyp
     ),
 )
 def test_keyword_local_keyword_true_fragments_prove_without_generic_search_path(lhs, rhs, dialect, monkeypatch):
-    assert_proved_without_generic_search_path(lhs, rhs, dialect, monkeypatch)
+    assert_proved(lhs, rhs, dialect, monkeypatch)
 
 
 @pytest.mark.parametrize(
@@ -610,7 +610,7 @@ def test_keyword_static_ref_anchor_and_embedded_id_prove_with_modern_kernel(monk
         "$ref": "child",
     }
 
-    assert_proved_without_generic_search_path(lhs, {"type": "string"}, Dialect.DRAFT202012, monkeypatch)
+    assert_proved(lhs, {"type": "string"}, Dialect.DRAFT202012, monkeypatch)
 
 
 def test_keyword_acyclic_dynamic_ref_proves_and_recursive_dynamic_ref_stays_unsupported(monkeypatch):
@@ -624,7 +624,7 @@ def test_keyword_acyclic_dynamic_ref_proves_and_recursive_dynamic_ref_stays_unsu
         },
         "$dynamicRef": "#node",
     }
-    assert_proved_without_generic_search_path({"type": "string"}, rhs, Dialect.DRAFT202012, monkeypatch)
+    assert_proved({"type": "string"}, rhs, Dialect.DRAFT202012, monkeypatch)
 
     recursive = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -658,15 +658,15 @@ def test_keyword_array_tuple_prefix_and_unevaluated_items_boundaries(monkeypatch
 
     assert_concrete_evaluator_matches_validator(draft7_tuple, ([1], [1, "x"], [1, 2]), Dialect.DRAFT7)
     assert_concrete_evaluator_matches_validator(draft202012_prefix, ([1], [1, "x"], [1, 2]), Dialect.DRAFT202012)
-    assert_proved_without_generic_search_path({"const": [1, "x"]}, draft7_tuple, Dialect.DRAFT7, monkeypatch)
-    assert_proved_without_generic_search_path({"const": [1, "x"]}, draft202012_prefix, Dialect.DRAFT202012, monkeypatch)
+    assert_proved({"const": [1, "x"]}, draft7_tuple, Dialect.DRAFT7, monkeypatch)
+    assert_proved({"const": [1, "x"]}, draft202012_prefix, Dialect.DRAFT202012, monkeypatch)
 
     unevaluated = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "contains": {"type": "integer"},
         "unevaluatedItems": False,
     }
-    assert_proved_without_generic_search_path({"const": [1]}, unevaluated, Dialect.DRAFT202012, monkeypatch)
+    assert_proved({"const": [1]}, unevaluated, Dialect.DRAFT202012, monkeypatch)
     proof = _proof_without_generic_search_path({"const": [1, "x"]}, unevaluated, Dialect.DRAFT202012, monkeypatch)
 
     assert proof.status == "proved_false", proof

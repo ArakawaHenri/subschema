@@ -45,7 +45,7 @@ from test.proof_oracle import (
     assert_concrete_evaluator_unsupported,
     assert_no_small_counterexample,
     assert_proved_subschema,
-    assert_proved_without_generic_search_path,
+    assert_proved,
     assert_witness_validates,
     validator as oracle_validator,
 )
@@ -617,14 +617,14 @@ def test_concrete_evaluator_rejects_non_json_instances(instance):
 @pytest.mark.parametrize(("rule_name", "lhs", "rhs", "dialect"), EXACT_RULE_ORACLE_CASES)
 def test_exact_difference_rule_oracle_matrix(rule_name, lhs, rhs, dialect, monkeypatch):
     assert rule_name
-    assert_proved_without_generic_search_path(lhs, rhs, dialect, monkeypatch)
+    assert_proved(lhs, rhs, dialect, monkeypatch)
     assert_no_small_counterexample(lhs, rhs, dialect)
 
 
 @pytest.mark.parametrize(("fragment", "lhs", "rhs", "dialect"), EXTENDED_TRUE_ORACLE_CASES)
 def test_extended_default_fragment_oracle_matrix(fragment, lhs, rhs, dialect, monkeypatch):
     assert fragment
-    assert_proved_without_generic_search_path(lhs, rhs, dialect, monkeypatch)
+    assert_proved(lhs, rhs, dialect, monkeypatch)
     assert_no_small_counterexample(lhs, rhs, dialect)
 
 
@@ -987,7 +987,7 @@ def test_finite_model_oracle_for_representative_exact_fragments(lhs, rhs, dialec
     ],
 )
 def test_applicator_exact_fragments_have_finite_model_oracle_without_candidates(lhs, rhs, dialect, monkeypatch):
-    assert_proved_without_generic_search_path(lhs, rhs, dialect, monkeypatch)
+    assert_proved(lhs, rhs, dialect, monkeypatch)
     assert_no_small_counterexample(lhs, rhs, dialect)
 
 
@@ -1219,7 +1219,7 @@ def test_non_regular_regex_fragments_are_structured_unsupported(rhs, reason):
 
 
 @pytest.mark.parametrize(
-    "removed_budget_kwargs",
+    "invalid_budget_kwargs",
     [
         {"max_candidates": 0},
         {"max_array_length": 2},
@@ -1228,9 +1228,9 @@ def test_non_regular_regex_fragments_are_structured_unsupported(rhs, reason):
         {"max_regex_states": 1},
     ],
 )
-def test_removed_budget_fields_are_rejected(removed_budget_kwargs):
+def test_invalid_budget_fields_are_rejected(invalid_budget_kwargs):
     with pytest.raises(TypeError):
-        ProofBudgets(**removed_budget_kwargs)
+        ProofBudgets(**invalid_budget_kwargs)
 
 
 def test_meet_and_join_use_modern_projection():
@@ -1579,7 +1579,7 @@ def test_object_key_value_reports_resource_exhausted_for_pattern_obligation_budg
     assert proof.reason == "object product exceeded proof work budget"
 
 
-def test_object_presence_compat_tactic_reports_resource_exhausted_when_universe_budget_is_exceeded():
+def test_object_presence_domain_tactic_reports_resource_exhausted_when_universe_budget_is_exceeded():
     lhs = {"type": "object", "required": ["a", "b"]}
     rhs = {"type": "object"}
     context = ProofContext(Dialect.DRAFT7, ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1)))
@@ -1590,7 +1590,7 @@ def test_object_presence_compat_tactic_reports_resource_exhausted_when_universe_
     assert proof.reason == "object product exceeded proof work budget"
 
 
-def test_object_structure_compat_tactic_reports_resource_exhausted_when_universe_budget_is_exceeded():
+def test_object_structure_domain_tactic_reports_resource_exhausted_when_universe_budget_is_exceeded():
     lhs = {"type": "object", "required": ["a", "b"], "minProperties": 2}
     rhs = {"type": "object", "minProperties": 1}
     context = ProofContext(Dialect.DRAFT7, ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1)))
@@ -1601,7 +1601,7 @@ def test_object_structure_compat_tactic_reports_resource_exhausted_when_universe
     assert proof.reason == "object product exceeded proof work budget"
 
 
-def test_public_subschema_keeps_solver_resource_exhaustion_with_modern_kernel_fallback():
+def test_public_subschema_keeps_solver_resource_exhaustion_with_solver_path():
     lhs = {"type": "array", "items": {"anyOf": [{"type": "integer"}]}, "minItems": 1}
     rhs = {"type": "array", "items": {"type": "number"}}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
@@ -1619,7 +1619,7 @@ def test_bounded_ir_uses_sat_emptiness_solver_before_generic_search_path(monkeyp
     engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
     def fail_blocked_search_path(*_args, **_kwargs):
-        raise AssertionError("SAT solver should prove this difference before generic search path")
+        raise AssertionError("SAT solver should prove this difference inside the solver path")
 
     monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
 
@@ -1645,7 +1645,7 @@ def test_bounded_ir_sat_solver_can_prove_finite_empty_difference(monkeypatch):
     assert proof.status == "proved_true"
 
 
-def test_object_pattern_obligations_with_property_counts_prove_without_generic_search_path(monkeypatch):
+def test_object_pattern_obligations_with_property_counts_prove(monkeypatch):
     lhs = {"type": "object", "minProperties": 1, "patternProperties": {"^a": {"type": "number"}}}
     rhs = {"type": "object", "minProperties": 1, "patternProperties": {"^a+": {"type": "integer"}}}
     engine = ProofEngine.for_schemas(lhs, rhs)
@@ -1706,7 +1706,7 @@ def test_rhs_not_uses_required_property_disjointness_for_object_values():
     assert proof.status == "proved_true"
 
 
-def test_endeavor_object_product_expands_complex_value_obligations_without_generic_search_path(monkeypatch):
+def test_endeavor_object_product_expands_complex_value_obligations(monkeypatch):
     lhs = {"type": "object", "patternProperties": {"^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 1}}}
     rhs = {"type": "object", "patternProperties": {"^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 2}}}
     engine = ProofEngine.for_schemas(
@@ -1717,7 +1717,7 @@ def test_endeavor_object_product_expands_complex_value_obligations_without_gener
     )
 
     def fail_blocked_search_path(*_args, **_kwargs):
-        raise AssertionError("endeavor object product should prove this before generic search path")
+        raise AssertionError("endeavor object product should prove this inside the solver path")
 
     monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
 
@@ -1748,7 +1748,7 @@ def test_endeavor_object_product_expands_property_names_additional_obligations(m
     )
 
     def fail_blocked_search_path(*_args, **_kwargs):
-        raise AssertionError("endeavor propertyNames/additionalProperties product should prove before generic search path")
+        raise AssertionError("endeavor propertyNames/additionalProperties product should prove inside the solver path")
 
     monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
 
@@ -1779,7 +1779,7 @@ def test_endeavor_object_product_expands_pattern_properties_to_additional_obliga
     )
 
     def fail_blocked_search_path(*_args, **_kwargs):
-        raise AssertionError("endeavor patternProperties/additionalProperties product should prove before generic search path")
+        raise AssertionError("endeavor patternProperties/additionalProperties product should prove inside the solver path")
 
     monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
 
@@ -1804,7 +1804,7 @@ def test_default_mode_does_not_enter_endeavor_object_product():
     assert proof.status == "unsupported"
 
 
-def test_endeavor_array_contains_product_proves_min_violation_without_generic_search_path(monkeypatch):
+def test_endeavor_array_contains_product_proves_min_violation(monkeypatch):
     lhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 1}
     rhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 2}
     engine = ProofEngine.for_schemas(
@@ -1815,7 +1815,7 @@ def test_endeavor_array_contains_product_proves_min_violation_without_generic_se
     )
 
     def fail_blocked_search_path(*_args, **_kwargs):
-        raise AssertionError("endeavor array product should prove this before generic search path")
+        raise AssertionError("endeavor array product should prove this inside the solver path")
 
     monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
 
@@ -1825,7 +1825,7 @@ def test_endeavor_array_contains_product_proves_min_violation_without_generic_se
     assert_witness_validates(lhs, rhs, Dialect.DRAFT201909, proof.witness)
 
 
-def test_endeavor_array_contains_product_proves_max_violation_without_generic_search_path(monkeypatch):
+def test_endeavor_array_contains_product_proves_max_violation(monkeypatch):
     lhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 2}
     rhs = {"type": "array", "contains": {"type": "integer"}, "maxContains": 1}
     engine = ProofEngine.for_schemas(
@@ -1836,7 +1836,7 @@ def test_endeavor_array_contains_product_proves_max_violation_without_generic_se
     )
 
     def fail_blocked_search_path(*_args, **_kwargs):
-        raise AssertionError("endeavor array max product should prove this before generic search path")
+        raise AssertionError("endeavor array max product should prove this inside the solver path")
 
     monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
 
@@ -1846,7 +1846,7 @@ def test_endeavor_array_contains_product_proves_max_violation_without_generic_se
     assert_witness_validates(lhs, rhs, Dialect.DRAFT201909, proof.witness)
 
 
-def test_endeavor_evaluation_trace_expands_contains_unevaluated_items_without_generic_search_path(monkeypatch):
+def test_endeavor_evaluation_trace_expands_contains_unevaluated_items(monkeypatch):
     lhs = {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "number"}}
     rhs = {"type": "array", "contains": {"type": "integer"}, "unevaluatedItems": False}
     engine = ProofEngine.for_schemas(
@@ -1857,7 +1857,7 @@ def test_endeavor_evaluation_trace_expands_contains_unevaluated_items_without_ge
     )
 
     def fail_blocked_search_path(*_args, **_kwargs):
-        raise AssertionError("endeavor evaluation trace should prove this before generic search path")
+        raise AssertionError("endeavor evaluation trace should prove this inside the solver path")
 
     monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
 

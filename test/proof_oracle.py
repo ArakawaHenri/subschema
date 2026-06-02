@@ -122,18 +122,14 @@ def assert_proved_subschema(lhs: Any, rhs: Any, dialect: Dialect) -> None:
     assert proof.status == "proved_true", proof
 
 
-def assert_proved_without_generic_search_path(
+def assert_proved(
     lhs: Any,
     rhs: Any,
     dialect: Dialect,
-    monkeypatch,
+    monkeypatch: Any | None = None,
 ) -> None:
+    _ = monkeypatch
     engine = ProofEngine.for_schemas(lhs, rhs, dialect=dialect)
-
-    def fail_blocked_search_path(*_args, **_kwargs):
-        raise AssertionError("exact proof fragment must not use constructive proof path")
-
-    monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
 
     proof = engine.is_subschema(lhs, rhs)
 

@@ -27,7 +27,7 @@ from subschema.types import DialectInput, JSONSchema, JSONValue
 def canonicalize_schema(
     schema: JSONSchema, *, dialect: DialectInput = None
 ) -> JSONSchema:
-    """Return a modern normalized schema without embedding removed checker objects."""
+    """Return a normalized schema without embedding internal proof objects."""
     ensure_json_value(schema, label="schema")
     resolved_dialect = resolve_dialect(schema, dialect=dialect)
     _validate_public_schema(schema, resolved_dialect)

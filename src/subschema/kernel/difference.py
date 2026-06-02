@@ -5407,9 +5407,9 @@ def _unevaluated_property_witness_name(
     ):
         return witness
 
-    fallback = _object_key_pattern_witness_excluding(pattern, excluded_names)
-    if isinstance(fallback, str) and lhs_shape.allows_key(fallback):
-        return fallback
+    alternate_witness = _object_key_pattern_witness_excluding(pattern, excluded_names)
+    if isinstance(alternate_witness, str) and lhs_shape.allows_key(alternate_witness):
+        return alternate_witness
     return None
 
 

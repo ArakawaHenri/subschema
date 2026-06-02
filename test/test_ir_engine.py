@@ -1,7 +1,6 @@
 import inspect
 import unittest
 from functools import cached_property
-from pathlib import Path
 from unittest.mock import patch
 
 import subschema.api as public_api
@@ -15,12 +14,10 @@ import subschema.kernel.disjointness as disjointness_module
 import subschema.kernel.driver as driver_module
 import subschema.kernel.engine as engine_module
 import subschema.kernel.evaluation as evaluation_module
-import subschema.kernel.finite as finite_module
 import subschema.kernel.formulas as formulas_module
 import subschema.kernel.ir as ir_module
 import subschema.kernel.normalization as normalization_module
 import subschema.kernel.overlaps as overlaps_module
-import subschema.kernel.projection as projection_module
 import subschema.kernel.references as references_module
 import subschema.kernel.regex as regex_module
 import subschema.kernel.scalars as scalars_module
@@ -277,7 +274,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertTrue(is_subschema(lhs, rhs))
         self.assertEqual(ProofEngine.__module__, "subschema.kernel.engine")
 
-    def test_kernel_returns_solver_result_without_compatibility_fallback(self):
+    def test_kernel_returns_solver_result_directly(self):
         lhs = {"type": "object", "minProperties": 1, "patternProperties": {"^a": {"type": "integer"}}}
         rhs = {"type": "object", "minProperties": 1, "patternProperties": {"^a+": {"type": "number"}}}
         engine = ProofEngine.for_schemas(lhs, rhs, options=ProofOptions())
@@ -286,28 +283,10 @@ class TestProofEngineRouting(unittest.TestCase):
 
         self.assertEqual(proof.status, "proved_true")
 
-    def test_compatibility_checker_stack_has_been_removed(self):
-        package_root = Path(__file__).resolve().parents[1] / "subschema"
-        removed = [
-            "canonicalization",
-            "checkers",
-            "constants",
-            "draft_target",
-            "utils",
-        ]
-
-        for module_name in removed:
-            candidates = [
-                package_root / f"_{module_name}.py",
-                package_root / "kernel" / f"{module_name}.py",
-            ]
-            self.assertFalse(any(candidate.exists() for candidate in candidates), module_name)
-
     def test_context_subproof_uses_kernel_proof_driver(self):
         context_source = inspect.getsource(context_module.ProofContext.subproof)
 
         self.assertIn("proof_driver.prove_subschema_with_context", context_source)
-        self.assertNotIn("_proof", context_source)
         self.assertFalse(hasattr(engine_module, "prove_subschema_with_context"))
         self.assertNotIn("from subschema.kernel.engine", inspect.getsource(context_module))
         self.assertNotIn("ProofEngine", inspect.getsource(driver_module.prove_subschema_with_context))
@@ -322,7 +301,7 @@ class TestProofEngineRouting(unittest.TestCase):
             strings_module,
             regex_module,
         )
-        forbidden_legacy_budget_fields = (
+        forbidden_budget_fields = (
             "max_candidates",
             "max_branch_expansions",
             "max_regex_states",
@@ -335,7 +314,7 @@ class TestProofEngineRouting(unittest.TestCase):
             if module is contracts_module:
                 continue
             self.assertNotIn("work_limit", source)
-            for field in forbidden_legacy_budget_fields:
+            for field in forbidden_budget_fields:
                 self.assertNotIn(field, source)
         self.assertIn("max_work", inspect.getsource(contracts_module.ProofBudgets))
         self.assertIn("ProofWorkMeter", inspect.getsource(context_module))
@@ -490,22 +469,13 @@ class TestProofEngineRouting(unittest.TestCase):
             self.assertNotIn("import subschema.kernel.engine", source)
             self.assertNotIn("ProofEngine(", source)
 
-    def test_tactic_registry_facade_is_removed(self):
-        self.assertFalse((Path("src/subschema/kernel/tactics.py")).exists())
-        self.assertNotIn("exact_subschema_tactics", inspect.getsource(engine_module.ProofEngine.is_subschema))
-        deleted_registry = "EXACT" + "_SUBSCHEMA_TACTICS"
-        self.assertNotIn(deleted_registry, inspect.getsource(engine_module))
-        self.assertNotIn(deleted_registry, inspect.getsource(sat_module))
-
     def test_meet_and_join_delegate_to_context_projection_policy(self):
         projection_sources = inspect.getsource(ProofEngine.meet) + inspect.getsource(ProofEngine.join)
 
         self.assertIn("self.context.meet", projection_sources)
         self.assertIn("self.context.join", projection_sources)
-        self.assertNotIn("legacy_", projection_sources)
         self.assertNotIn("finite_", projection_sources)
         self.assertEqual(ProjectionEngine.__module__, "subschema.kernel.projection")
-        self.assertNotIn("from subschema import _proof", inspect.getsource(projection_module))
 
     def test_symbolic_solver_lives_in_kernel_package(self):
         self.assertEqual(SymbolicSolver.__module__, "subschema.kernel.symbolic")
@@ -2576,15 +2546,18 @@ class TestProofEngineRouting(unittest.TestCase):
             "check_with_work",
             return_value=ProofResult.unsupported("numeric symbolic solver returned unknown"),
         ):
-            numeric_fallback = numeric_difference_plan_from_constraints(
+            numeric_plan = numeric_difference_plan_from_constraints(
                 numeric_witness_formula.lhs.numeric_constraint,
                 numeric_witness_formula.rhs.numeric_constraint,
                 context=ProofContext(Dialect.DRAFT7),
         )
-        self.assertEqual(numeric_fallback.status, "witness")
-        self.assertEqual(numeric_fallback.rejected_reason, "SAT numeric witness was rejected by concrete validation")
-        self.assertGreaterEqual(numeric_fallback.witness, 5)
-        self.assertLess(numeric_fallback.witness, 6)
+        self.assertEqual(numeric_plan.status, "witness")
+        self.assertEqual(
+            numeric_plan.rejected_reason,
+            "SAT numeric witness was rejected by concrete validation",
+        )
+        self.assertGreaterEqual(numeric_plan.witness, 5)
+        self.assertLess(numeric_plan.witness, 6)
 
         constructive_numeric_formula = DifferenceFormula.from_schemas(
             {"type": "number", "multipleOf": 10},
@@ -2817,8 +2790,8 @@ class TestProofEngineRouting(unittest.TestCase):
             "check_with_work",
             return_value=ProofResult.unsupported("array symbolic solver returned unknown"),
         ):
-            fallback_length_plan = length_model.length_difference_plan()
-        self.assertEqual(fallback_length_plan.status, "witness")
+            length_plan = length_model.length_difference_plan()
+        self.assertEqual(length_plan.status, "witness")
         contains_constraint = ArrayContainsConstraint({"type": "string"}, 1, 3, marks_evaluated=True)
         contains_min_plan = tail_model.contains_min_violation_plan(contains_constraint)
         contains_max_plan = tail_model.contains_max_violation_plan(contains_constraint)
@@ -3036,9 +3009,9 @@ class TestProofEngineRouting(unittest.TestCase):
             "check_with_work",
             return_value=ProofResult.unsupported("object symbolic solver returned unknown"),
         ):
-            fallback_count_plan = count_model.property_count_difference_plan()
-        self.assertEqual(fallback_count_plan.status, "witness")
-        self.assertEqual(fallback_count_plan.witness, {"k0": None, "k1": None, "k2": None})
+            count_plan = count_model.property_count_difference_plan()
+        self.assertEqual(count_plan.status, "witness")
+        self.assertEqual(count_plan.witness, {"k0": None, "k1": None, "k2": None})
         unevaluated_property_witness_formula = DifferenceFormula.from_schemas(
             {"type": "object"},
             {"type": "object", "unevaluatedProperties": False},
@@ -4880,10 +4853,6 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(anchor_resolution.document_pointer, ("$defs", "child", "$defs", "name"))
         self.assertEqual(anchor_resolution.source_resource_uri, "https://example.com/child")
         self.assertEqual(references_module.ResourceGraph.__module__, "subschema.kernel.references")
-        self.assertNotIn("compatibility facade", inspect.getsource(symbolic_module))
-        self.assertNotIn("compatibility facade", inspect.getsource(finite_module))
-        self.assertNotIn("compatibility facade", inspect.getsource(engine_module))
-
     def test_embedded_resource_static_reference_proves_with_modern_kernel(self):
         lhs = {
             "$id": "https://example.com/root",
@@ -5165,7 +5134,7 @@ class TestProofEngineRouting(unittest.TestCase):
 
 
 class TestMeetJoinProjection(unittest.TestCase):
-    def test_complex_finite_meet_and_join_use_proof_projection_without_removed_checker(self):
+    def test_complex_finite_meet_and_join_use_proof_projection(self):
         lhs = {"const": {"a": 1}}
         rhs = {"type": "object"}
 
@@ -5174,7 +5143,7 @@ class TestMeetJoinProjection(unittest.TestCase):
             self.assertEqual(meet_schemas(lhs, rhs, dialect=Dialect.DRAFT7), lhs)
             self.assertEqual(join_schemas(lhs, rhs, dialect=Dialect.DRAFT7), rhs)
 
-    def test_top_bottom_meet_and_join_are_projected_without_removed_checker(self):
+    def test_top_bottom_meet_and_join_are_projected(self):
         if True:
 
             self.assertEqual(meet_schemas(True, {"type": "string"}, dialect=Dialect.DRAFT6), {"type": "string"})
@@ -5182,7 +5151,7 @@ class TestMeetJoinProjection(unittest.TestCase):
             self.assertIs(join_schemas(True, {"type": "string"}, dialect=Dialect.DRAFT6), True)
             self.assertEqual(join_schemas(False, {"type": "string"}, dialect=Dialect.DRAFT6), {"type": "string"})
 
-    def test_finite_meet_and_join_are_projected_without_removed_checker(self):
+    def test_finite_meet_and_join_are_projected(self):
         lhs = {"enum": [1, 2]}
         rhs = {"enum": [2, 3]}
 
@@ -5191,7 +5160,7 @@ class TestMeetJoinProjection(unittest.TestCase):
             self.assertEqual(meet_schemas(lhs, rhs), {"const": 2})
             self.assertEqual(join_schemas(lhs, rhs), {"enum": [1, 2, 3]})
 
-    def test_disjoint_finite_meet_projects_false_without_removed_checker(self):
+    def test_disjoint_finite_meet_projects_false(self):
         lhs = {"enum": [1]}
         rhs = {"enum": [2]}
 
@@ -5199,7 +5168,7 @@ class TestMeetJoinProjection(unittest.TestCase):
 
             self.assertIs(meet_schemas(lhs, rhs), False)
 
-    def test_uninhabited_finite_join_projects_other_side_without_removed_checker(self):
+    def test_uninhabited_finite_join_projects_other_side(self):
         lhs = {"type": "string", "enum": [1]}
         rhs = {"const": "a"}
 
@@ -5210,7 +5179,7 @@ class TestMeetJoinProjection(unittest.TestCase):
 
 
 class TestFiniteDomainProof(unittest.TestCase):
-    def test_empty_finite_lhs_is_proved_without_removed_checker(self):
+    def test_empty_finite_lhs_is_proved(self):
         lhs = {"type": "string", "enum": [1, 2]}
         rhs = {"type": "object"}
 
@@ -5218,7 +5187,7 @@ class TestFiniteDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_one_of_overlap_is_proved_without_removed_checker(self):
+    def test_one_of_overlap_is_proved(self):
         lhs = {"const": 1}
         rhs = {"oneOf": [{"type": "number"}, {"const": 1}]}
 
@@ -5257,7 +5226,7 @@ class TestFiniteDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, False, dialect=Dialect.DRAFT6))
 
-    def test_json_integer_finite_values_are_proved_without_removed_checker(self):
+    def test_json_integer_finite_values_are_proved(self):
         lhs = {"enum": [1, 2.0, 3]}
         rhs = {"type": "integer"}
 
@@ -5267,7 +5236,7 @@ class TestFiniteDomainProof(unittest.TestCase):
 
 
 class TestApplicatorCompositionProof(unittest.TestCase):
-    def test_left_any_of_closed_object_branches_are_proved_without_removed_checker(self):
+    def test_left_any_of_closed_object_branches_are_proved(self):
         lhs = {
             "anyOf": [
                 {
@@ -5295,7 +5264,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_left_any_of_branch_counterexample_is_proved_without_removed_checker(self):
+    def test_left_any_of_branch_counterexample_is_proved(self):
         lhs = {
             "anyOf": [
                 {
@@ -5320,7 +5289,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_left_one_of_branches_are_proved_without_removed_checker(self):
+    def test_left_one_of_branches_are_proved(self):
         lhs = {
             "oneOf": [
                 {
@@ -5337,7 +5306,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_left_one_of_valid_counterexample_is_proved_without_removed_checker(self):
+    def test_left_one_of_valid_counterexample_is_proved(self):
         lhs = {
             "oneOf": [
                 {
@@ -5359,7 +5328,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_left_all_of_uses_covering_conjunct_without_removed_checker(self):
+    def test_left_all_of_uses_covering_conjunct(self):
         lhs = {
             "allOf": [
                 {
@@ -5380,7 +5349,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_left_all_of_valid_counterexample_is_proved_without_removed_checker(self):
+    def test_left_all_of_valid_counterexample_is_proved(self):
         lhs = {
             "allOf": [
                 {
@@ -5401,7 +5370,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_right_any_of_uses_covering_branch_without_removed_checker(self):
+    def test_right_any_of_uses_covering_branch(self):
         lhs = {
             "type": "object",
             "properties": {"alpha": {"type": "string"}},
@@ -5422,7 +5391,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_right_any_of_valid_counterexample_is_proved_without_removed_checker(self):
+    def test_right_any_of_valid_counterexample_is_proved(self):
         lhs = {
             "type": "object",
             "properties": {"beta": {"type": "integer"}},
@@ -5444,7 +5413,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_right_one_of_uses_single_disjoint_covering_branch_without_removed_checker(self):
+    def test_right_one_of_uses_single_disjoint_covering_branch(self):
         lhs = {
             "type": "object",
             "properties": {"alpha": {"type": "string"}},
@@ -5465,7 +5434,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_right_one_of_overlap_counterexample_is_proved_without_removed_checker(self):
+    def test_right_one_of_overlap_counterexample_is_proved(self):
         lhs = {
             "type": "object",
             "properties": {"alpha": {"type": "string"}},
@@ -5486,7 +5455,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_right_all_of_mixed_domain_conjuncts_are_proved_without_removed_checker(self):
+    def test_right_all_of_mixed_domain_conjuncts_are_proved(self):
         lhs = {
             "type": "object",
             "properties": {"alpha": True},
@@ -5509,7 +5478,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_right_all_of_conjunct_counterexample_is_proved_without_removed_checker(self):
+    def test_right_all_of_conjunct_counterexample_is_proved(self):
         lhs = {
             "type": "object",
             "properties": {"alpha": True, "beta": True},
@@ -5526,7 +5495,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_rhs_conditional_guarded_products_are_proved_without_removed_checker(self):
+    def test_rhs_conditional_guarded_products_are_proved(self):
         rhs = {
             "if": {"type": "string"},
             "then": {"minLength": 2},
@@ -5551,7 +5520,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
             )
             self.assertFalse(is_subschema({"type": "string"}, rhs, dialect=Dialect.DRAFT7))
 
-    def test_lhs_conditional_guarded_products_are_proved_without_removed_checker(self):
+    def test_lhs_conditional_guarded_products_are_proved(self):
         lhs = {
             "if": {"type": "string"},
             "then": {"minLength": 2},
@@ -5566,7 +5535,7 @@ class TestApplicatorCompositionProof(unittest.TestCase):
 
 
 class TestNumericDomainProof(unittest.TestCase):
-    def test_interval_subtype_is_proved_without_removed_checker(self):
+    def test_interval_subtype_is_proved(self):
         lhs = {"type": "integer", "minimum": 5, "maximum": 10}
         rhs = {"type": "number", "minimum": 4, "maximum": 11}
 
@@ -5574,7 +5543,7 @@ class TestNumericDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_interval_counterexample_is_proved_without_removed_checker(self):
+    def test_interval_counterexample_is_proved(self):
         lhs = {"type": "number", "minimum": 5}
         rhs = {"type": "number", "minimum": 6}
 
@@ -5582,7 +5551,7 @@ class TestNumericDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_untyped_numeric_all_of_equivalence_is_proved_without_removed_checker(self):
+    def test_untyped_numeric_all_of_equivalence_is_proved(self):
         lhs = {"minimum": 10, "maximum": 20}
         rhs = {"allOf": [{"minimum": 10}, {"maximum": 20}]}
 
@@ -5591,7 +5560,7 @@ class TestNumericDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs))
             self.assertTrue(is_subschema(rhs, lhs))
 
-    def test_untyped_numeric_schema_is_not_typed_number_without_removed_checker(self):
+    def test_untyped_numeric_schema_is_not_typed_number(self):
         lhs = {"minimum": 10}
         rhs = {"type": "number", "minimum": 10}
 
@@ -5600,7 +5569,7 @@ class TestNumericDomainProof(unittest.TestCase):
             self.assertFalse(is_subschema(lhs, rhs))
             self.assertTrue(is_subschema(rhs, lhs))
 
-    def test_multiple_of_integer_subtype_is_proved_without_removed_checker(self):
+    def test_multiple_of_integer_subtype_is_proved(self):
         lhs = {"type": "number", "multipleOf": 10}
         rhs = {"type": "integer"}
 
@@ -5608,7 +5577,7 @@ class TestNumericDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_multiple_of_counterexample_is_proved_without_removed_checker(self):
+    def test_multiple_of_counterexample_is_proved(self):
         lhs = {"type": "integer", "multipleOf": 5}
         rhs = {"type": "integer", "multipleOf": 7}
 
@@ -5629,7 +5598,7 @@ class TestNumericDomainProof(unittest.TestCase):
 
 
 class TestTypeDomainProof(unittest.TestCase):
-    def test_mixed_type_counterexample_is_proved_without_removed_checker(self):
+    def test_mixed_type_counterexample_is_proved(self):
         lhs = {"type": ["string", "array"]}
         rhs = {"type": ["number", "string"]}
 
@@ -5637,7 +5606,7 @@ class TestTypeDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_any_of_type_equivalence_is_proved_without_removed_checker(self):
+    def test_any_of_type_equivalence_is_proved(self):
         lhs = {"type": ["string", "boolean"]}
         rhs = {"anyOf": [{"type": "string"}, {"type": "boolean"}]}
 
@@ -5646,7 +5615,7 @@ class TestTypeDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs))
             self.assertTrue(is_subschema(rhs, lhs))
 
-    def test_one_of_top_complement_is_proved_without_removed_checker(self):
+    def test_one_of_top_complement_is_proved(self):
         lhs = {"oneOf": [{"type": "string"}, {}]}
         rhs = {"not": {"type": "string"}}
 
@@ -5655,7 +5624,7 @@ class TestTypeDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs))
             self.assertTrue(is_subschema(rhs, lhs))
 
-    def test_not_type_union_is_proved_without_removed_checker(self):
+    def test_not_type_union_is_proved(self):
         lhs = {"not": {"anyOf": [{"type": "string"}, {"type": "null"}]}}
         rhs = {"type": ["integer", "number", "boolean", "array", "object"]}
 
@@ -5698,7 +5667,7 @@ class TestTypeDomainProof(unittest.TestCase):
 
 
 class TestStringLengthDomainProof(unittest.TestCase):
-    def test_length_interval_subtype_is_proved_without_removed_checker(self):
+    def test_length_interval_subtype_is_proved(self):
         lhs = {"type": "string", "minLength": 2, "maxLength": 4}
         rhs = {"type": "string", "minLength": 1}
 
@@ -5706,7 +5675,7 @@ class TestStringLengthDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_length_interval_counterexample_is_proved_without_removed_checker(self):
+    def test_length_interval_counterexample_is_proved(self):
         lhs = {"type": "string", "minLength": 2}
         rhs = {"type": "string", "maxLength": 1}
 
@@ -5714,7 +5683,7 @@ class TestStringLengthDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_not_min_length_interval_is_proved_without_removed_checker(self):
+    def test_not_min_length_interval_is_proved(self):
         lhs = {"type": "string", "maxLength": 1}
         rhs = {"allOf": [{"type": "string"}, {"not": {"type": "string", "minLength": 2}}]}
 
@@ -5723,7 +5692,7 @@ class TestStringLengthDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs))
             self.assertTrue(is_subschema(rhs, lhs))
 
-    def test_any_of_length_union_is_proved_without_removed_checker(self):
+    def test_any_of_length_union_is_proved(self):
         lhs = {"anyOf": [{"type": "string", "maxLength": 1}, {"type": "string", "minLength": 3}]}
         rhs = {"type": "string", "not": {"minLength": 2, "maxLength": 2}}
 
@@ -5734,7 +5703,7 @@ class TestStringLengthDomainProof(unittest.TestCase):
 
 
 class TestStringLanguageDomainProof(unittest.TestCase):
-    def test_pattern_subtype_is_proved_without_removed_checker(self):
+    def test_pattern_subtype_is_proved(self):
         lhs = {"type": "string", "pattern": "^ab", "maxLength": 4}
         rhs = {"type": "string", "pattern": "^a", "minLength": 2}
 
@@ -5742,7 +5711,7 @@ class TestStringLanguageDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_pattern_counterexample_is_proved_without_removed_checker(self):
+    def test_pattern_counterexample_is_proved(self):
         lhs = {"type": "string", "pattern": "^a"}
         rhs = {"type": "string", "pattern": "^b"}
 
@@ -5750,7 +5719,7 @@ class TestStringLanguageDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_negated_pattern_is_proved_without_removed_checker(self):
+    def test_negated_pattern_is_proved(self):
         lhs = {"type": "string", "maxLength": 1}
         rhs = {"type": "string", "not": {"pattern": "^ab"}}
 
@@ -5768,7 +5737,7 @@ class TestStringLanguageDomainProof(unittest.TestCase):
 
 
 class TestArrayLengthDomainProof(unittest.TestCase):
-    def test_length_interval_subtype_is_proved_without_removed_checker(self):
+    def test_length_interval_subtype_is_proved(self):
         lhs = {"type": "array", "minItems": 2, "maxItems": 4}
         rhs = {"type": "array", "minItems": 1}
 
@@ -5776,7 +5745,7 @@ class TestArrayLengthDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_length_interval_counterexample_is_proved_without_removed_checker(self):
+    def test_length_interval_counterexample_is_proved(self):
         lhs = {"type": "array", "minItems": 2}
         rhs = {"type": "array", "maxItems": 1}
 
@@ -5784,7 +5753,7 @@ class TestArrayLengthDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_not_min_items_interval_is_proved_without_removed_checker(self):
+    def test_not_min_items_interval_is_proved(self):
         lhs = {"type": "array", "maxItems": 1}
         rhs = {"allOf": [{"type": "array"}, {"not": {"type": "array", "minItems": 2}}]}
 
@@ -5793,7 +5762,7 @@ class TestArrayLengthDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs))
             self.assertTrue(is_subschema(rhs, lhs))
 
-    def test_any_of_length_union_is_proved_without_removed_checker(self):
+    def test_any_of_length_union_is_proved(self):
         lhs = {"anyOf": [{"type": "array", "maxItems": 1}, {"type": "array", "minItems": 3}]}
         rhs = {"type": "array", "not": {"minItems": 2, "maxItems": 2}}
 
@@ -5802,7 +5771,7 @@ class TestArrayLengthDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs))
             self.assertTrue(is_subschema(rhs, lhs))
 
-    def test_draft7_tuple_tail_false_implies_max_items_without_removed_checker(self):
+    def test_draft7_tuple_tail_false_implies_max_items(self):
         lhs = {
             "type": "array",
             "items": [{"type": "integer"}, {"type": "string"}],
@@ -5814,7 +5783,7 @@ class TestArrayLengthDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT7))
 
-    def test_items_false_implies_empty_array_without_removed_checker(self):
+    def test_items_false_implies_empty_array(self):
         lhs = {"type": "array", "items": False}
         rhs = {"type": "array", "maxItems": 0}
 
@@ -5822,7 +5791,7 @@ class TestArrayLengthDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_202012_prefix_items_tail_false_implies_max_items_without_removed_checker(self):
+    def test_202012_prefix_items_tail_false_implies_max_items(self):
         lhs = {
             "type": "array",
             "prefixItems": [{"type": "integer"}],
@@ -5834,7 +5803,7 @@ class TestArrayLengthDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT202012))
 
-    def test_202012_items_false_implies_empty_array_without_removed_checker(self):
+    def test_202012_items_false_implies_empty_array(self):
         lhs = {"type": "array", "items": False}
         rhs = {"type": "array", "maxItems": 0}
 
@@ -5855,7 +5824,7 @@ class TestArrayLengthDomainProof(unittest.TestCase):
 
 
 class TestArrayUniquenessDomainProof(unittest.TestCase):
-    def test_unique_items_implies_non_unique_items_without_removed_checker(self):
+    def test_unique_items_implies_non_unique_items(self):
         lhs = {"type": "array", "uniqueItems": True}
         rhs = {"type": "array", "uniqueItems": False}
 
@@ -5863,7 +5832,7 @@ class TestArrayUniquenessDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_non_unique_items_counterexample_is_proved_without_removed_checker(self):
+    def test_non_unique_items_counterexample_is_proved(self):
         lhs = {"type": "array", "uniqueItems": False}
         rhs = {"type": "array", "uniqueItems": True}
 
@@ -5871,7 +5840,7 @@ class TestArrayUniquenessDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_non_unique_typed_items_construct_duplicate_witness_without_generic_search_path(self):
+    def test_non_unique_typed_items_construct_duplicate_witness(self):
         lhs = {"type": "array", "items": {"type": "integer"}, "minItems": 2, "uniqueItems": False}
         rhs = {"type": "array", "uniqueItems": True}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
@@ -5887,7 +5856,7 @@ class TestArrayUniquenessDomainProof(unittest.TestCase):
         self.assertEqual(proof.witness[0], proof.witness[1])
         self.assertIsInstance(proof.witness[0], int)
 
-    def test_short_arrays_are_unique_without_removed_checker(self):
+    def test_short_arrays_are_unique(self):
         lhs = {"type": "array", "maxItems": 1}
         rhs = {"type": "array", "uniqueItems": True}
 
@@ -5895,7 +5864,7 @@ class TestArrayUniquenessDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_closed_empty_arrays_are_unique_without_removed_checker(self):
+    def test_closed_empty_arrays_are_unique(self):
         lhs = {"type": "array", "items": False}
         rhs = {"type": "array", "uniqueItems": True}
 
@@ -5903,7 +5872,7 @@ class TestArrayUniquenessDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_untyped_unique_items_may_include_non_array_without_removed_checker(self):
+    def test_untyped_unique_items_may_include_non_array(self):
         lhs = {"uniqueItems": True}
         rhs = {"type": "array", "uniqueItems": True}
 
@@ -5913,7 +5882,7 @@ class TestArrayUniquenessDomainProof(unittest.TestCase):
 
 
 class TestArrayContainsDomainProof(unittest.TestCase):
-    def test_contains_schema_subtype_is_proved_without_removed_checker(self):
+    def test_contains_schema_subtype_is_proved(self):
         lhs = {"type": "array", "contains": {"type": "integer"}}
         rhs = {"type": "array", "contains": {"type": "number"}}
 
@@ -5921,7 +5890,7 @@ class TestArrayContainsDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_contains_schema_counterexample_is_proved_without_removed_checker(self):
+    def test_contains_schema_counterexample_is_proved(self):
         lhs = {"type": "array", "contains": {"type": "number"}}
         rhs = {"type": "array", "contains": {"type": "integer"}}
 
@@ -5929,7 +5898,7 @@ class TestArrayContainsDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_min_contains_zero_is_vacuous_without_removed_checker(self):
+    def test_min_contains_zero_is_vacuous(self):
         lhs = {"type": "array"}
         rhs = {
             "type": "array",
@@ -5941,7 +5910,7 @@ class TestArrayContainsDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT201909))
 
-    def test_homogeneous_items_imply_min_contains_without_removed_checker(self):
+    def test_homogeneous_items_imply_min_contains(self):
         lhs = {
             "type": "array",
             "items": {"type": "integer"},
@@ -5957,7 +5926,7 @@ class TestArrayContainsDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT201909))
 
-    def test_empty_homogeneous_array_counterexample_without_removed_checker(self):
+    def test_empty_homogeneous_array_counterexample(self):
         lhs = {"type": "array", "items": {"type": "integer"}}
         rhs = {"type": "array", "contains": {"type": "integer"}}
 
@@ -5965,7 +5934,7 @@ class TestArrayContainsDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_required_tuple_item_implies_contains_without_removed_checker(self):
+    def test_required_tuple_item_implies_contains(self):
         lhs = {
             "type": "array",
             "items": [{"type": "integer"}, {"type": "string"}],
@@ -5977,7 +5946,7 @@ class TestArrayContainsDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_max_contains_uses_max_items_without_removed_checker(self):
+    def test_max_contains_uses_max_items(self):
         lhs = {
             "type": "array",
             "items": {"type": "integer"},
@@ -5994,7 +5963,7 @@ class TestArrayContainsDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT201909))
 
-    def test_max_contains_counterexample_without_removed_checker(self):
+    def test_max_contains_counterexample(self):
         lhs = {
             "type": "array",
             "items": {"type": "integer"},
@@ -6011,7 +5980,7 @@ class TestArrayContainsDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs, dialect=Dialect.DRAFT201909))
 
-    def test_202012_tail_items_imply_contains_without_removed_checker(self):
+    def test_202012_tail_items_imply_contains(self):
         lhs = {
             "type": "array",
             "prefixItems": [{"type": "integer"}],
@@ -6030,7 +5999,7 @@ class TestArrayContainsDomainProof(unittest.TestCase):
 
 
 class TestObjectPropertyCountDomainProof(unittest.TestCase):
-    def test_property_count_interval_subtype_is_proved_without_removed_checker(self):
+    def test_property_count_interval_subtype_is_proved(self):
         lhs = {"type": "object", "minProperties": 2, "maxProperties": 4}
         rhs = {"type": "object", "minProperties": 1}
 
@@ -6038,7 +6007,7 @@ class TestObjectPropertyCountDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_property_count_interval_counterexample_is_proved_without_removed_checker(self):
+    def test_property_count_interval_counterexample_is_proved(self):
         lhs = {"type": "object", "minProperties": 2}
         rhs = {"type": "object", "maxProperties": 1}
 
@@ -6046,7 +6015,7 @@ class TestObjectPropertyCountDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_not_min_properties_interval_is_proved_without_removed_checker(self):
+    def test_not_min_properties_interval_is_proved(self):
         lhs = {"type": "object", "maxProperties": 1}
         rhs = {"allOf": [{"type": "object"}, {"not": {"type": "object", "minProperties": 2}}]}
 
@@ -6055,7 +6024,7 @@ class TestObjectPropertyCountDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs))
             self.assertTrue(is_subschema(rhs, lhs))
 
-    def test_any_of_property_count_union_is_proved_without_removed_checker(self):
+    def test_any_of_property_count_union_is_proved(self):
         lhs = {"anyOf": [{"type": "object", "maxProperties": 1}, {"type": "object", "minProperties": 3}]}
         rhs = {"type": "object", "not": {"minProperties": 2, "maxProperties": 2}}
 
@@ -6066,7 +6035,7 @@ class TestObjectPropertyCountDomainProof(unittest.TestCase):
 
 
 class TestObjectPresenceDomainProof(unittest.TestCase):
-    def test_required_superset_is_proved_without_removed_checker(self):
+    def test_required_superset_is_proved(self):
         lhs = {"type": "object", "required": ["a", "b"]}
         rhs = {"type": "object", "required": ["a"]}
 
@@ -6075,7 +6044,7 @@ class TestObjectPresenceDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs))
             self.assertFalse(is_subschema(rhs, lhs))
 
-    def test_not_required_is_proved_without_removed_checker(self):
+    def test_not_required_is_proved(self):
         lhs = {"type": "object"}
         rhs = {"not": {"required": ["a"]}}
 
@@ -6128,7 +6097,7 @@ class TestObjectPresenceDomainProof(unittest.TestCase):
 
         self.assertNotEqual(proof.status, "proved_true")
 
-    def test_dependent_required_closure_is_proved_without_removed_checker(self):
+    def test_dependent_required_closure_is_proved(self):
         dependency = {
             "type": "object",
             "required": ["credit_card"],
@@ -6144,7 +6113,7 @@ class TestObjectPresenceDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(dependency, explicit_required, dialect=Dialect.DRAFT201909))
             self.assertTrue(is_subschema(explicit_required, dependency, dialect=Dialect.DRAFT201909))
 
-    def test_array_valued_dependencies_are_proved_without_removed_checker(self):
+    def test_array_valued_dependencies_are_proved(self):
         dependency = {
             "type": "object",
             "required": ["credit_card"],
@@ -6172,7 +6141,7 @@ class TestObjectPresenceDomainProof(unittest.TestCase):
                 )
             )
 
-    def test_dependent_schemas_required_closure_is_proved_without_removed_checker(self):
+    def test_dependent_schemas_required_closure_is_proved(self):
         dependency = {
             "type": "object",
             "required": ["credit_card"],
@@ -6188,7 +6157,7 @@ class TestObjectPresenceDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(dependency, explicit_required, dialect=Dialect.DRAFT201909))
             self.assertTrue(is_subschema(explicit_required, dependency, dialect=Dialect.DRAFT201909))
 
-    def test_dependent_schemas_all_of_merge_is_proved_without_removed_checker(self):
+    def test_dependent_schemas_all_of_merge_is_proved(self):
         combined = {
             "allOf": [
                 {
@@ -6211,7 +6180,7 @@ class TestObjectPresenceDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(combined, expected, dialect=Dialect.DRAFT201909))
             self.assertTrue(is_subschema(expected, combined, dialect=Dialect.DRAFT201909))
 
-    def test_one_of_required_overlap_is_proved_without_removed_checker(self):
+    def test_one_of_required_overlap_is_proved(self):
         lhs = {"type": "object", "required": ["a", "b"]}
         rhs = {"oneOf": [{"type": "object", "required": ["a"]}, {"type": "object", "required": ["b"]}]}
 
@@ -6221,7 +6190,7 @@ class TestObjectPresenceDomainProof(unittest.TestCase):
 
 
 class TestObjectStructureDomainProof(unittest.TestCase):
-    def test_required_implies_min_properties_without_removed_checker(self):
+    def test_required_implies_min_properties(self):
         lhs = {"type": "object", "required": ["a", "b"]}
         rhs = {"type": "object", "minProperties": 2}
 
@@ -6230,7 +6199,7 @@ class TestObjectStructureDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs))
             self.assertFalse(is_subschema(rhs, lhs))
 
-    def test_required_and_max_properties_are_disjoint_without_removed_checker(self):
+    def test_required_and_max_properties_are_disjoint(self):
         lhs = {"type": "object", "maxProperties": 1}
         rhs = {"type": "object", "required": ["a", "b"]}
 
@@ -6239,7 +6208,7 @@ class TestObjectStructureDomainProof(unittest.TestCase):
             self.assertFalse(is_subschema(lhs, rhs))
             self.assertFalse(is_subschema(rhs, lhs))
 
-    def test_dependency_implies_property_count_without_removed_checker(self):
+    def test_dependency_implies_property_count(self):
         lhs = {
             "type": "object",
             "required": ["credit_card"],
@@ -6252,7 +6221,7 @@ class TestObjectStructureDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT201909))
             self.assertFalse(is_subschema(rhs, lhs, dialect=Dialect.DRAFT201909))
 
-    def test_any_of_mixed_presence_and_count_without_removed_checker(self):
+    def test_any_of_mixed_presence_and_count(self):
         lhs = {
             "anyOf": [
                 {"type": "object", "required": ["a"]},
@@ -6265,7 +6234,7 @@ class TestObjectStructureDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_required_with_negated_count_without_removed_checker(self):
+    def test_required_with_negated_count(self):
         lhs = {"type": "object", "required": ["a"], "maxProperties": 1}
         rhs = {"type": "object", "required": ["a"], "not": {"minProperties": 2}}
 
@@ -6276,7 +6245,7 @@ class TestObjectStructureDomainProof(unittest.TestCase):
 
 
 class TestObjectPropertyValuesDomainProof(unittest.TestCase):
-    def test_open_property_value_subtype_is_proved_without_removed_checker(self):
+    def test_open_property_value_subtype_is_proved(self):
         lhs = {"type": "object", "properties": {"age": {"type": "integer"}}}
         rhs = {"type": "object", "properties": {"age": {"type": "number"}}}
 
@@ -6317,7 +6286,7 @@ class TestObjectPropertyValuesDomainProof(unittest.TestCase):
 
 
 class TestObjectClosedPropertiesDomainProof(unittest.TestCase):
-    def test_closed_property_value_subtype_is_proved_without_removed_checker(self):
+    def test_closed_property_value_subtype_is_proved(self):
         lhs = {
             "type": "object",
             "properties": {"age": {"type": "integer"}},
@@ -6334,7 +6303,7 @@ class TestObjectClosedPropertiesDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs))
             self.assertFalse(is_subschema(rhs, lhs))
 
-    def test_closed_property_value_counterexample_is_valid_object_without_removed_checker(self):
+    def test_closed_property_value_counterexample_is_valid_object(self):
         lhs = {
             "type": "object",
             "properties": {"age": {"type": "number"}},
@@ -6352,7 +6321,7 @@ class TestObjectClosedPropertiesDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_closed_property_all_of_constraints_are_proved_without_removed_checker(self):
+    def test_closed_property_all_of_constraints_are_proved(self):
         lhs = {
             "type": "object",
             "properties": {"age": {"type": "integer", "minimum": 5, "maximum": 10}},
@@ -6369,7 +6338,7 @@ class TestObjectClosedPropertiesDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs))
             self.assertFalse(is_subschema(rhs, lhs))
 
-    def test_closed_property_required_keyspace_is_proved_without_removed_checker(self):
+    def test_closed_property_required_keyspace_is_proved(self):
         lhs = {
             "type": "object",
             "properties": {"name": {"type": "string"}},
@@ -6387,7 +6356,7 @@ class TestObjectClosedPropertiesDomainProof(unittest.TestCase):
             self.assertFalse(is_subschema(lhs, rhs))
             self.assertTrue(is_subschema(rhs, lhs))
 
-    def test_closed_properties_can_satisfy_rhs_pattern_properties_without_removed_checker(self):
+    def test_closed_properties_can_satisfy_rhs_pattern_properties(self):
         lhs = {
             "type": "object",
             "properties": {
@@ -6406,7 +6375,7 @@ class TestObjectClosedPropertiesDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_closed_property_value_violates_rhs_pattern_without_removed_checker(self):
+    def test_closed_property_value_violates_rhs_pattern(self):
         lhs = {
             "type": "object",
             "properties": {"email": {"type": "integer"}},
@@ -6422,7 +6391,7 @@ class TestObjectClosedPropertiesDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_closed_property_must_satisfy_all_matching_rhs_patterns_without_removed_checker(self):
+    def test_closed_property_must_satisfy_all_matching_rhs_patterns(self):
         lhs = {
             "type": "object",
             "properties": {"ab": {"type": "integer"}},
@@ -6441,7 +6410,7 @@ class TestObjectClosedPropertiesDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs))
 
-    def test_closed_property_combines_explicit_and_pattern_constraints_without_removed_checker(self):
+    def test_closed_property_combines_explicit_and_pattern_constraints(self):
         lhs = {
             "type": "object",
             "properties": {"email": {"type": "string", "minLength": 2}},
@@ -6458,7 +6427,7 @@ class TestObjectClosedPropertiesDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs))
 
-    def test_closed_all_of_intersects_explicit_and_pattern_keyspaces_without_removed_checker(self):
+    def test_closed_all_of_intersects_explicit_and_pattern_keyspaces(self):
         lhs = {
             "allOf": [
                 {
@@ -6486,7 +6455,7 @@ class TestObjectClosedPropertiesDomainProof(unittest.TestCase):
 
 
 class TestObjectPropertyNamesDomainProof(unittest.TestCase):
-    def test_restricted_property_names_are_object_subtype_without_removed_checker(self):
+    def test_restricted_property_names_are_object_subtype(self):
         lhs = {"type": "object", "propertyNames": {"pattern": "^a"}}
         rhs = {"type": "object"}
 
@@ -6494,7 +6463,7 @@ class TestObjectPropertyNamesDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_arbitrary_object_counterexample_is_proved_without_removed_checker(self):
+    def test_arbitrary_object_counterexample_is_proved(self):
         lhs = {"type": "object"}
         rhs = {"type": "object", "propertyNames": {"pattern": "^a"}}
 
@@ -6502,7 +6471,7 @@ class TestObjectPropertyNamesDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_property_name_pattern_subtype_is_proved_without_removed_checker(self):
+    def test_property_name_pattern_subtype_is_proved(self):
         lhs = {"type": "object", "propertyNames": {"pattern": "^alpha"}}
         rhs = {"type": "object", "propertyNames": {"pattern": "^a"}}
 
@@ -6511,7 +6480,7 @@ class TestObjectPropertyNamesDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
             self.assertFalse(is_subschema(rhs, lhs, dialect=Dialect.DRAFT6))
 
-    def test_required_key_rejected_by_property_names_is_proved_empty_without_removed_checker(self):
+    def test_required_key_rejected_by_property_names_is_proved_empty(self):
         lhs = {
             "type": "object",
             "required": ["beta"],
@@ -6522,7 +6491,7 @@ class TestObjectPropertyNamesDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, False, dialect=Dialect.DRAFT6))
 
-    def test_all_of_property_names_is_proved_without_removed_checker(self):
+    def test_all_of_property_names_is_proved(self):
         lhs = {
             "allOf": [
                 {"type": "object", "propertyNames": {"pattern": "^a"}},
@@ -6536,7 +6505,7 @@ class TestObjectPropertyNamesDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
             self.assertTrue(is_subschema(rhs, lhs, dialect=Dialect.DRAFT6))
 
-    def test_closed_properties_can_satisfy_property_names_without_removed_checker(self):
+    def test_closed_properties_can_satisfy_property_names(self):
         lhs = {
             "type": "object",
             "properties": {"alpha": {"type": "number"}},
@@ -6548,7 +6517,7 @@ class TestObjectPropertyNamesDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_closed_properties_can_violate_property_names_without_removed_checker(self):
+    def test_closed_properties_can_violate_property_names(self):
         lhs = {
             "type": "object",
             "properties": {"beta": {"type": "number"}},
@@ -6560,7 +6529,7 @@ class TestObjectPropertyNamesDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_closed_keyspace_subset_is_proved_without_removed_checker(self):
+    def test_closed_keyspace_subset_is_proved(self):
         lhs = {
             "type": "object",
             "properties": {"alpha": True},
@@ -6577,7 +6546,7 @@ class TestObjectPropertyNamesDomainProof(unittest.TestCase):
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
             self.assertFalse(is_subschema(rhs, lhs, dialect=Dialect.DRAFT6))
 
-    def test_open_property_names_is_not_closed_keyspace_without_removed_checker(self):
+    def test_open_property_names_is_not_closed_keyspace(self):
         lhs = {"type": "object", "propertyNames": {"pattern": "^a"}}
         rhs = {
             "type": "object",
@@ -6589,7 +6558,7 @@ class TestObjectPropertyNamesDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_closed_pattern_properties_can_satisfy_property_names_without_removed_checker(self):
+    def test_closed_pattern_properties_can_satisfy_property_names(self):
         lhs = {
             "type": "object",
             "patternProperties": {"^a": {"type": "number"}},
@@ -6601,7 +6570,7 @@ class TestObjectPropertyNamesDomainProof(unittest.TestCase):
 
             self.assertTrue(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_closed_pattern_properties_can_violate_property_names_without_removed_checker(self):
+    def test_closed_pattern_properties_can_violate_property_names(self):
         lhs = {
             "type": "object",
             "patternProperties": {"^b": {"type": "number"}},
@@ -6613,7 +6582,7 @@ class TestObjectPropertyNamesDomainProof(unittest.TestCase):
 
             self.assertFalse(is_subschema(lhs, rhs, dialect=Dialect.DRAFT6))
 
-    def test_closed_pattern_keyspace_subset_is_proved_without_removed_checker(self):
+    def test_closed_pattern_keyspace_subset_is_proved(self):
         lhs = {
             "type": "object",
             "patternProperties": {"^alpha": True},

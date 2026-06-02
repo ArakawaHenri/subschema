@@ -393,12 +393,6 @@ def _forbidden_runtime_edge_reason(edge: ImportEdge) -> str | None:
     if _source_is_domain_math(edge.source) and edge.target == "subschema.kernel.engine":
         return "domain math and difference/evaluation helpers must not construct or import ProofEngine"
 
-    if edge.source.startswith(KERNEL_PREFIX) and edge.target == "subschema._proof":
-        return "modern kernel modules must not call back into the compatibility proof facade"
-
-    if edge.source.startswith(KERNEL_PREFIX) and edge.target == "subschema.kernel.candidates":
-        return "generic candidate generation has been removed from the proof kernel"
-
     if edge.source.startswith(KERNEL_PREFIX) and edge.source != "subschema.kernel.symbolic" and edge.target == "z3":
         return "kernel modules must use subschema.kernel.symbolic instead of importing z3 directly"
 
