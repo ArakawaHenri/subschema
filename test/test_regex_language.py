@@ -1,0 +1,269 @@
+import subschema.kernel.regex as regex_module
+
+from subschema.dialects import Dialect
+from subschema.kernel import ProofBudgets, ProofContext, ProofOptions, ProofResult
+from subschema.kernel.regex import RegexLanguage
+from subschema.kernel.validation import validation_backend_for
+
+
+def test_regex_language_uses_json_unanchored_semantics():
+    language = RegexLanguage.from_json_regex("abc")
+
+    assert language is not None
+    assert language.matches("abc")
+    assert language.matches("xabcx")
+    assert not language.matches("ab")
+
+
+def test_regex_language_proves_subset_disjoint_and_equivalent_fragments():
+    a_prefix = RegexLanguage.from_json_regex("^a")
+    a_plus_prefix = RegexLanguage.from_json_regex("^a+")
+    b_prefix = RegexLanguage.from_json_regex("^b")
+
+    assert a_prefix is not None
+    assert a_plus_prefix is not None
+    assert b_prefix is not None
+    assert a_prefix.equivalent_to(a_plus_prefix) is True
+    assert a_prefix.is_subset_of(a_plus_prefix) is True
+    assert a_prefix.is_disjoint_from(b_prefix) is True
+
+
+def test_regex_language_difference_witness_is_json_string():
+    a_prefix = RegexLanguage.from_json_regex("^a")
+    b_prefix = RegexLanguage.from_json_regex("^b")
+
+    assert a_prefix is not None
+    assert b_prefix is not None
+    difference = a_prefix.difference(b_prefix)
+    assert not isinstance(difference, ProofResult)
+    witness = difference.witness()
+
+    assert witness == "a"
+    assert a_prefix.matches(witness)
+    assert not b_prefix.matches(witness)
+
+
+def test_regex_language_fast_witness_avoids_fsm(monkeypatch):
+    def fail_fsm(_pattern):
+        raise AssertionError("fast witness should not build an FSM")
+
+    cases = (
+        ("abc", "abc"),
+        (r"^1\.0$", "1.0"),
+        ("[0-9a-f]{64}", "0" * 64),
+        ("[1-9a-zA-Z^OIl]{43,44}", "1" * 43),
+        ("ab(c|de)f", "abcf"),
+        ("ab?c", "ac"),
+        ("ab*c", "ac"),
+        ("ab+c", "abc"),
+        ("a{2,}", "aa"),
+    )
+    context = ProofContext(
+        Dialect.DRAFT7,
+        ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0)),
+    )
+    monkeypatch.setattr(regex_module, "_pattern_fsm", fail_fsm)
+
+    for pattern, expected in cases:
+        language = RegexLanguage.from_json_regex(pattern)
+
+        assert not isinstance(language, ProofResult)
+        assert language.witness(context) == expected
+        assert regex_module._fast_json_regex_matches(pattern, expected) is True
+
+
+def test_regex_language_fast_witness_covers_bigchaindb_representatives(monkeypatch):
+    def fail_fsm(_pattern):
+        raise AssertionError("BigchainDB representative should not build an FSM")
+
+    backend = validation_backend_for(Dialect.DRAFT4)
+    cases = (
+        ("[0-9a-f]{64}", "0" * 64),
+        ("[1-9a-zA-Z^OIl]{43,44}", "1" * 43),
+        ("^[0-9]{1,20}$", "0"),
+        (r"^1\.0$", "1.0"),
+        (r"^2\.0$", "2.0"),
+        ("^ed25519-sha-256$", "ed25519-sha-256"),
+        ("^threshold-sha-256$", "threshold-sha-256"),
+    )
+    monkeypatch.setattr(regex_module, "_pattern_fsm", fail_fsm)
+
+    for pattern, expected in cases:
+        language = RegexLanguage.from_json_regex(pattern)
+
+        assert not isinstance(language, ProofResult)
+        assert language.witness() == expected
+        assert backend.is_valid({"type": "string", "pattern": pattern}, expected)
+
+
+def test_regex_language_falls_back_to_fsm_for_unhandled_witness_pattern():
+    context = ProofContext(
+        Dialect.DRAFT7,
+        ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0)),
+    )
+    language = RegexLanguage.from_json_regex("[^a]+")
+
+    assert not isinstance(language, ProofResult)
+    proof = language.witness(context)
+
+    assert isinstance(proof, ProofResult)
+    assert proof.status == "resource_exhausted"
+    assert proof.reason == "regex product exceeded proof work budget"
+
+
+def test_regex_language_intersection_witness_uses_fsm_product():
+    context = ProofContext(Dialect.DRAFT7, ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0)))
+    left = RegexLanguage.from_json_regex("^(a|b)")
+    right = RegexLanguage.from_json_regex("^b")
+
+    assert not isinstance(left, ProofResult)
+    assert not isinstance(right, ProofResult)
+    witness = left.intersection_witness(right)
+    exhausted = left.intersection_witness(right, context)
+
+    assert witness == "b"
+    assert left.matches(witness)
+    assert right.matches(witness)
+    assert isinstance(exhausted, ProofResult)
+    assert exhausted.status == "resource_exhausted"
+    assert exhausted.reason == "regex product exceeded proof work budget"
+
+
+def test_regex_language_end_anchor_uses_validation_backend_semantics():
+    language = RegexLanguage.from_json_regex("^a$")
+
+    assert not isinstance(language, ProofResult)
+    assert language.matches("a")
+    assert not language.matches("a\n")
+    assert not language.matches("a\r")
+    assert not language.matches("a\u2028")
+    assert not language.matches("a\nx")
+
+
+def test_regex_language_dot_matches_validation_backend_semantics():
+    language = RegexLanguage.from_json_regex(".")
+    backend = validation_backend_for(Dialect.DRAFT202012)
+    schema = {"type": "string", "pattern": "."}
+
+    assert not isinstance(language, ProofResult)
+    for value in ("\n", "\r", "\u2028", "\u2029", "a"):
+        assert language.matches(value) == backend.is_valid(schema, value)
+
+
+def test_regex_language_escaped_anchor_literals_match_validation_backend():
+    backend = validation_backend_for(Dialect.DRAFT202012)
+    cases = (r"\^", r"\$", r"[\^]", r"[\$]")
+
+    for pattern in cases:
+        language = RegexLanguage.from_json_regex(pattern)
+        schema = {"type": "string", "pattern": pattern}
+
+        assert not isinstance(language, ProofResult)
+        for value in ("^", "$", "A", ""):
+            assert language.matches(value) == backend.is_valid(schema, value)
+
+
+def test_regex_language_ecma_hex_unicode_literals_match_validation_backend():
+    backend = validation_backend_for(Dialect.DRAFT202012)
+    cases = (
+        r"\x41",
+        r"[\x41]",
+        r"\u0041",
+        r"[\u0041]",
+        r"\u005E",
+        r"[\u005E]",
+        r"\x24",
+        r"[\x24]",
+        r"\u0028",
+        r"\cA",
+        r"[\cA]",
+    )
+
+    for pattern in cases:
+        language = RegexLanguage.from_json_regex(pattern)
+        schema = {"type": "string", "pattern": pattern}
+
+        assert not isinstance(language, ProofResult)
+        for value in ("A", "^", "$", "(", "\x01", "u0041", "x41", ""):
+            assert language.matches(value) == backend.is_valid(schema, value)
+
+
+def test_regex_language_spends_proof_work_units():
+    context = ProofContext(Dialect.DRAFT7, ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0)))
+    a_prefix = RegexLanguage.from_json_regex("^a")
+    b_prefix = RegexLanguage.from_json_regex("^b")
+
+    assert a_prefix is not None
+    assert b_prefix is not None
+    proof = a_prefix.is_disjoint_from(b_prefix, context)
+
+    assert isinstance(proof, ProofResult)
+    assert proof.status == "resource_exhausted"
+    assert proof.reason == "regex product exceeded proof work budget"
+
+
+def test_regex_language_short_circuits_identity_operations_without_budget():
+    context = ProofContext(Dialect.DRAFT7, ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0)))
+    a_prefix = RegexLanguage.from_json_regex("^a")
+
+    assert not isinstance(a_prefix, ProofResult)
+    assert RegexLanguage.all().intersection(a_prefix, context) is a_prefix
+    assert a_prefix.intersection(RegexLanguage.all(), context) is a_prefix
+    assert RegexLanguage.empty().union(a_prefix, context) is a_prefix
+    assert a_prefix.union(RegexLanguage.empty(), context) is a_prefix
+    assert a_prefix.difference(RegexLanguage.empty(), context) is a_prefix
+    assert RegexLanguage.empty().intersection(a_prefix, context).is_empty()
+    assert a_prefix.difference(RegexLanguage.all(), context).is_empty()
+
+
+def test_regex_language_large_regular_product_uses_work_budget():
+    context = ProofContext(Dialect.DRAFT7, ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=10)))
+    left = RegexLanguage.from_json_regex("^(a|b|c|d|e).*(x|y|z)$")
+    right = RegexLanguage.from_json_regex("^(a|b|c|d|e).*(q|r|s)$")
+
+    assert left is not None
+    assert right is not None
+    proof = left.is_disjoint_from(right, context)
+
+    assert isinstance(proof, ProofResult)
+    assert proof.status == "resource_exhausted"
+    assert proof.reason == "regex product exceeded proof work budget"
+
+
+def test_regex_language_keeps_non_regular_regex_unsupported():
+    proof = RegexLanguage.from_json_regex("(?=a)")
+
+    assert isinstance(proof, ProofResult)
+    assert proof.status == "unsupported"
+    assert proof.reason == "non-regular-regex: lookaround/zero-width assertions are unsupported"
+    assert proof.diagnostics
+    assert proof.diagnostics[0].category == "non-regular-regex"
+
+
+def test_regex_language_reports_backreference_and_recursive_constructs_as_unreliable():
+    for pattern, reason in (
+        (r"(a)\1", "non-regular-regex: backreferences are unsupported"),
+        (r"\b", "non-regular-regex: lookaround/zero-width assertions are unsupported"),
+        (r"\B", "non-regular-regex: lookaround/zero-width assertions are unsupported"),
+        (r"\s", "unsupported-regex-syntax: ECMA whitespace escapes are outside the supported regex frontend"),
+        (r"\S", "unsupported-regex-syntax: ECMA whitespace escapes are outside the supported regex frontend"),
+        (r"[\s]", "unsupported-regex-syntax: ECMA whitespace escapes are outside the supported regex frontend"),
+        (r"\0", "unsupported-regex-syntax: NUL/octal escapes are outside the supported validation backend"),
+        (r"[\0]", "unsupported-regex-syntax: NUL/octal escapes are outside the supported validation backend"),
+        ("(?R)", "non-regular-regex: recursive or conditional regex constructs are unsupported"),
+        ("[", "unsupported-regex-syntax: regex syntax is outside the supported regular-language fragment"),
+        ("a^", "unsupported-regex-syntax: anchors are only supported at the start/end of a pattern"),
+        ("$a", "unsupported-regex-syntax: anchors are only supported at the start/end of a pattern"),
+    ):
+        proof = RegexLanguage.from_json_regex(pattern)
+
+        assert isinstance(proof, ProofResult)
+        assert proof.status == "unsupported"
+        assert proof.reason == reason
+
+
+def test_regex_language_does_not_treat_word_boundary_escape_inside_charclass_as_assertion():
+    proof = RegexLanguage.from_json_regex(r"[\b]")
+
+    assert isinstance(proof, ProofResult)
+    assert proof.reason == "unsupported-regex-syntax: regex syntax is outside the supported regular-language fragment"
