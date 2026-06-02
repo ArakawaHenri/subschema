@@ -18,6 +18,7 @@ from subschema.kernel.contracts import (
     UnsupportedDiagnostic,
 )
 from subschema.kernel.json_data import ensure_json_value
+from subschema.kernel.normalization import normalize_simple_lhs_unevaluated_for_proof
 from subschema.kernel.references import inline_static_refs_for_proof
 from subschema.kernel.validation import validate_schema_for_dialect
 
@@ -41,6 +42,7 @@ def prove_subschema_with_context(
     prepared_rhs = strip_inactive_keywords_for_dialect(rhs, context.dialect)
     proof_lhs = inline_static_refs_for_proof(prepared_lhs, context.dialect)
     proof_rhs = inline_static_refs_for_proof(prepared_rhs, context.dialect)
+    proof_lhs = normalize_simple_lhs_unevaluated_for_proof(proof_lhs)
     return bounded_ir_proof(context, proof_lhs, proof_rhs)
 
 

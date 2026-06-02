@@ -1,6 +1,6 @@
 import unittest
 
-from subschema import is_subschema, is_equivalent
+from subschema import is_disjoint, is_equivalent, is_subschema
 
 
 class TestStringSubtype(unittest.TestCase):
@@ -20,6 +20,16 @@ class TestStringSubtype(unittest.TestCase):
             self.assertTrue(is_subschema(s1, s2))
         with self.subTest():
             self.assertTrue(is_subschema(s2, s1))
+
+    def test_dotall_character_class_idiom(self):
+        nonempty = {"type": "string", "minLength": 1}
+        any_single_character = {"type": "string", "pattern": r"[\s\S]"}
+        no_character = {"type": "string", "pattern": r"[^\s\S]"}
+
+        with self.subTest("nonempty strings match the dotall idiom"):
+            self.assertTrue(is_subschema(nonempty, any_single_character))
+        with self.subTest("the complement of whitespace-or-non-whitespace is empty"):
+            self.assertTrue(is_subschema(no_character, False))
 
     def test_regx_range1(self):
         s1 = {"type": "string", "maxLength": 5, "pattern": "(ab)*"}
@@ -210,6 +220,13 @@ class TestNotStringSubtype(unittest.TestCase):
         unicode_control_a = {"type": "string", "pattern": r"^\u0001$"}
 
         self.assertTrue(is_equivalent(control_a, unicode_control_a))
+
+    def test_ecma_whitespace_escape_pattern_is_supported(self):
+        whitespace = {"type": "string", "pattern": r"^\s$"}
+        non_whitespace = {"type": "string", "pattern": r"^\S$"}
+
+        self.assertTrue(is_disjoint(whitespace, non_whitespace))
+        self.assertFalse(is_subschema(whitespace, non_whitespace))
 
     def test_negated_pattern_is_not_a_length_complement(self):
         lhs = {"type": "string", "not": {"type": "string", "pattern": "^a$"}}

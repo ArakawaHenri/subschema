@@ -96,12 +96,42 @@ def test_regex_language_fast_witness_covers_bigchaindb_representatives(monkeypat
         assert backend.is_valid({"type": "string", "pattern": pattern}, expected)
 
 
+def test_regex_language_whitespace_fast_witness_avoids_fsm(monkeypatch):
+    def fail_fsm(_pattern):
+        raise AssertionError("whitespace fast witness should not build an FSM")
+
+    cases = (
+        (r"\s", " "),
+        (r"\S", "a"),
+        (r"[\s]", " "),
+        (r"[\S]", "a"),
+        (r"[^\s]", "a"),
+        (r"[^\S]", " "),
+        (r"[\s\S]", "a"),
+        (r"^[\s\S]$", "a"),
+        (r"foo\sbar", "foo bar"),
+        (r"\s+", " "),
+        (r"\S{2}", "aa"),
+    )
+    context = ProofContext(
+        Dialect.DRAFT7,
+        ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0)),
+    )
+    monkeypatch.setattr(regex_module, "_pattern_fsm", fail_fsm)
+
+    for pattern, expected in cases:
+        language = RegexLanguage.from_json_regex(pattern)
+
+        assert not isinstance(language, ProofResult)
+        assert language.witness(context) == expected
+
+
 def test_regex_language_falls_back_to_fsm_for_unhandled_witness_pattern():
     context = ProofContext(
         Dialect.DRAFT7,
         ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0)),
     )
-    language = RegexLanguage.from_json_regex("[^a]+")
+    language = RegexLanguage.from_json_regex("a+?")
 
     assert not isinstance(language, ProofResult)
     proof = language.witness(context)
@@ -148,6 +178,50 @@ def test_regex_language_dot_matches_validation_backend_semantics():
     assert not isinstance(language, ProofResult)
     for value in ("\n", "\r", "\u2028", "\u2029", "a"):
         assert language.matches(value) == backend.is_valid(schema, value)
+
+
+def test_regex_language_ecma_whitespace_escapes_match_validation_backend():
+    backend = validation_backend_for(Dialect.DRAFT202012)
+    cases = (
+        r"\s",
+        r"\S",
+        r"[\s]",
+        r"[\S]",
+        r"[^\s]",
+        r"[^\S]",
+        r"[\s\S]",
+        r"[^\s\S]",
+        r"^[\s\S]$",
+        r"foo\sbar",
+    )
+    values = (
+        " ",
+        "\t",
+        "\n",
+        "\r",
+        "\f",
+        "\v",
+        "\u00a0",
+        "\ufeff",
+        "\u1680",
+        "\u2000",
+        "\u2003",
+        "\u2028",
+        "\u2029",
+        "\u202f",
+        "\u3000",
+        "a",
+        "foo bar",
+        "fooabar",
+    )
+
+    for pattern in cases:
+        language = RegexLanguage.from_json_regex(pattern)
+        schema = {"type": "string", "pattern": pattern}
+
+        assert not isinstance(language, ProofResult)
+        for value in values:
+            assert language.matches(value) == backend.is_valid(schema, value)
 
 
 def test_regex_language_escaped_anchor_literals_match_validation_backend():
@@ -245,9 +319,6 @@ def test_regex_language_reports_backreference_and_recursive_constructs_as_unreli
         (r"(a)\1", "non-regular-regex: backreferences are unsupported"),
         (r"\b", "non-regular-regex: lookaround/zero-width assertions are unsupported"),
         (r"\B", "non-regular-regex: lookaround/zero-width assertions are unsupported"),
-        (r"\s", "unsupported-regex-syntax: ECMA whitespace escapes are outside the supported regex frontend"),
-        (r"\S", "unsupported-regex-syntax: ECMA whitespace escapes are outside the supported regex frontend"),
-        (r"[\s]", "unsupported-regex-syntax: ECMA whitespace escapes are outside the supported regex frontend"),
         (r"\0", "unsupported-regex-syntax: NUL/octal escapes are outside the supported validation backend"),
         (r"[\0]", "unsupported-regex-syntax: NUL/octal escapes are outside the supported validation backend"),
         ("(?R)", "non-regular-regex: recursive or conditional regex constructs are unsupported"),

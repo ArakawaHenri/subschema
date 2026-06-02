@@ -15,6 +15,7 @@ from subschema.kernel.domains.types import (
     schema_type_overapproximations_are_disjoint,
     type_overapproximation_for_schema,
 )
+from subschema.kernel.schemas import IGNORED_SCHEMA_METADATA_KEYS
 from subschema.kernel.validation import validation_backend_for
 from subschema.kernel.witnesses import build_schema_witness, finite_projection_witness
 
@@ -80,6 +81,12 @@ def _schemas_are_disjoint(
             "schema disjointness recursion limit was reached"
         )
 
+    applicator_disjointness = _union_applicator_disjointness(
+        lhs, rhs, context, depth=depth
+    )
+    if applicator_disjointness.status != "unsupported":
+        return applicator_disjointness
+
     finite_intersection = context.finite_meet_projection(lhs, rhs)
     if finite_intersection is False:
         return ProofResult.true()
@@ -132,6 +139,94 @@ def _schemas_are_disjoint(
             return ProofResult.false(intersection_witness.witness)
 
     return ProofResult.unsupported("schema disjointness could not be proven exactly")
+
+
+def _union_applicator_disjointness(
+    lhs: Any,
+    rhs: Any,
+    context: ProofContext,
+    *,
+    depth: int,
+) -> ProofResult:
+    lhs_branches = _union_applicator_branch_schemas(lhs)
+    if lhs_branches is not None:
+        return _branches_are_disjoint_from_schema(
+            lhs, lhs_branches, rhs, context, depth=depth
+        )
+
+    rhs_branches = _union_applicator_branch_schemas(rhs)
+    if rhs_branches is not None:
+        return _branches_are_disjoint_from_schema(
+            rhs, rhs_branches, lhs, context, depth=depth
+        )
+
+    return ProofResult.unsupported(
+        "schema disjointness has no supported union applicator fragment"
+    )
+
+
+def _branches_are_disjoint_from_schema(
+    union_schema: Any,
+    branches: tuple[Any, ...],
+    other_schema: Any,
+    context: ProofContext,
+    *,
+    depth: int,
+) -> ProofResult:
+    unsupported: ProofResult | None = None
+    backend = validation_backend_for(context.dialect)
+    for branch in branches:
+        branch_disjoint = _schemas_are_disjoint(
+            branch, other_schema, context, depth=depth + 1
+        )
+        if branch_disjoint.status == "proved_true":
+            continue
+        if branch_disjoint.status == "resource_exhausted":
+            return branch_disjoint
+        if branch_disjoint.status == "proved_false":
+            witness = branch_disjoint.witness
+            if (
+                witness is not None
+                and backend.is_valid(union_schema, witness)
+                and backend.is_valid(other_schema, witness)
+            ):
+                return ProofResult.false(witness)
+            unsupported = ProofResult.unsupported(
+                "union branch intersection witness was not valid for the full schema"
+            )
+            continue
+        unsupported = branch_disjoint
+    return ProofResult.true() if unsupported is None else unsupported
+
+
+def _union_applicator_branch_schemas(schema: Any) -> tuple[Any, ...] | None:
+    if not isinstance(schema, dict):
+        return None
+
+    for keyword in ("anyOf", "oneOf"):
+        branches = schema.get(keyword)
+        if not isinstance(branches, list) or not branches:
+            continue
+        base = _schema_without_union_keyword(schema, keyword)
+        if base is None:
+            return None
+        if not base:
+            return tuple(branches)
+        return tuple({"allOf": [base, branch]} for branch in branches)
+    return None
+
+
+def _schema_without_union_keyword(
+    schema: dict[str, Any], keyword: str
+) -> dict[str, Any] | None:
+    base = {}
+    for key, value in schema.items():
+        if key == keyword or key in IGNORED_SCHEMA_METADATA_KEYS:
+            continue
+        if key in {"allOf", "anyOf", "oneOf", "not", "if", "then", "else"}:
+            return None
+        base[key] = value
+    return base
 
 
 def _numeric_disjointness(

@@ -43,6 +43,128 @@ class GreeneryPattern(Hashable, Protocol):
 
 _REGEX_CACHE_SIZE = 4096
 _MAX_FAST_WITNESS_LENGTH = 1024
+_UNICODE_MAX = 0x10FFFF
+
+_ECMA_WHITESPACE_RANGES = (
+    (0x09, 0x0D),
+    (0x20, 0x20),
+    (0xA0, 0xA0),
+    (0x2003, 0x2003),
+    (0x2029, 0x2029),
+    (0xFEFF, 0xFEFF),
+)
+_DIGIT_RANGES = ((ord("0"), ord("9")),)
+_WORD_RANGES = (
+    (ord("0"), ord("9")),
+    (ord("A"), ord("Z")),
+    (ord("_"), ord("_")),
+    (ord("a"), ord("z")),
+)
+_ECMA_CONTROL_ESCAPES = {
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+}
+_CHAR_SET_REPRESENTATIVES = (
+    "0",
+    "1",
+    "a",
+    "b",
+    "c",
+    "_",
+    "-",
+    " ",
+    "\t",
+    "\n",
+    "\r",
+    "\f",
+    "\v",
+    "\u00a0",
+    "\ufeff",
+    "\u2029",
+    "\u2003",
+)
+
+
+@dataclass(frozen=True)
+class _RegexCharSet:
+    ranges: tuple[tuple[int, int], ...]
+    negated: bool = False
+
+    @classmethod
+    def empty(cls) -> _RegexCharSet:
+        return cls(())
+
+    @classmethod
+    def from_ranges(cls, ranges: tuple[tuple[int, int], ...]) -> _RegexCharSet:
+        return cls(_normalize_codepoint_ranges(ranges))
+
+    @classmethod
+    def singleton(cls, value: str) -> _RegexCharSet:
+        return cls(((ord(value), ord(value)),))
+
+    @classmethod
+    def range(cls, start: str, end: str) -> _RegexCharSet:
+        start_codepoint = ord(start)
+        end_codepoint = ord(end)
+        if start_codepoint > end_codepoint:
+            start_codepoint, end_codepoint = end_codepoint, start_codepoint
+        return cls(((start_codepoint, end_codepoint),))
+
+    def complement(self) -> _RegexCharSet:
+        return _RegexCharSet(self.ranges, not self.negated)
+
+    def union(self, other: _RegexCharSet) -> _RegexCharSet:
+        if not self.negated and not other.negated:
+            return _RegexCharSet.from_ranges(self.ranges + other.ranges)
+        if self.negated and other.negated:
+            return _RegexCharSet(
+                _intersect_codepoint_ranges(self.ranges, other.ranges),
+                negated=True,
+            )
+        if self.negated:
+            return _RegexCharSet(
+                _subtract_codepoint_ranges(self.ranges, other.ranges),
+                negated=True,
+            )
+        return _RegexCharSet(
+            _subtract_codepoint_ranges(other.ranges, self.ranges),
+            negated=True,
+        )
+
+    def contains_codepoint(self, codepoint: int) -> bool:
+        contained = any(
+            start <= codepoint <= end for start, end in self.ranges
+        )
+        return not contained if self.negated else contained
+
+    def representative(self) -> str | None:
+        preferred = (
+            ("a", "0", "1", "b", "c", "_", "-", " ")
+            if self.negated
+            else _CHAR_SET_REPRESENTATIVES
+        )
+        for candidate in preferred:
+            if self.contains_codepoint(ord(candidate)):
+                return candidate
+        if self.negated:
+            for codepoint in range(0, min(_UNICODE_MAX, 256) + 1):
+                if self.contains_codepoint(codepoint):
+                    return chr(codepoint)
+            return "a" if self.contains_codepoint(ord("a")) else None
+        for start, end in self.ranges:
+            representative_codepoint = _representative_codepoint_for_range(start, end)
+            if representative_codepoint is not None:
+                return chr(representative_codepoint)
+        return None
+
+    def singleton_codepoint(self) -> int | None:
+        if self.negated or len(self.ranges) != 1:
+            return None
+        start, end = self.ranges[0]
+        return start if start == end else None
 
 
 @dataclass(frozen=True)
@@ -287,7 +409,9 @@ def _empty_pattern() -> GreeneryPattern:
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
 def _exact_pattern(value: str) -> GreeneryPattern:
-    return parse(_prepare_pattern_for_greenery(re.escape(value))).reduce()
+    return parse(
+        "".join(_greenery_literal(char, in_class=False) for char in value)
+    ).reduce()
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
@@ -556,6 +680,56 @@ def _representative_codepoint_for_range(start: int, end: int) -> int | None:
     return None
 
 
+def _normalize_codepoint_ranges(
+    ranges: tuple[tuple[int, int], ...],
+) -> tuple[tuple[int, int], ...]:
+    normalized: list[tuple[int, int]] = []
+    for start, end in sorted(ranges):
+        start = max(0, min(start, _UNICODE_MAX))
+        end = max(0, min(end, _UNICODE_MAX))
+        if end < start:
+            start, end = end, start
+        if normalized and start <= normalized[-1][1] + 1:
+            previous_start, previous_end = normalized[-1]
+            normalized[-1] = (previous_start, max(previous_end, end))
+        else:
+            normalized.append((start, end))
+    return tuple(normalized)
+
+
+def _subtract_codepoint_ranges(
+    lhs: tuple[tuple[int, int], ...],
+    rhs: tuple[tuple[int, int], ...],
+) -> tuple[tuple[int, int], ...]:
+    remaining = list(_normalize_codepoint_ranges(lhs))
+    for rhs_start, rhs_end in _normalize_codepoint_ranges(rhs):
+        next_remaining: list[tuple[int, int]] = []
+        for start, end in remaining:
+            if rhs_end < start or rhs_start > end:
+                next_remaining.append((start, end))
+                continue
+            if start < rhs_start:
+                next_remaining.append((start, rhs_start - 1))
+            if rhs_end < end:
+                next_remaining.append((rhs_end + 1, end))
+        remaining = next_remaining
+    return tuple(remaining)
+
+
+def _intersect_codepoint_ranges(
+    lhs: tuple[tuple[int, int], ...],
+    rhs: tuple[tuple[int, int], ...],
+) -> tuple[tuple[int, int], ...]:
+    intersections: list[tuple[int, int]] = []
+    for lhs_start, lhs_end in _normalize_codepoint_ranges(lhs):
+        for rhs_start, rhs_end in _normalize_codepoint_ranges(rhs):
+            start = max(lhs_start, rhs_start)
+            end = min(lhs_end, rhs_end)
+            if start <= end:
+                intersections.append((start, end))
+    return _normalize_codepoint_ranges(tuple(intersections))
+
+
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
 def _fast_json_regex_witness(pattern: str) -> str | None:
     pattern = _strip_supported_anchors(pattern)
@@ -570,7 +744,7 @@ def _fast_json_regex_witness(pattern: str) -> str | None:
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
 def _fast_json_regex_matches(pattern: str, value: str) -> bool | None:
-    if "\\c" in pattern:
+    if "\\c" in pattern or _has_ecma_whitespace_escape(pattern):
         return None
     python_pattern = _strict_python_end_anchor(pattern)
     try:
@@ -662,68 +836,22 @@ def _parse_fast_regex_escape(pattern: str, index: int) -> tuple[str, int] | None
     if index + 1 >= len(pattern):
         return None
     escaped = pattern[index + 1]
-    if escaped == "d":
-        return "0", index + 2
-    if escaped == "D":
-        return "a", index + 2
-    if escaped == "w":
-        return "a", index + 2
-    if escaped == "W":
-        return "-", index + 2
+    if escaped in _ECMA_CONTROL_ESCAPES:
+        return _ECMA_CONTROL_ESCAPES[escaped], index + 2
+    char_set = _ecma_escape_char_set(escaped)
+    if char_set is not None:
+        representative = char_set.representative()
+        return (representative, index + 2) if representative is not None else None
     return escaped, index + 2
 
 
 def _parse_fast_charclass(pattern: str, index: int) -> tuple[str, int] | None:
-    current_index = index + 1
-    if current_index < len(pattern) and pattern[current_index] == "^":
+    parsed = _parse_ecma_charclass(pattern, index)
+    if parsed is None:
         return None
-    representatives: list[str] = []
-    while current_index < len(pattern):
-        if pattern[current_index] == "]" and current_index > index + 1:
-            representative = _choose_fast_charclass_representative(representatives)
-            if representative is None:
-                return None
-            return representative, current_index + 1
-        parsed = _parse_fast_charclass_char(pattern, current_index)
-        if parsed is None:
-            return None
-        char, next_index = parsed
-        if (
-            next_index < len(pattern)
-            and pattern[next_index] == "-"
-            and next_index + 1 < len(pattern)
-            and pattern[next_index + 1] != "]"
-        ):
-            range_end = _parse_fast_charclass_char(pattern, next_index + 1)
-            if range_end is None:
-                return None
-            end_char, current_index = range_end
-            representatives.append(_representative_for_codepoint_range(char, end_char))
-            continue
-        representatives.append(char)
-        current_index = next_index
-    return None
-
-
-def _parse_fast_charclass_char(
-    pattern: str, index: int
-) -> tuple[str, int] | None:
-    if index >= len(pattern):
-        return None
-    if pattern[index] == "\\":
-        return _parse_fast_regex_escape(pattern, index)
-    return pattern[index], index + 1
-
-
-def _choose_fast_charclass_representative(
-    representatives: list[str],
-) -> str | None:
-    if not representatives:
-        return None
-    for preferred in ("0", "1", "a", "b", "c", "_", "-", " "):
-        if preferred in representatives:
-            return preferred
-    return representatives[0]
+    char_set, next_index = parsed
+    representative = char_set.representative()
+    return (representative, next_index) if representative is not None else None
 
 
 def _representative_for_codepoint_range(start: str, end: str) -> str:
@@ -768,6 +896,121 @@ def _strict_python_end_anchor(pattern: str) -> str:
     return pattern
 
 
+def _ecma_escape_char_set(escaped: str) -> _RegexCharSet | None:
+    if escaped == "d":
+        return _RegexCharSet.from_ranges(_DIGIT_RANGES)
+    if escaped == "D":
+        return _RegexCharSet.from_ranges(_DIGIT_RANGES).complement()
+    if escaped == "w":
+        return _RegexCharSet.from_ranges(_WORD_RANGES)
+    if escaped == "W":
+        return _RegexCharSet.from_ranges(_WORD_RANGES).complement()
+    if escaped == "s":
+        return _RegexCharSet.from_ranges(_ECMA_WHITESPACE_RANGES)
+    if escaped == "S":
+        return _RegexCharSet.from_ranges(_ECMA_WHITESPACE_RANGES).complement()
+    return None
+
+
+def _parse_ecma_charclass(
+    pattern: str,
+    index: int,
+) -> tuple[_RegexCharSet, int] | None:
+    if index >= len(pattern) or pattern[index] != "[":
+        return None
+    current_index = index + 1
+    negated = False
+    if current_index < len(pattern) and pattern[current_index] == "^":
+        negated = True
+        current_index += 1
+
+    char_set = _RegexCharSet.empty()
+    saw_item = False
+    while current_index < len(pattern):
+        if pattern[current_index] == "]" and saw_item:
+            if negated:
+                char_set = char_set.complement()
+            return char_set, current_index + 1
+        parsed = _parse_ecma_charclass_item(pattern, current_index)
+        if parsed is None:
+            return None
+        item_set, endpoint, next_index = parsed
+        if (
+            endpoint is not None
+            and next_index < len(pattern)
+            and pattern[next_index] == "-"
+            and next_index + 1 < len(pattern)
+            and pattern[next_index + 1] != "]"
+        ):
+            range_end = _parse_ecma_charclass_item(pattern, next_index + 1)
+            if range_end is None:
+                return None
+            _, end_endpoint, current_index = range_end
+            if end_endpoint is None:
+                return None
+            char_set = char_set.union(
+                _RegexCharSet.range(chr(endpoint), chr(end_endpoint))
+            )
+        else:
+            char_set = char_set.union(item_set)
+            current_index = next_index
+        saw_item = True
+    return None
+
+
+def _parse_ecma_charclass_item(
+    pattern: str,
+    index: int,
+) -> tuple[_RegexCharSet, int | None, int] | None:
+    if index >= len(pattern):
+        return None
+    if pattern[index] != "\\":
+        codepoint = ord(pattern[index])
+        return _RegexCharSet.singleton(pattern[index]), codepoint, index + 1
+
+    literal_escape = _ecma_literal_escape(pattern, index)
+    if literal_escape is not None:
+        literal, next_index = literal_escape
+        codepoint = ord(literal)
+        return _RegexCharSet.singleton(literal), codepoint, next_index
+    if index + 1 >= len(pattern):
+        return None
+    escaped = pattern[index + 1]
+    if escaped in _ECMA_CONTROL_ESCAPES:
+        literal = _ECMA_CONTROL_ESCAPES[escaped]
+        codepoint = ord(literal)
+        return _RegexCharSet.singleton(literal), codepoint, index + 2
+    if escaped == "b":
+        return None
+    char_set = _ecma_escape_char_set(escaped)
+    if char_set is not None:
+        return char_set, char_set.singleton_codepoint(), index + 2
+    return _RegexCharSet.singleton(escaped), ord(escaped), index + 2
+
+
+def _render_char_set_for_greenery(char_set: _RegexCharSet) -> str:
+    if not char_set.negated and not char_set.ranges:
+        return "[]"
+    if char_set.negated and not char_set.ranges:
+        return "."
+    prefix = "^" if char_set.negated else ""
+    body = "".join(
+        _render_charclass_range_for_greenery(start, end)
+        for start, end in char_set.ranges
+    )
+    return f"[{prefix}{body}]"
+
+
+def _render_charclass_range_for_greenery(start: int, end: int) -> str:
+    if start == end:
+        return _greenery_literal(chr(start), in_class=True)
+    return (
+        _greenery_literal(chr(start), in_class=True)
+        + "-"
+        + _greenery_literal(chr(end), in_class=True)
+    )
+
+
 def _prepare_pattern_for_greenery(pattern: str) -> str:
     transformed = []
     in_class = False
@@ -775,6 +1018,19 @@ def _prepare_pattern_for_greenery(pattern: str) -> str:
     index = 0
     while index < len(pattern):
         char = pattern[index]
+        if char == "[" and not in_class:
+            parsed_charclass = _parse_ecma_charclass(pattern, index)
+            if parsed_charclass is not None:
+                char_set, next_index = parsed_charclass
+                transformed.append(_render_char_set_for_greenery(char_set))
+                index = next_index
+                class_start = False
+                continue
+            in_class = True
+            class_start = True
+            transformed.append(char)
+            index += 1
+            continue
         if char == "\\":
             escape = _ecma_literal_escape(pattern, index)
             if escape is not None:
@@ -789,20 +1045,25 @@ def _prepare_pattern_for_greenery(pattern: str) -> str:
                 class_start = False
                 continue
             escaped_char = pattern[index + 1]
-            if escaped_char == "^":
-                transformed.append("\\^" if in_class else "^")
-            elif escaped_char == "$":
-                transformed.append("$")
+            if escaped_char in _ECMA_CONTROL_ESCAPES:
+                transformed.append(
+                    _greenery_literal(
+                        _ECMA_CONTROL_ESCAPES[escaped_char],
+                        in_class=in_class,
+                    )
+                )
             else:
-                transformed.extend(("\\", escaped_char))
+                escape_char_set = _ecma_escape_char_set(escaped_char)
+                if escape_char_set is not None:
+                    transformed.append(_render_char_set_for_greenery(escape_char_set))
+                elif escaped_char == "^":
+                    transformed.append("\\^" if in_class else "^")
+                elif escaped_char == "$":
+                    transformed.append("$")
+                else:
+                    transformed.extend(("\\", escaped_char))
             index += 2
             class_start = False
-            continue
-        if char == "[" and not in_class:
-            in_class = True
-            class_start = True
-            transformed.append(char)
-            index += 1
             continue
         if char == "]" and in_class and not class_start:
             in_class = False
@@ -931,11 +1192,6 @@ def _unsupported_regex_reason(pattern: str) -> str | None:
         token in pattern for token in ("(?=", "(?!", "(?<=", "(?<!")
     ) or _has_word_boundary_assertion(pattern):
         return "non-regular-regex: lookaround/zero-width assertions are unsupported"
-    if _has_ecma_whitespace_escape(pattern):
-        return (
-            "unsupported-regex-syntax: ECMA whitespace escapes are "
-            "outside the supported regex frontend"
-        )
     if _has_ecma_nul_or_octal_escape(pattern):
         return (
             "unsupported-regex-syntax: NUL/octal escapes are outside the "

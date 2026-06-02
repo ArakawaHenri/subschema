@@ -37,6 +37,7 @@ IGNORED_SCHEMA_METADATA_KEYS = frozenset(
         "definitions",
         "deprecated",
         "description",
+        "discriminator",
         "documentation_url",
         "examples",
         "format",

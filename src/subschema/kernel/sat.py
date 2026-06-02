@@ -133,6 +133,7 @@ from subschema.kernel.scalars import (
     typed_scalar_difference_plan_from_constraints,
 )
 from subschema.kernel.schemas import contains_reference_keyword
+from subschema.kernel.tagged_unions import matching_tagged_one_of_branch
 from subschema.kernel.validation import (
     ValidationUnsupportedError,
     validation_backend_for,
@@ -905,6 +906,10 @@ def _prove_right_any_of_applicator_difference(
 def _prove_right_one_of_applicator_difference(
     problem: DifferenceProblem,
 ) -> ProofResult:
+    tagged_proof = _prove_tagged_right_one_of_difference(problem)
+    if tagged_proof.status != "unsupported":
+        return tagged_proof
+
     plan = problem.applicator_plan_set.one_of_cardinality()
     if plan is None:
         return ProofResult.unsupported(
@@ -922,6 +927,42 @@ def _prove_right_one_of_applicator_difference(
     if choice == "base":
         return base_proof
     return ProofResult.true()
+
+
+def _prove_tagged_right_one_of_difference(
+    problem: DifferenceProblem,
+) -> ProofResult:
+    matching_branch = matching_tagged_one_of_branch(
+        problem.lhs_schema,
+        problem.rhs_schema,
+    )
+    if matching_branch is None:
+        return ProofResult.unsupported(
+            "SAT right-oneOf tagged fragment requires unique required tags"
+        )
+
+    proof = problem.context.subproof(problem.lhs_schema, matching_branch)
+    if proof.status == "proved_true":
+        return ProofResult.true()
+    if proof.status == "resource_exhausted":
+        return proof
+    if proof.status == "proved_false":
+        if proof.certificate is not None:
+            return _certified_false(
+                "applicator-right-oneof",
+                "tagged right oneOf branch has a certified counterexample",
+                child=proof,
+            )
+        if proof.witness is not None:
+            return _validated_false(
+                problem,
+                proof.witness,
+                "SAT tagged right-oneOf matching-tag witness was rejected",
+            )
+
+    return ProofResult.unsupported(
+        "SAT right-oneOf tagged branch proof was inconclusive"
+    )
 
 
 def _prove_right_all_of_applicator_difference(

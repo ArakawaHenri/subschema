@@ -1290,10 +1290,6 @@ def test_default_proof_options_preserve_existing_behavior():
             {"type": "object", "patternProperties": {r"(a)\1": {"type": "number"}}},
             "non-regular-regex: backreferences are unsupported",
         ),
-        (
-            {"type": "string", "pattern": r"\s"},
-            "unsupported-regex-syntax: ECMA whitespace escapes are outside the supported regex frontend",
-        ),
     ),
 )
 def test_non_regular_regex_fragments_are_structured_unsupported(rhs, reason):

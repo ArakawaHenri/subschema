@@ -95,3 +95,71 @@ class TestPropertyNames(unittest.TestCase):
         }
 
         self.assertTrue(is_subschema(schema, False, dialect=Dialect.DRAFT6))
+
+    def test_whitespace_pattern_restricts_property_names(self):
+        closed_whitespace_key = {
+            "type": "object",
+            "properties": {" ": {"type": "number"}},
+            "additionalProperties": False,
+        }
+        closed_letter_key = {
+            "type": "object",
+            "properties": {"a": {"type": "number"}},
+            "additionalProperties": False,
+        }
+        whitespace_names = {
+            "type": "object",
+            "propertyNames": {"pattern": r"^\s$"},
+        }
+
+        self.assertTrue(
+            is_subschema(
+                closed_whitespace_key,
+                whitespace_names,
+                dialect=Dialect.DRAFT202012,
+            )
+        )
+        self.assertFalse(
+            is_subschema(
+                closed_letter_key,
+                whitespace_names,
+                dialect=Dialect.DRAFT202012,
+            )
+        )
+
+    def test_whitespace_pattern_properties_participate_in_value_proofs(self):
+        lhs = {
+            "type": "object",
+            "minProperties": 1,
+            "patternProperties": {r"^\s$": {"type": "number"}},
+        }
+        rhs = {
+            "type": "object",
+            "minProperties": 1,
+            "patternProperties": {r"^\s$": {"type": "integer"}},
+        }
+
+        self.assertFalse(is_subschema(lhs, rhs, dialect=Dialect.DRAFT202012))
+
+    def test_dotall_idiom_restricts_property_names_like_validation_backend(self):
+        nonempty_key = {
+            "type": "object",
+            "properties": {"a": {"type": "number"}},
+            "additionalProperties": False,
+        }
+        empty_key = {
+            "type": "object",
+            "properties": {"": {"type": "number"}},
+            "additionalProperties": False,
+        }
+        dotall_names = {
+            "type": "object",
+            "propertyNames": {"pattern": r"[\s\S]"},
+        }
+
+        self.assertTrue(
+            is_subschema(nonempty_key, dotall_names, dialect=Dialect.DRAFT202012)
+        )
+        self.assertFalse(
+            is_subschema(empty_key, dotall_names, dialect=Dialect.DRAFT202012)
+        )

@@ -7558,7 +7558,10 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(
             normalization_module.normalize_boolean_schemas(schema), expected
         )
-        self.assertNotIn("kernel.normalization", inspect.getsource(driver_module))
+        self.assertIn(
+            "normalize_simple_lhs_unevaluated_for_proof",
+            inspect.getsource(driver_module),
+        )
         self.assertIn("kernel.normalization", inspect.getsource(validation_module))
 
     def test_difference_rule_specs_replace_exact_tactic_registry(self):
