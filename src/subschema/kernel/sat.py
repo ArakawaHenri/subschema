@@ -93,7 +93,7 @@ from subschema.kernel.difference import (
     materialize_object_property_names_repair_skeleton,
     materialize_object_property_value_witness_skeleton,
 )
-from subschema.kernel.disjointness import schemas_are_disjoint
+from subschema.kernel.disjointness import schema_is_empty_exact, schemas_are_disjoint
 from subschema.kernel.domains.numbers import NumericAtom, NumericShape
 from subschema.kernel.domains.types import (
     schema_covers_type_atom,
@@ -611,6 +611,12 @@ def _prove_trivial_difference(problem: DifferenceProblem) -> ProofResult:
         or schemas_equal(problem.lhs_schema, problem.rhs_schema)
     ):
         return ProofResult.true()
+    if schema_is_false(problem.rhs_schema):
+        empty = schema_is_empty_exact(problem.lhs_schema, problem.context)
+        if empty.status == "proved_true":
+            return empty
+        if empty.status == "resource_exhausted":
+            return empty
     return ProofResult.unsupported(
         "schemas are outside the trivial difference fragment"
     )

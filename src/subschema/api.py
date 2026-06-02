@@ -15,7 +15,7 @@ from subschema.dialects import (
     validate_supported_keywords,
 )
 from subschema.kernel.contracts import ProofBudgets, ProofOptions
-from subschema.kernel.disjointness import schemas_are_disjoint
+from subschema.kernel.disjointness import schema_is_empty_exact, schemas_are_disjoint
 from subschema.kernel.engine import ProofEngine
 from subschema.kernel.json_data import ensure_json_value
 from subschema.kernel.normalization import normalize_boolean_schemas
@@ -202,12 +202,16 @@ def is_empty(
         timeout_ms=timeout_ms,
     )
     empty_schema = empty_schema_for_dialect(resolved_dialect)
-    return ProofEngine.for_schemas(
+    engine = ProofEngine.for_schemas(
         schema,
         empty_schema,
         dialect=resolved_dialect,
         options=options,
-    ).is_subschema_bool(schema, empty_schema)
+    )
+    exact_empty = schema_is_empty_exact(schema, engine.context)
+    if exact_empty.status != "unsupported":
+        return exact_empty.as_bool(resolved_dialect)
+    return engine.is_subschema_bool(schema, empty_schema)
 
 
 def is_disjoint(
