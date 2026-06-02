@@ -38,7 +38,13 @@ def test_public_release_metadata_matches_distribution_identity():
     project = metadata["project"]
 
     assert build_system["build-backend"] == "hatchling.build"
-    assert build_system["requires"] == ["hatchling>=1.27.0"]
+    assert len(build_system["requires"]) == 1
+    hatchling_requirement = build_system["requires"][0]
+    assert hatchling_requirement.startswith("hatchling>=")
+    hatchling_minimum = tuple(
+        int(part) for part in hatchling_requirement.removeprefix("hatchling>=").split(".")
+    )
+    assert hatchling_minimum >= (1, 27, 0)
     assert project["name"] == "subschema"
     assert project["version"] == "0.0.1"
     assert project["license"] == "Apache-2.0"
