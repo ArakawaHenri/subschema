@@ -153,9 +153,6 @@ __all__ = [
     "right_not_intersection_witness_plan",
     "right_not_resolved_rhs_schema",
     "right_not_subproof_choice",
-    "right_applicator_base_first_result_choice",
-    "right_applicator_branch_first_pre_base_choice",
-    "right_applicator_branch_first_result_choice",
     "right_negative_all_of_branch_product_plan",
     "right_negative_all_of_branch_proof_choice",
     "right_negative_any_of_branch_product_plan",
@@ -799,44 +796,6 @@ def applicator_base_pre_branch_choice(
     if base_status == "proved_false":
         return "base_false"
     return "continue"
-
-
-def right_applicator_base_first_result_choice(
-    base_status: ProofStatus,
-    branch_status: ProofStatus,
-) -> ApplicatorProofChoice:
-    if base_status == "proved_false":
-        return "base_false"
-    if branch_status == "proved_false":
-        return "branch"
-    if base_status == "resource_exhausted":
-        return "base"
-    if branch_status == "proved_true" and base_status == "proved_true":
-        return "proved_true"
-    if branch_status == "proved_true":
-        return "base"
-    return "branch"
-
-
-def right_applicator_branch_first_pre_base_choice(
-    branch_status: ProofStatus,
-) -> ApplicatorProofChoice:
-    if branch_status in {"proved_false", "resource_exhausted"}:
-        return "branch"
-    return "continue"
-
-
-def right_applicator_branch_first_result_choice(
-    base_status: ProofStatus,
-    branch_status: ProofStatus,
-) -> ApplicatorProofChoice:
-    if base_status == "proved_false":
-        return "base_false"
-    if base_status in {"unsupported", "resource_exhausted"}:
-        return "base"
-    if branch_status == "proved_true":
-        return "proved_true"
-    return "branch"
 
 
 def right_negative_any_of_branch_proof_choice(

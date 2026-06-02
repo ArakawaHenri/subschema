@@ -54,9 +54,6 @@ from subschema.kernel.applicators import (
     one_of_disjointness_proof_choice,
     one_of_disjointness_resolved_branch_schema,
     one_of_overlap_witness_plan,
-    right_applicator_base_first_result_choice,
-    right_applicator_branch_first_pre_base_choice,
-    right_applicator_branch_first_result_choice,
     right_negative_all_of_branch_product_plan,
     right_negative_all_of_branch_proof_choice,
     right_negative_any_of_branch_product_plan,
@@ -147,6 +144,9 @@ if TYPE_CHECKING:
 RuleBudgetUse = Literal["branch", "domain", "none"]
 RuleCompleteness = Literal["bounded_witness", "exact", "unsupported_boundary"]
 RuleWitnessMode = Literal["none", "validated"]
+type ApplicatorPlanWithBase = (
+    ApplicatorBranchPlan | ApplicatorConditionalPlan | ApplicatorOneOfCardinalityPlan
+)
 
 
 @dataclass(frozen=True)
@@ -227,6 +227,13 @@ class FunctionDifferenceRule:
 
     def prove(self, problem: DifferenceProblem) -> ProofResult:
         return self.fn(problem)
+
+
+@dataclass(frozen=True)
+class ApplicatorProofFlow:
+    plan: ApplicatorPlanWithBase
+    prove_branch: Callable[[], ProofResult]
+    branch_first: bool = False
 
 
 class EmptinessSolver:
@@ -864,18 +871,13 @@ def _prove_right_not_applicator_difference(problem: DifferenceProblem) -> ProofR
         return ProofResult.unsupported(
             "SAT right-not applicator fragment requires a supported right not"
         )
-    base_proof = _prove_applicator_base_difference(problem, plan)
-    if applicator_base_pre_branch_choice(base_proof.status) == "base_false":
-        return _validated_applicator_base_false(problem, plan, base_proof)
-    branch_proof = _prove_rhs_not_difference(problem, plan.nnf)
-    choice = right_applicator_base_first_result_choice(
-        base_proof.status, branch_proof.status
+    return _run_right_applicator_flow(
+        problem,
+        ApplicatorProofFlow(
+            plan=plan,
+            prove_branch=lambda: _prove_rhs_not_difference(problem, plan.nnf),
+        ),
     )
-    if choice == "branch":
-        return branch_proof
-    if choice == "base":
-        return base_proof
-    return ProofResult.true()
 
 
 def _prove_right_any_of_applicator_difference(
@@ -886,21 +888,16 @@ def _prove_right_any_of_applicator_difference(
         return ProofResult.unsupported(
             "SAT right-anyOf applicator fragment requires a supported right anyOf"
         )
-    branch_proof = _prove_rhs_negative_any_of_difference(problem, plan.nnf)
-    if right_applicator_branch_first_pre_base_choice(branch_proof.status) == "branch":
-        return branch_proof
-
-    base_proof = _prove_applicator_base_difference(problem, plan)
-    choice = right_applicator_branch_first_result_choice(
-        base_proof.status, branch_proof.status
+    return _run_right_applicator_flow(
+        problem,
+        ApplicatorProofFlow(
+            plan=plan,
+            prove_branch=lambda: _prove_rhs_negative_any_of_difference(
+                problem, plan.nnf
+            ),
+            branch_first=True,
+        ),
     )
-    if choice == "base_false":
-        return _validated_applicator_base_false(problem, plan, base_proof)
-    if choice == "base":
-        return base_proof
-    if choice == "branch":
-        return branch_proof
-    return ProofResult.true()
 
 
 def _prove_right_one_of_applicator_difference(
@@ -915,18 +912,15 @@ def _prove_right_one_of_applicator_difference(
         return ProofResult.unsupported(
             "SAT right-oneOf applicator fragment requires a supported right oneOf"
         )
-    base_proof = _prove_applicator_base_difference(problem, plan)
-    if applicator_base_pre_branch_choice(base_proof.status) == "base_false":
-        return _validated_applicator_base_false(problem, plan, base_proof)
-    branch_proof = _prove_rhs_one_of_cardinality_difference(problem, plan)
-    choice = right_applicator_base_first_result_choice(
-        base_proof.status, branch_proof.status
+    return _run_right_applicator_flow(
+        problem,
+        ApplicatorProofFlow(
+            plan=plan,
+            prove_branch=lambda: _prove_rhs_one_of_cardinality_difference(
+                problem, plan
+            ),
+        ),
     )
-    if choice == "branch":
-        return branch_proof
-    if choice == "base":
-        return base_proof
-    return ProofResult.true()
 
 
 def _prove_tagged_right_one_of_difference(
@@ -974,18 +968,59 @@ def _prove_right_all_of_applicator_difference(
             "SAT right-allOf applicator fragment requires a supported right allOf"
         )
 
-    base_proof = _prove_applicator_base_difference(problem, plan)
-    if applicator_base_pre_branch_choice(base_proof.status) == "base_false":
-        return _validated_applicator_base_false(problem, plan, base_proof)
-    branch_proof = _prove_rhs_negative_all_of_difference(problem, plan.nnf)
-    choice = right_applicator_base_first_result_choice(
-        base_proof.status, branch_proof.status
+    return _run_right_applicator_flow(
+        problem,
+        ApplicatorProofFlow(
+            plan=plan,
+            prove_branch=lambda: _prove_rhs_negative_all_of_difference(
+                problem, plan.nnf
+            ),
+        ),
     )
-    if choice == "branch":
+
+
+def _run_right_applicator_flow(
+    problem: DifferenceProblem, flow: ApplicatorProofFlow
+) -> ProofResult:
+    if flow.branch_first:
+        return _run_right_applicator_branch_first_flow(problem, flow)
+    return _run_right_applicator_base_first_flow(problem, flow)
+
+
+def _run_right_applicator_base_first_flow(
+    problem: DifferenceProblem, flow: ApplicatorProofFlow
+) -> ProofResult:
+    base_proof = _prove_applicator_base_difference(problem, flow.plan)
+    if applicator_base_pre_branch_choice(base_proof.status) == "base_false":
+        return _validated_applicator_base_false(problem, flow.plan, base_proof)
+
+    branch_proof = flow.prove_branch()
+    if branch_proof.status == "proved_false":
         return branch_proof
-    if choice == "base":
+    if base_proof.status == "resource_exhausted":
         return base_proof
-    return ProofResult.true()
+    if branch_proof.status == "proved_true" and base_proof.status == "proved_true":
+        return ProofResult.true()
+    if branch_proof.status == "proved_true":
+        return base_proof
+    return branch_proof
+
+
+def _run_right_applicator_branch_first_flow(
+    problem: DifferenceProblem, flow: ApplicatorProofFlow
+) -> ProofResult:
+    branch_proof = flow.prove_branch()
+    if branch_proof.status in {"proved_false", "resource_exhausted"}:
+        return branch_proof
+
+    base_proof = _prove_applicator_base_difference(problem, flow.plan)
+    if applicator_base_pre_branch_choice(base_proof.status) == "base_false":
+        return _validated_applicator_base_false(problem, flow.plan, base_proof)
+    if base_proof.status in {"unsupported", "resource_exhausted"}:
+        return base_proof
+    if branch_proof.status == "proved_true":
+        return ProofResult.true()
+    return branch_proof
 
 
 def _prove_conditional_applicator_difference(problem: DifferenceProblem) -> ProofResult:
@@ -999,9 +1034,7 @@ def _prove_conditional_applicator_difference(problem: DifferenceProblem) -> Proo
 
 def _prove_applicator_base_difference(
     problem: DifferenceProblem,
-    plan: ApplicatorBranchPlan
-    | ApplicatorConditionalPlan
-    | ApplicatorOneOfCardinalityPlan,
+    plan: ApplicatorPlanWithBase,
 ) -> ProofResult:
     product = applicator_base_product(plan, lhs_schema=problem.lhs_schema)
     if product is None:
@@ -1017,9 +1050,7 @@ def _applicator_base_subproof(
 
 def _validated_applicator_base_false(
     problem: DifferenceProblem,
-    plan: ApplicatorBranchPlan
-    | ApplicatorConditionalPlan
-    | ApplicatorOneOfCardinalityPlan,
+    plan: ApplicatorPlanWithBase,
     proof: ProofResult,
 ) -> ProofResult:
     product = applicator_base_product(plan, lhs_schema=problem.lhs_schema)

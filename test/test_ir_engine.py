@@ -89,9 +89,6 @@ from subschema.kernel.applicators import (
     right_not_complement_schema,
     right_not_resolved_rhs_schema,
     right_not_subproof_choice,
-    right_applicator_base_first_result_choice,
-    right_applicator_branch_first_pre_base_choice,
-    right_applicator_branch_first_result_choice,
     right_negative_all_of_branch_product_plan,
     right_negative_all_of_branch_proof_choice,
     right_negative_any_of_branch_product_plan,
@@ -2610,7 +2607,7 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "applicator_base_pre_branch_choice",
-            inspect.getsource(sat_module._prove_right_not_applicator_difference),
+            inspect.getsource(sat_module._run_right_applicator_base_first_flow),
         )
         self.assertIn(
             "applicator_base_pre_branch_choice",
@@ -2619,67 +2616,37 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn(
             'base_proof.status == "proved_false"', inspect.getsource(sat_module)
         )
-        self.assertEqual(
-            right_applicator_base_first_result_choice("proved_true", "proved_true"),
-            "proved_true",
-        )
-        self.assertEqual(
-            right_applicator_base_first_result_choice("unsupported", "proved_true"),
-            "base",
-        )
-        self.assertEqual(
-            right_applicator_base_first_result_choice(
-                "resource_exhausted", "unsupported"
-            ),
-            "base",
-        )
-        self.assertEqual(
-            right_applicator_base_first_result_choice("proved_true", "proved_false"),
-            "branch",
-        )
-        self.assertEqual(
-            right_applicator_base_first_result_choice("proved_false", "proved_true"),
-            "base_false",
-        )
-        self.assertEqual(
-            right_applicator_branch_first_pre_base_choice("resource_exhausted"),
-            "branch",
-        )
-        self.assertEqual(
-            right_applicator_branch_first_pre_base_choice("proved_false"), "branch"
-        )
-        self.assertEqual(
-            right_applicator_branch_first_pre_base_choice("proved_true"), "continue"
-        )
-        self.assertEqual(
-            right_applicator_branch_first_result_choice("unsupported", "proved_true"),
-            "base",
-        )
-        self.assertEqual(
-            right_applicator_branch_first_result_choice("proved_true", "unsupported"),
-            "branch",
-        )
-        self.assertEqual(
-            right_applicator_branch_first_result_choice("proved_true", "proved_true"),
-            "proved_true",
+        self.assertTrue(hasattr(sat_module, "ApplicatorProofFlow"))
+        self.assertIn(
+            "_run_right_applicator_base_first_flow",
+            inspect.getsource(sat_module._run_right_applicator_flow),
         )
         self.assertIn(
-            "right_applicator_base_first_result_choice",
-            inspect.getsource(applicators_module),
+            "_run_right_applicator_branch_first_flow",
+            inspect.getsource(sat_module._run_right_applicator_flow),
         )
         self.assertIn(
+            'branch_proof.status in {"proved_false", "resource_exhausted"}',
+            inspect.getsource(sat_module._run_right_applicator_branch_first_flow),
+        )
+        self.assertIn(
+            'branch_proof.status == "proved_true" and base_proof.status == "proved_true"',
+            inspect.getsource(sat_module._run_right_applicator_base_first_flow),
+        )
+        self.assertNotIn("right_applicator_base_first_result_choice", inspect.getsource(applicators_module))
+        self.assertNotIn(
             "right_applicator_branch_first_result_choice",
             inspect.getsource(applicators_module),
         )
-        self.assertIn(
+        self.assertNotIn(
             "right_applicator_base_first_result_choice",
             inspect.getsource(sat_module._prove_right_not_applicator_difference),
         )
-        self.assertIn(
+        self.assertNotIn(
             "right_applicator_branch_first_pre_base_choice",
             inspect.getsource(sat_module._prove_right_any_of_applicator_difference),
         )
-        self.assertIn(
+        self.assertNotIn(
             "right_applicator_branch_first_result_choice",
             inspect.getsource(sat_module._prove_right_any_of_applicator_difference),
         )
@@ -3011,6 +2978,10 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "_prove_applicator_base_difference",
+            inspect.getsource(sat_module._run_right_applicator_base_first_flow),
+        )
+        self.assertIn(
+            "ApplicatorProofFlow",
             inspect.getsource(sat_module._prove_right_one_of_applicator_difference),
         )
         self.assertIn(
