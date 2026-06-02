@@ -1,11 +1,13 @@
 import argparse
+from typing import TextIO, cast
 
 from subschema.api import is_subschema
 from subschema.kernel import ProofBudgets, ProofOptions
 from subschema.kernel.json_data import strict_json_load
+from subschema.types import JSONSchema
 
 
-def int_at_least_minus_one(value):
+def int_at_least_minus_one(value: str) -> int:
     try:
         parsed = int(value)
     except ValueError as err:
@@ -15,15 +17,15 @@ def int_at_least_minus_one(value):
     return parsed
 
 
-def load_json_file(path, label):
+def load_json_file(path: str, label: str) -> JSONSchema:
     with open(path) as fh:
         try:
-            return strict_json_load(fh)
+            return cast(JSONSchema, strict_json_load(cast(TextIO, fh)))
         except Exception as err:
             raise SystemExit(f"{label} {err}") from err
 
 
-def main():
+def main() -> None:
     """CLI entry point for subschema"""
 
     parser = argparse.ArgumentParser(

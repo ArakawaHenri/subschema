@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
 from subschema.dialects import (
     Dialect,
@@ -21,11 +21,12 @@ from subschema.kernel.json_data import ensure_json_value
 from subschema.kernel.normalization import normalize_boolean_schemas
 from subschema.kernel.schemas import empty_schema_for_dialect
 from subschema.kernel.validation import validate_raw_schema_for_dialect
+from subschema.types import DialectInput, JSONSchema, JSONValue
 
 
 def canonicalize_schema(
-    schema: Any, *, dialect: Dialect | str | None = None
-) -> Any:
+    schema: JSONSchema, *, dialect: DialectInput = None
+) -> JSONSchema:
     """Return a modern normalized schema without embedding removed checker objects."""
     ensure_json_value(schema, label="schema")
     resolved_dialect = resolve_dialect(schema, dialect=dialect)
@@ -34,7 +35,7 @@ def canonicalize_schema(
         normalize_boolean_schemas(deepcopy(schema)), resolved_dialect
     )
     validate_supported_keywords(schema, resolved_dialect)
-    return schema
+    return cast(JSONSchema, schema)
 
 
 def _validate_public_schema(schema: Any, dialect: Dialect) -> None:
@@ -74,10 +75,10 @@ def _resolve_proof_options(
 
 
 def is_subschema(
-    lhs: Any,
-    rhs: Any,
+    lhs: JSONSchema,
+    rhs: JSONSchema,
     *,
-    dialect: Dialect | str | None = None,
+    dialect: DialectInput = None,
     proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
@@ -101,15 +102,15 @@ def is_subschema(
 
 
 def meet_schemas(
-    lhs: Any,
-    rhs: Any,
+    lhs: JSONSchema,
+    rhs: JSONSchema,
     *,
-    dialect: Dialect | str | None = None,
+    dialect: DialectInput = None,
     proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
     timeout_ms: int | None = None,
-) -> Any:
+) -> JSONSchema:
     """Entry point for schema meet operation."""
     ensure_json_value(lhs, label="lhs schema")
     ensure_json_value(rhs, label="rhs schema")
@@ -122,21 +123,21 @@ def meet_schemas(
         max_work=max_work,
         timeout_ms=timeout_ms,
     )
-    return ProofEngine.for_schemas(
+    return cast(JSONSchema, ProofEngine.for_schemas(
         lhs, rhs, dialect=resolved_dialect, options=options
-    ).meet(lhs, rhs)
+    ).meet(lhs, rhs))
 
 
 def join_schemas(
-    lhs: Any,
-    rhs: Any,
+    lhs: JSONSchema,
+    rhs: JSONSchema,
     *,
-    dialect: Dialect | str | None = None,
+    dialect: DialectInput = None,
     proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
     timeout_ms: int | None = None,
-) -> Any:
+) -> JSONSchema:
     """Entry point for schema join operation."""
     ensure_json_value(lhs, label="lhs schema")
     ensure_json_value(rhs, label="rhs schema")
@@ -149,16 +150,16 @@ def join_schemas(
         max_work=max_work,
         timeout_ms=timeout_ms,
     )
-    return ProofEngine.for_schemas(
+    return cast(JSONSchema, ProofEngine.for_schemas(
         lhs, rhs, dialect=resolved_dialect, options=options
-    ).join(lhs, rhs)
+    ).join(lhs, rhs))
 
 
 def is_equivalent(
-    lhs: Any,
-    rhs: Any,
+    lhs: JSONSchema,
+    rhs: JSONSchema,
     *,
-    dialect: Dialect | str | None = None,
+    dialect: DialectInput = None,
     proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
@@ -182,9 +183,9 @@ def is_equivalent(
 
 
 def is_empty(
-    schema: Any,
+    schema: JSONSchema,
     *,
-    dialect: Dialect | str | None = None,
+    dialect: DialectInput = None,
     proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
@@ -210,10 +211,10 @@ def is_empty(
 
 
 def is_disjoint(
-    lhs: Any,
-    rhs: Any,
+    lhs: JSONSchema,
+    rhs: JSONSchema,
     *,
-    dialect: Dialect | str | None = None,
+    dialect: DialectInput = None,
     proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
@@ -241,10 +242,10 @@ def is_disjoint(
 
 
 def covers(
-    lhs: Any,
-    rhs_alternatives: Iterable[Any],
+    lhs: JSONSchema,
+    rhs_alternatives: Iterable[JSONSchema],
     *,
-    dialect: Dialect | str | None = None,
+    dialect: DialectInput = None,
     proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
@@ -261,7 +262,7 @@ def covers(
             max_work=max_work,
             timeout_ms=timeout_ms,
         )
-    rhs = {"anyOf": rhs_schemas}
+    rhs: JSONSchema = {"anyOf": cast(JSONValue, rhs_schemas)}
     return is_subschema(
         lhs,
         rhs,
@@ -273,7 +274,9 @@ def covers(
     )
 
 
-def _materialize_rhs_alternatives(rhs_alternatives: Iterable[Any]) -> list[Any]:
+def _materialize_rhs_alternatives(
+    rhs_alternatives: Iterable[JSONSchema],
+) -> list[JSONSchema]:
     if isinstance(rhs_alternatives, dict | str | bytes):
         raise TypeError("rhs_alternatives must be an iterable of schemas")
     try:

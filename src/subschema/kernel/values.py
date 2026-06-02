@@ -10,8 +10,8 @@ from subschema.kernel.json_data import strict_json_dumps
 
 
 def dedupe(values: list[Any] | tuple[Any, ...]) -> list[Any]:
-    seen = set()
-    deduped = []
+    seen: set[str] = set()
+    deduped: list[Any] = []
     for value in values:
         key = json_semantic_key(value)
         if key not in seen:
@@ -21,7 +21,7 @@ def dedupe(values: list[Any] | tuple[Any, ...]) -> list[Any]:
 
 
 def dependency_names(schema: dict[str, Any]) -> list[str]:
-    names = []
+    names: list[str] = []
     for key in ("dependentRequired", "dependentSchemas", "dependencies"):
         value = schema.get(key)
         if isinstance(value, dict):

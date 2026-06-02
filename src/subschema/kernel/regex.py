@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import re
 from collections import deque
+from collections.abc import Hashable
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from greenery import parse
 
@@ -18,13 +19,35 @@ if TYPE_CHECKING:
     from subschema.kernel.context import ProofContext
 
 
+class GreeneryFsm(Protocol):
+    initial: Any
+    finals: set[Any]
+    map: dict[Any, dict[Any, Any]]
+    states: set[Any]
+
+    def issubset(self, other: GreeneryFsm) -> bool: ...
+    def isdisjoint(self, other: GreeneryFsm) -> bool: ...
+    def equivalent(self, other: GreeneryFsm) -> bool: ...
+
+
+class GreeneryPattern(Hashable, Protocol):
+    def reduce(self) -> GreeneryPattern: ...
+    def empty(self) -> bool: ...
+    def everythingbut(self) -> GreeneryPattern: ...
+    def difference(self, other: GreeneryPattern) -> GreeneryPattern: ...
+    def to_fsm(self) -> GreeneryFsm: ...
+    def matches(self, value: str) -> bool: ...
+    def __and__(self, other: GreeneryPattern) -> GreeneryPattern: ...
+    def __or__(self, other: GreeneryPattern) -> GreeneryPattern: ...
+
+
 _REGEX_CACHE_SIZE = 4096
 _MAX_FAST_WITNESS_LENGTH = 1024
 
 
 @dataclass(frozen=True)
 class RegexLanguage:
-    pattern: Any
+    pattern: GreeneryPattern
     json_pattern: str | None = None
     witness_hint: str | None = None
 
@@ -253,69 +276,71 @@ class RegexLanguage:
 
 
 @lru_cache(maxsize=1)
-def _all_pattern() -> Any:
+def _all_pattern() -> GreeneryPattern:
     return parse(".*")
 
 
 @lru_cache(maxsize=1)
-def _empty_pattern() -> Any:
+def _empty_pattern() -> GreeneryPattern:
     return parse("[]")
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _exact_pattern(value: str) -> Any:
+def _exact_pattern(value: str) -> GreeneryPattern:
     return parse(_prepare_pattern_for_greenery(re.escape(value))).reduce()
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _json_regex_pattern(pattern: str) -> Any:
+def _json_regex_pattern(pattern: str) -> GreeneryPattern:
     return parse(
         _prepare_pattern_for_greenery(_json_regex_unanchor(_ecma_dot_pattern(pattern)))
     ).reduce()
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _pattern_intersection(lhs: Any, rhs: Any) -> Any:
+def _pattern_intersection(
+    lhs: GreeneryPattern, rhs: GreeneryPattern
+) -> GreeneryPattern:
     return (lhs & rhs).reduce()
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _pattern_union(lhs: Any, rhs: Any) -> Any:
+def _pattern_union(lhs: GreeneryPattern, rhs: GreeneryPattern) -> GreeneryPattern:
     return (lhs | rhs).reduce()
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _pattern_complement(pattern: Any) -> Any:
+def _pattern_complement(pattern: GreeneryPattern) -> GreeneryPattern:
     return pattern.everythingbut().reduce()
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _pattern_difference(lhs: Any, rhs: Any) -> Any:
+def _pattern_difference(lhs: GreeneryPattern, rhs: GreeneryPattern) -> GreeneryPattern:
     return lhs.difference(rhs).reduce()
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _pattern_is_subset(lhs: Any, rhs: Any) -> bool:
+def _pattern_is_subset(lhs: GreeneryPattern, rhs: GreeneryPattern) -> bool:
     return _pattern_fsm(lhs).issubset(_pattern_fsm(rhs))
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _pattern_is_disjoint(lhs: Any, rhs: Any) -> bool:
+def _pattern_is_disjoint(lhs: GreeneryPattern, rhs: GreeneryPattern) -> bool:
     return _pattern_fsm(lhs).isdisjoint(_pattern_fsm(rhs))
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _pattern_is_equivalent(lhs: Any, rhs: Any) -> bool:
+def _pattern_is_equivalent(lhs: GreeneryPattern, rhs: GreeneryPattern) -> bool:
     return _pattern_fsm(lhs).equivalent(_pattern_fsm(rhs))
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE * 8)
-def _pattern_matches(pattern: Any, value: str) -> bool:
+def _pattern_matches(pattern: GreeneryPattern, value: str) -> bool:
     return pattern.matches(value)
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _pattern_state_count(pattern: Any) -> int:
+def _pattern_state_count(pattern: GreeneryPattern) -> int:
     try:
         return max(len(_pattern_fsm(pattern).states), 1)
     except Exception:
@@ -323,12 +348,12 @@ def _pattern_state_count(pattern: Any) -> int:
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _pattern_fsm(pattern: Any) -> Any:
+def _pattern_fsm(pattern: GreeneryPattern) -> GreeneryFsm:
     return pattern.to_fsm()
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _pattern_shortest_witness(pattern: Any) -> tuple[str | None, int]:
+def _pattern_shortest_witness(pattern: GreeneryPattern) -> tuple[str | None, int]:
     try:
         fsm = _pattern_fsm(pattern)
     except Exception:
@@ -356,7 +381,9 @@ def _pattern_shortest_witness(pattern: Any) -> tuple[str | None, int]:
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _pattern_intersection_witness(lhs: Any, rhs: Any) -> tuple[str | None, int]:
+def _pattern_intersection_witness(
+    lhs: GreeneryPattern, rhs: GreeneryPattern
+) -> tuple[str | None, int]:
     try:
         lhs_fsm = _pattern_fsm(lhs)
         rhs_fsm = _pattern_fsm(rhs)
@@ -393,7 +420,9 @@ def _pattern_intersection_witness(lhs: Any, rhs: Any) -> tuple[str | None, int]:
 
 
 @lru_cache(maxsize=_REGEX_CACHE_SIZE)
-def _pattern_finite_strings(pattern: Any, max_values: int) -> tuple[str, ...] | None:
+def _pattern_finite_strings(
+    pattern: GreeneryPattern, max_values: int
+) -> tuple[str, ...] | None:
     try:
         fsm = _pattern_fsm(pattern)
     except Exception:

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cache, lru_cache
-from typing import Any
+from typing import Any, Protocol, cast
 
 import jsonschema
 import jsonschema_rs
@@ -36,6 +36,10 @@ class ValidationUnsupportedError(Exception):
     """Raised when a concrete validation backend cannot compile a schema."""
 
 
+class InstanceValidator(Protocol):
+    def is_valid(self, instance: Any) -> bool: ...
+
+
 @dataclass(frozen=True)
 class ValidationBackend:
     dialect: Dialect
@@ -60,7 +64,7 @@ class ValidationBackend:
         lhs_valid = lhs_validator.is_valid(normalized_instance)
         return lhs_valid and not rhs_validator.is_valid(normalized_instance)
 
-    def validator_for_schema(self, schema: Any) -> Any:
+    def validator_for_schema(self, schema: Any) -> InstanceValidator:
         ensure_json_value(schema, label="schema")
         if _has_embedded_dialect_transition(schema, self.dialect):
             key = _json_cache_key(schema)
@@ -266,7 +270,7 @@ def _normalize_for_validation_uncached(schema: Any) -> Any:
     if not isinstance(schema, dict):
         return schema
 
-    normalized = {}
+    normalized: dict[str, Any] = {}
     for key, value in schema.items():
         if key == "const":
             normalized["enum"] = [value]
@@ -294,13 +298,17 @@ def _normalize_for_validation_key(schema_key: str) -> Any:
 
 
 @lru_cache(maxsize=32768)
-def _compiled_jsonschema_rs_validator(dialect: Dialect, schema_key: str) -> Any:
+def _compiled_jsonschema_rs_validator(
+    dialect: Dialect, schema_key: str
+) -> InstanceValidator:
     return _compile_jsonschema_rs_validator(
         dialect, _normalize_for_validation_key(schema_key)
     )
 
 
-def _compile_jsonschema_rs_validator(dialect: Dialect, schema: Any) -> Any:
+def _compile_jsonschema_rs_validator(
+    dialect: Dialect, schema: Any
+) -> InstanceValidator:
     validator_cls = {
         Dialect.DRAFT4: jsonschema_rs.Draft4Validator,
         Dialect.DRAFT6: jsonschema_rs.Draft6Validator,
@@ -308,16 +316,23 @@ def _compile_jsonschema_rs_validator(dialect: Dialect, schema: Any) -> Any:
         Dialect.DRAFT201909: jsonschema_rs.Draft201909Validator,
         Dialect.DRAFT202012: jsonschema_rs.Draft202012Validator,
     }[dialect]
-    return validator_cls(schema)
+    return cast(InstanceValidator, validator_cls(schema))
 
 
 @lru_cache(maxsize=4096)
-def _compiled_python_jsonschema_validator(dialect: Dialect, schema_key: str) -> Any:
+def _compiled_python_jsonschema_validator(
+    dialect: Dialect, schema_key: str
+) -> InstanceValidator:
     return _compile_python_jsonschema_validator(dialect, strict_json_loads(schema_key))
 
 
-def _compile_python_jsonschema_validator(dialect: Dialect, schema: Any) -> Any:
-    return _python_validator_for_dialect(dialect)(normalize_boolean_schemas(schema))
+def _compile_python_jsonschema_validator(
+    dialect: Dialect, schema: Any
+) -> InstanceValidator:
+    return cast(
+        InstanceValidator,
+        _python_validator_for_dialect(dialect)(normalize_boolean_schemas(schema)),
+    )
 
 
 def _python_validator_for_dialect(dialect: Dialect) -> type[Any]:

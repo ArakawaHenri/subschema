@@ -1,9 +1,8 @@
-"""
-JSON Schema dialect selection and keyword capability checks.
-"""
+from __future__ import annotations
 
 from collections.abc import Mapping
 from enum import StrEnum
+from typing import Any
 
 from subschema.exceptions import (
     ConflictingDialectError,
@@ -163,9 +162,9 @@ ASSERTION_KEYWORDS = (
     | DRAFT201909_VALIDATION_KEYWORDS
 ) - APPLICATOR_KEYWORDS
 
-UNIMPLEMENTED_VALIDATION_KEYWORDS = set()
+UNIMPLEMENTED_VALIDATION_KEYWORDS: set[str] = set()
 
-UNIMPLEMENTED_REFERENCE_KEYWORDS = set()
+UNIMPLEMENTED_REFERENCE_KEYWORDS: set[str] = set()
 
 VOCABULARY_DIALECTS = {
     Dialect.DRAFT201909,
@@ -285,7 +284,7 @@ _SCHEMA_VALUE_KEYWORDS = {
 }
 
 
-def normalize_dialect(dialect):
+def normalize_dialect(dialect: Dialect | str | None) -> Dialect | None:
     if dialect is None:
         return None
     if isinstance(dialect, Dialect):
@@ -298,13 +297,13 @@ def normalize_dialect(dialect):
         raise UnknownDialectError(dialect) from err
 
 
-def dialect_from_schema(schema):
+def dialect_from_schema(schema: Any) -> Dialect | None:
     if isinstance(schema, Mapping) and "$schema" in schema:
         return normalize_dialect(schema["$schema"])
     return None
 
 
-def resolve_dialect(*schemas, dialect=None):
+def resolve_dialect(*schemas: Any, dialect: Dialect | str | None = None) -> Dialect:
     explicit_dialect = normalize_dialect(dialect)
     if explicit_dialect is not None:
         return explicit_dialect
@@ -319,11 +318,11 @@ def resolve_dialect(*schemas, dialect=None):
     return next(iter(declared), DEFAULT_DIALECT)
 
 
-def known_keywords_for_dialect(dialect):
+def known_keywords_for_dialect(dialect: Dialect | str | None) -> frozenset[str]:
     return SUPPORTED_KEYWORDS[normalize_dialect(dialect) or DEFAULT_DIALECT]
 
 
-def keyword_category(keyword):
+def keyword_category(keyword: str) -> KeywordCategory:
     if keyword in ANNOTATION_KEYWORDS:
         return KeywordCategory.ANNOTATION
     if keyword in VOCABULARY_KEYWORDS:
@@ -339,17 +338,21 @@ def keyword_category(keyword):
     return KeywordCategory.UNKNOWN
 
 
-def validate_supported_keywords(schema, dialect):
+def validate_supported_keywords(schema: Any, dialect: Dialect | str | None) -> None:
     dialect = normalize_dialect(dialect) or DEFAULT_DIALECT
     _validate_supported_keywords(schema, dialect, ())
 
 
-def strip_inactive_keywords_for_dialect(schema, dialect):
+def strip_inactive_keywords_for_dialect(
+    schema: Any, dialect: Dialect | str | None
+) -> Any:
     dialect = normalize_dialect(dialect) or DEFAULT_DIALECT
     return _strip_inactive_keywords(schema, dialect, None)
 
 
-def _validate_supported_keywords(schema, dialect, path):
+def _validate_supported_keywords(
+    schema: Any, dialect: Dialect, path: tuple[str, ...]
+) -> None:
     if not isinstance(schema, Mapping):
         return
 
@@ -361,7 +364,9 @@ def _validate_supported_keywords(schema, dialect, path):
         _visit_subschemas(keyword, value, dialect, path + (keyword,))
 
 
-def _raise_if_unsupported(keyword, value, dialect, path):
+def _raise_if_unsupported(
+    keyword: str, value: Any, dialect: Dialect, path: tuple[str, ...]
+) -> None:
     if keyword_category(keyword) is KeywordCategory.VOCABULARY:
         _raise_if_unsupported_vocabulary(value, dialect, path)
         return
@@ -373,7 +378,9 @@ def _raise_if_unsupported(keyword, value, dialect, path):
         raise UnsupportedKeywordError(keyword, dialect, path)
 
 
-def _raise_if_unsupported_vocabulary(value, dialect, path):
+def _raise_if_unsupported_vocabulary(
+    value: Any, dialect: Dialect, path: tuple[str, ...]
+) -> None:
     if not isinstance(value, Mapping):
         return
 
@@ -383,7 +390,9 @@ def _raise_if_unsupported_vocabulary(value, dialect, path):
             raise UnsupportedKeywordError("$vocabulary", dialect, path + (str(uri),))
 
 
-def _visit_subschemas(keyword, value, dialect, path):
+def _visit_subschemas(
+    keyword: str, value: Any, dialect: Dialect, path: tuple[str, ...]
+) -> None:
     if not _keyword_is_active_for_dialect(keyword, dialect):
         return
     if keyword in _SCHEMA_VALUE_KEYWORDS:
@@ -414,7 +423,7 @@ def _visit_subschemas(keyword, value, dialect, path):
                 )
 
 
-def _strip_inactive_keywords(schema, dialect, keyword):
+def _strip_inactive_keywords(schema: Any, dialect: Dialect, keyword: str | None) -> Any:
     if isinstance(schema, Mapping):
         dialect = dialect_from_schema(schema) or dialect
         if keyword in _SCHEMA_MAP_KEYWORDS:
@@ -444,7 +453,7 @@ def _strip_inactive_keywords(schema, dialect, keyword):
     return schema
 
 
-def _keyword_is_active_for_dialect(keyword, dialect):
+def _keyword_is_active_for_dialect(keyword: str, dialect: Dialect) -> bool:
     if keyword in DRAFT4_TO_7_VALIDATION_KEYWORDS:
         return dialect in {Dialect.DRAFT4, Dialect.DRAFT6, Dialect.DRAFT7}
     if keyword == "id":

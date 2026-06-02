@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeGuard
 from urllib.parse import urldefrag, urljoin
 
 from referencing import Registry, Resource
@@ -74,7 +74,7 @@ def normalize_modern_refs(schema: Any, dialect: Dialect | str | None = None) -> 
     normalized = copy.deepcopy(schema)
     _rewrite_ref_siblings(normalized, dialect)
     resolved_dialect = resolve_dialect(normalized, dialect=dialect)
-    anchors = {}
+    anchors: dict[str, str] = {}
     _collect_anchors(normalized, (), anchors, resolved_dialect)
     if anchors:
         _rewrite_anchor_refs(normalized, anchors)
@@ -325,7 +325,7 @@ def _rewrite_anchor_refs(schema: Any, anchors: dict[str, str]) -> None:
             _rewrite_anchor_refs(item, anchors)
 
 
-def _is_plain_fragment_id(value: Any) -> bool:
+def _is_plain_fragment_id(value: Any) -> TypeGuard[str]:
     return (
         isinstance(value, str) and value.startswith("#") and not value.startswith("#/")
     )
@@ -543,6 +543,7 @@ class ResourceGraph:
         if resource is None:
             return None
 
+        pointer: tuple[str, ...]
         if not fragment:
             pointer = ()
         elif fragment.startswith("/"):
@@ -966,13 +967,13 @@ def _resolve_static_reference_chain(
 
 def _resolution_base_uri(resolution: ReferenceResolution) -> str:
     schema = resolution.schema
+    schema_id = schema.get("$id") if isinstance(schema, dict) else None
     if (
         resolution.dialect
         in {Dialect.DRAFT6, Dialect.DRAFT7, Dialect.DRAFT201909, Dialect.DRAFT202012}
-        and isinstance(schema, dict)
-        and isinstance(schema.get("$id"), str)
+        and isinstance(schema_id, str)
     ):
-        return urljoin(resolution.resource_uri, schema["$id"])
+        return urljoin(resolution.resource_uri, schema_id)
     return resolution.resource_uri
 
 

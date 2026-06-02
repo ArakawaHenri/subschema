@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import Any
+from typing import Any, TypeGuard
 
 from subschema.dialects import (
     Dialect,
@@ -43,7 +43,9 @@ class ConcreteEvaluationResult:
 @dataclass
 class ConcreteEvaluator:
     graph: ResourceGraph
-    _seen: set[tuple[str, tuple[str, ...], int]] = field(default_factory=set)
+    _seen: set[tuple[str, tuple[str, ...], Dialect, int]] = field(
+        default_factory=set
+    )
 
     @classmethod
     def for_schema(
@@ -736,7 +738,7 @@ def _validate_string_keywords(
     return _valid()
 
 
-def _is_json_number(value: Any) -> bool:
+def _is_json_number(value: Any) -> TypeGuard[int | float]:
     return not isinstance(value, bool) and isinstance(value, int | float)
 
 

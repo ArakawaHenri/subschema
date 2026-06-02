@@ -175,7 +175,7 @@ class SymbolicSolver:
 
     def model_int(self, model: Any, name: str) -> int:
         value = model.evaluate(self.int_var(name), model_completion=True)
-        return value.as_long()
+        return int(value.as_long())
 
     def model_real(self, model: Any, name: str) -> Fraction:
         value = model.evaluate(self.real_var(name), model_completion=True)
@@ -188,7 +188,7 @@ class SymbolicSolver:
             except (ValueError, z3.Z3Exception):
                 pass
         if hasattr(value, "as_fraction"):
-            return value.as_fraction()
+            return Fraction(value.as_fraction())
         if hasattr(value, "numerator_as_long") and hasattr(
             value, "denominator_as_long"
         ):
