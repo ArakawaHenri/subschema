@@ -44,8 +44,10 @@ include = [
 [dependency-groups]
 dev = [
     "coverage[toml]",
+    "mypy>=2.1.0",
     "pytest",
     "ruff",
+    "types-jsonschema>=4.26.0.20260518",
 ]
 security = [
     "cyclonedx-bom>=4.1.0",
@@ -74,3 +76,10 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "test/**/*.py" = ["E", "I", "N", "W"]
+"typings/**/*.pyi" = ["N"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "typings"
+files = ["src/subschema"]
