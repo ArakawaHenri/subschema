@@ -2,6 +2,7 @@ import argparse
 from typing import TextIO, cast
 
 from subschema.api import is_subschema
+from subschema.exceptions import UnsupportedProofError
 from subschema.kernel import ProofBudgets, ProofOptions
 from subschema.kernel.json_data import strict_json_load
 from subschema.types import JSONSchema
@@ -23,6 +24,12 @@ def load_json_file(path: str, label: str) -> JSONSchema:
             return cast(JSONSchema, strict_json_load(cast(TextIO, fh)))
         except Exception as err:
             raise SystemExit(f"{label} {err}") from err
+
+
+def format_unsupported_proof_error(error: UnsupportedProofError) -> str:
+    if error.diagnostics:
+        return error.diagnostics[0].format()
+    return str(error)
 
 
 def main() -> None:
@@ -70,7 +77,13 @@ def main() -> None:
             ),
         )
 
-    print("LHS <: RHS", is_subschema(s1, s2, proof_options=proof_options))
+    try:
+        result = is_subschema(s1, s2, proof_options=proof_options)
+    except UnsupportedProofError as err:
+        message = format_unsupported_proof_error(err)
+        raise SystemExit(f"unsupported proof: {message}") from err
+
+    print("LHS <: RHS", result)
 
 
 if __name__ == "__main__":

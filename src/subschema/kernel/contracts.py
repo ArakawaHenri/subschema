@@ -106,6 +106,20 @@ class ProofResult:
     error: Exception | None = None
     diagnostics: tuple[UnsupportedDiagnostic, ...] = ()
 
+    def __repr__(self) -> str:
+        parts = [f"status={self.status!r}"]
+        if self.reason is not None:
+            parts.append(f"reason={self.reason!r}")
+        if self.diagnostics:
+            parts.append(f"diagnostics={len(self.diagnostics)}")
+        if self.certificate is not None:
+            parts.append(f"certificate={self.certificate.kind!r}")
+        if self.witness is not None:
+            parts.append(f"witness_type={type(self.witness).__name__}")
+        if self.error is not None:
+            parts.append(f"error={type(self.error).__name__}")
+        return f"{type(self).__name__}({', '.join(parts)})"
+
     @classmethod
     def true(cls) -> ProofResult:
         return cls("proved_true")
@@ -155,6 +169,7 @@ class ProofResult:
         raise UnsupportedProofError(
             self.reason or "schema proof could not be proven",
             status=self.status,
+            diagnostics=self.diagnostics,
         )
 
 

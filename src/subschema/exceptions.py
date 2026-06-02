@@ -1,9 +1,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from jsonschema.exceptions import SchemaError
+
+if TYPE_CHECKING:
+    from subschema.kernel.contracts import UnsupportedDiagnostic
 
 __all__ = [
     "ConflictingDialectError",
@@ -26,9 +29,16 @@ class SubschemaError(Exception):
 class UnsupportedProofError(SubschemaError):
     """Raised when the prover cannot decide a supported public query."""
 
-    def __init__(self, reason: str, *, status: str | None = None):
+    def __init__(
+        self,
+        reason: str,
+        *,
+        status: str | None = None,
+        diagnostics: tuple[UnsupportedDiagnostic, ...] = (),
+    ):
         self.reason = reason
         self.status = status
+        self.diagnostics = diagnostics
 
     def __str__(self) -> str:
         return self.reason

@@ -21,7 +21,7 @@ from subschema import (
     meet_schemas,
 )
 from subschema.exceptions import UnsupportedKeywordError
-from subschema.kernel import ProofOptions
+from subschema.kernel import ProofOptions, ProofResult
 from subschema.kernel.json_data import strict_json_loads
 
 
@@ -140,8 +140,24 @@ class TestAPI(unittest.TestCase):
         schema = {"type": "string", "pattern": "(?=a)"}
 
         self.assertEqual(canonicalize_schema(schema, dialect=Dialect.DRAFT202012), schema)
-        with self.assertRaises(UnsupportedProofError):
+        with self.assertRaises(UnsupportedProofError) as raised:
             is_subschema({"type": "string"}, schema, dialect=Dialect.DRAFT202012)
+        self.assertEqual(raised.exception.status, "unsupported")
+        self.assertEqual(len(raised.exception.diagnostics), 1)
+        self.assertEqual(
+            raised.exception.diagnostics[0].format(),
+            "rhs #/pattern: non-regular-regex: lookaround/zero-width assertions "
+            "are unsupported",
+        )
+
+    def test_proof_result_repr_summarizes_large_payloads(self):
+        proof = ProofResult.false(["x"] * 1000)
+
+        representation = repr(proof)
+
+        self.assertIn("status='proved_false'", representation)
+        self.assertIn("witness_type=list", representation)
+        self.assertNotIn("'x', 'x', 'x'", representation)
 
     def test_public_error_hierarchy(self):
         self.assertTrue(issubclass(UnsupportedProofError, SubschemaError))
@@ -233,6 +249,24 @@ class TestAPI(unittest.TestCase):
 
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("duplicate object key 'type'", completed.stderr)
+
+    def test_cli_reports_unsupported_diagnostic_pointer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lhs = Path(tmp) / "lhs.json"
+            rhs = Path(tmp) / "rhs.json"
+            lhs.write_text(json.dumps({"type": "string"}))
+            rhs.write_text(json.dumps({"type": "string", "pattern": "(?=a)"}))
+
+            completed = subprocess.run(
+                [sys.executable, "-m", "subschema.cli", str(lhs), str(rhs)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("unsupported proof: rhs #/pattern", completed.stderr)
+        self.assertNotIn("Traceback", completed.stderr)
 
     def test_cli_rejects_invalid_budget_arguments(self):
         with tempfile.TemporaryDirectory() as tmp:
