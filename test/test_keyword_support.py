@@ -732,10 +732,10 @@ def _proof_without_generic_search_path(lhs, rhs, dialect, monkeypatch):
         options=ProofOptions(),
     )
 
-    def fail_blocked_search_path(*_args, **_kwargs):
+    def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError("keyword exact fragment must not use constructive proof path")
 
-    monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
+    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
     return engine.is_subschema(lhs, rhs)
 
 

@@ -5,7 +5,7 @@ Proof context, policy, and budget state for the kernel.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import subschema.kernel.driver as proof_driver
 from subschema.dialects import Dialect
@@ -16,9 +16,6 @@ from subschema.kernel.contracts import (
     ProofWorkMeter,
 )
 from subschema.kernel.values import stable_key
-
-if TYPE_CHECKING:
-    from subschema.kernel.evaluation import EvaluationExpression
 
 _EXPENSIVE_PROOF_WORK_LABELS: dict[ExpensiveProofKind, str] = {
     "array_product": "array product",
@@ -36,9 +33,7 @@ class ProofContext:
     dialect: Dialect
     options: ProofOptions = field(default_factory=ProofOptions)
     subproof_cache: dict[tuple[Any, ...], ProofResult] = field(default_factory=dict)
-    evaluation_expression_cache: dict[tuple[Any, ...], EvaluationExpression] = field(
-        default_factory=dict
-    )
+    cache: dict[tuple[object, ...], object] = field(default_factory=dict)
     work_meter: ProofWorkMeter = field(init=False)
 
     def __post_init__(self) -> None:
@@ -71,6 +66,15 @@ class ProofContext:
             stable_key(lhs),
             stable_key(rhs),
         )
+
+    def cache_get(self, namespace: str, key: tuple[Any, ...]) -> object | None:
+        return self.cache.get(self._cache_key(namespace, key))
+
+    def cache_set(self, namespace: str, key: tuple[Any, ...], value: object) -> None:
+        self.cache[self._cache_key(namespace, key)] = value
+
+    def _cache_key(self, namespace: str, key: tuple[Any, ...]) -> tuple[object, ...]:
+        return (namespace, *(_cache_key_part(part) for part in key))
 
     def consume_branch_expansion(self, reason: str) -> ProofResult | None:
         return self.spend_work(1, "branch expansion", reason)
@@ -132,3 +136,11 @@ class ProofContext:
         from subschema.kernel.projection import ProjectionEngine
 
         return ProjectionEngine(self).finite_join_projection(lhs, rhs)
+
+
+def _cache_key_part(part: Any) -> object:
+    try:
+        hash(part)
+    except TypeError:
+        return stable_key(part)
+    return part

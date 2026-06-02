@@ -1618,10 +1618,10 @@ def test_bounded_ir_uses_sat_emptiness_solver_before_generic_search_path(monkeyp
     rhs = {"type": "array"}
     engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-    def fail_blocked_search_path(*_args, **_kwargs):
+    def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError("SAT solver should prove this difference inside the solver path")
 
-    monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
+    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1635,10 +1635,10 @@ def test_bounded_ir_sat_solver_can_prove_finite_empty_difference(monkeypatch):
     rhs = {"type": "number"}
     engine = ProofEngine.for_schemas(lhs, rhs)
 
-    def fail_blocked_search_path(*_args, **_kwargs):
+    def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError("SAT solver should prove the finite difference is empty")
 
-    monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
+    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1650,10 +1650,10 @@ def test_object_pattern_obligations_with_property_counts_prove(monkeypatch):
     rhs = {"type": "object", "minProperties": 1, "patternProperties": {"^a+": {"type": "integer"}}}
     engine = ProofEngine.for_schemas(lhs, rhs)
 
-    def fail_blocked_search_path(*_args, **_kwargs):
+    def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError("default proof policy must not use constructive proof path")
 
-    monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
+    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1716,10 +1716,10 @@ def test_endeavor_object_product_expands_complex_value_obligations(monkeypatch):
         options=ProofOptions(endeavor=True),
     )
 
-    def fail_blocked_search_path(*_args, **_kwargs):
+    def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError("endeavor object product should prove this inside the solver path")
 
-    monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
+    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1747,10 +1747,10 @@ def test_endeavor_object_product_expands_property_names_additional_obligations(m
         options=ProofOptions(endeavor=True),
     )
 
-    def fail_blocked_search_path(*_args, **_kwargs):
+    def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError("endeavor propertyNames/additionalProperties product should prove inside the solver path")
 
-    monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
+    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1778,10 +1778,10 @@ def test_endeavor_object_product_expands_pattern_properties_to_additional_obliga
         options=ProofOptions(endeavor=True),
     )
 
-    def fail_blocked_search_path(*_args, **_kwargs):
+    def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError("endeavor patternProperties/additionalProperties product should prove inside the solver path")
 
-    monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
+    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1814,10 +1814,10 @@ def test_endeavor_array_contains_product_proves_min_violation(monkeypatch):
         options=ProofOptions(endeavor=True),
     )
 
-    def fail_blocked_search_path(*_args, **_kwargs):
+    def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError("endeavor array product should prove this inside the solver path")
 
-    monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
+    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1835,10 +1835,10 @@ def test_endeavor_array_contains_product_proves_max_violation(monkeypatch):
         options=ProofOptions(endeavor=True),
     )
 
-    def fail_blocked_search_path(*_args, **_kwargs):
+    def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError("endeavor array max product should prove this inside the solver path")
 
-    monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
+    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1856,10 +1856,10 @@ def test_endeavor_evaluation_trace_expands_contains_unevaluated_items(monkeypatc
         options=ProofOptions(endeavor=True),
     )
 
-    def fail_blocked_search_path(*_args, **_kwargs):
+    def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError("endeavor evaluation trace should prove this inside the solver path")
 
-    monkeypatch.setattr(engine.context, "blocked_search_path", fail_blocked_search_path, raising=False)
+    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 

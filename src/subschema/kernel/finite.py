@@ -163,15 +163,17 @@ def _finite_values_for_schema_uncached(
         return object_values
 
     if "allOf" in schema:
-        finite_candidates = []
+        explicit_values = []
         for subschema in schema["allOf"]:
             branch = finite_values_for_schema(subschema, graph, depth + 1)
             if branch == []:
                 return []
             if branch is not None:
-                finite_candidates.extend(branch)
-        if finite_candidates:
-            return _filter_valid_finite_candidates(schema, graph, finite_candidates)
+                explicit_values.extend(branch)
+        if explicit_values:
+            return _filter_valid_explicit_finite_values(
+                schema, graph, explicit_values
+            )
         return None
 
     if "anyOf" in schema:
@@ -181,7 +183,7 @@ def _finite_values_for_schema_uncached(
             if branch is None:
                 return None
             values.extend(branch)
-        return _filter_valid_finite_candidates(schema, graph, values)
+        return _filter_valid_explicit_finite_values(schema, graph, values)
 
     if "oneOf" in schema:
         branch_values = []
@@ -190,25 +192,19 @@ def _finite_values_for_schema_uncached(
             if branch is None:
                 return None
             branch_values.extend(branch)
-        return _filter_valid_finite_candidates(schema, graph, branch_values)
+        return _filter_valid_explicit_finite_values(schema, graph, branch_values)
     return None
 
 
-def _filter_valid_finite_candidates(
+def _filter_valid_explicit_finite_values(
     schema: dict[str, Any],
     graph: ResourceGraph | None,
-    candidates: list[Any],
+    values: list[Any],
 ) -> list[Any] | None:
     dialect = graph.dialect if graph is not None else resolve_dialect(schema)
     backend = validation_backend_for(dialect)
     try:
-        return dedupe(
-            [
-                candidate
-                for candidate in candidates
-                if backend.is_valid(schema, candidate)
-            ]
-        )
+        return dedupe([value for value in values if backend.is_valid(schema, value)])
     except Exception:
         return None
 

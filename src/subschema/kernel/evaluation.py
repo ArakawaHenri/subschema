@@ -275,7 +275,7 @@ def evaluation_expression_for_source(
 ) -> EvaluationExpression:
     if context is not None:
         cache_key = _evaluation_expression_cache_key(source, lhs_schema, context)
-        cached = context.evaluation_expression_cache.get(cache_key)
+        cached = _cached_evaluation_expression(context, cache_key)
         if cached is not None:
             return cached
     else:
@@ -289,7 +289,7 @@ def evaluation_expression_for_source(
         seen=frozenset(),
     )
     if context is not None and cache_key is not None:
-        context.evaluation_expression_cache[cache_key] = expression
+        _cache_evaluation_expression(context, cache_key, expression)
     return expression
 
 
@@ -797,6 +797,21 @@ def _evaluation_expression_cache_key(
         context.options.budgets.max_work,
         context.options.budgets.timeout_ms,
     )
+
+
+def _cached_evaluation_expression(
+    context: ProofContext, cache_key: tuple[Any, ...]
+) -> EvaluationExpression | None:
+    cached = context.cache_get("evaluation-expression", cache_key)
+    return cached if isinstance(cached, EvaluationExpression) else None
+
+
+def _cache_evaluation_expression(
+    context: ProofContext,
+    cache_key: tuple[Any, ...],
+    expression: EvaluationExpression,
+) -> None:
+    context.cache_set("evaluation-expression", cache_key, expression)
 
 
 def evaluation_frontier_for_schema(schema: Any, dialect: Dialect) -> EvaluationFrontier:

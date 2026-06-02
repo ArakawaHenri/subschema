@@ -32,6 +32,16 @@ def test_kernel_runtime_imports_respect_layer_boundaries():
     assert not violations, "forbidden kernel import edges:\n" + "\n".join(violations)
 
 
+def test_kernel_type_checking_imports_do_not_leak_domain_types_into_context():
+    violations: list[str] = []
+    for edge in _type_checking_import_edges():
+        reason = _forbidden_type_checking_edge_reason(edge)
+        if reason is not None:
+            violations.append(f"{edge.format()}: {reason}")
+
+    assert not violations, "forbidden type-checking import edges:\n" + "\n".join(violations)
+
+
 def _minimum_version_for_requirement(
     requirements: list[str], package_name: str
 ) -> tuple[int, ...]:
@@ -201,6 +211,20 @@ def test_validation_backend_owns_runtime_validator_compilation():
     assert not violations, "runtime validation must be routed through ValidationBackend:\n" + "\n".join(violations)
 
 
+def test_regex_backend_owns_greenery_imports():
+    runtime_sources = {
+        path.relative_to(REPO_ROOT).as_posix(): path.read_text()
+        for path in sorted(KERNEL_ROOT.rglob("*.py"))
+    }
+
+    greenery_importers = [
+        path
+        for path, source in runtime_sources.items()
+        if "from greenery" in source or "import greenery" in source
+    ]
+    assert greenery_importers == ["src/subschema/kernel/regex.py"]
+
+
 def test_strict_json_helpers_own_runtime_json_serialization():
     runtime_sources = {
         path.relative_to(REPO_ROOT).as_posix(): path.read_text()
@@ -260,6 +284,10 @@ def test_runtime_witness_construction_is_constructive_not_candidate_probe():
 
 def _runtime_import_edges() -> list[ImportEdge]:
     return [edge for edge in _kernel_import_edges() if edge.scope != "type-checking"]
+
+
+def _type_checking_import_edges() -> list[ImportEdge]:
+    return [edge for edge in _kernel_import_edges() if edge.scope == "type-checking"]
 
 
 def _release_surface_files() -> list[Path]:
@@ -395,6 +423,14 @@ def _forbidden_runtime_edge_reason(edge: ImportEdge) -> str | None:
     if edge.source.startswith(KERNEL_PREFIX) and edge.source != "subschema.kernel.symbolic" and edge.target == "z3":
         return "kernel modules must use subschema.kernel.symbolic instead of importing z3 directly"
 
+    return None
+
+
+def _forbidden_type_checking_edge_reason(edge: ImportEdge) -> str | None:
+    if edge.source == "subschema.kernel.context" and edge.target.startswith(
+        "subschema.kernel.evaluation"
+    ):
+        return "proof context must not name evaluation-specific cache value types"
     return None
 
 

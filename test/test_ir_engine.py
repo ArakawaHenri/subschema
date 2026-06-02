@@ -847,7 +847,11 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(references_module.ReferenceFrame.__module__, "subschema.kernel.references")
         self.assertEqual(references_module.DynamicScope.__module__, "subschema.kernel.references")
         self.assertIn("origins", inspect.getsource(evaluation_module.EvaluationExpression))
-        self.assertIn("evaluation_expression_cache", inspect.getsource(context_module.ProofContext))
+        self.assertIn("cache_get", inspect.getsource(context_module.ProofContext))
+        self.assertNotIn(
+            "EvaluationExpression",
+            inspect.getsource(context_module.ProofContext),
+        )
         self.assertEqual(LogicalSchemaIR.__module__, "subschema.kernel.ir")
         self.assertEqual(SchemaIRCompiler.__module__, "subschema.kernel.ir")
         self.assertEqual(SchemaNode.__module__, "subschema.kernel.ir")
@@ -2497,10 +2501,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"enum": [1, 2]}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("finite RHS numeric witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -3296,10 +3300,10 @@ class TestProofEngineRouting(unittest.TestCase):
         lhs = {"type": "array", "minItems": 2}
         rhs = {"type": "array", "minItems": 1}
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("array difference rule should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3311,10 +3315,10 @@ class TestProofEngineRouting(unittest.TestCase):
         }
         rhs = {"type": "string"}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("static reference rule should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3343,10 +3347,10 @@ class TestProofEngineRouting(unittest.TestCase):
         }
         rhs = {"type": "string"}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("static reference chain rule should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3460,10 +3464,10 @@ class TestProofEngineRouting(unittest.TestCase):
         }
         rhs = {"type": "string"}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("left applicator static ref branch should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3492,10 +3496,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string"}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("left anyOf formula product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3505,10 +3509,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string"}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("left oneOf formula product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3522,10 +3526,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string"}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("left anyOf static ref product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3539,10 +3543,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string"}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("left allOf static ref product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3552,10 +3556,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string"}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("left anyOf base witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -3607,10 +3611,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string", "anyOf": [{"maxLength": 5}, {"pattern": "^a"}]}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right anyOf formula product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3620,10 +3624,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string", "anyOf": [{"type": "integer"}]}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right anyOf base witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -3638,10 +3642,10 @@ class TestProofEngineRouting(unittest.TestCase):
         }
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right not formula product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3655,10 +3659,10 @@ class TestProofEngineRouting(unittest.TestCase):
         }
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right not static-ref witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -3669,10 +3673,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string", "not": {"type": "number"}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right not base witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -3683,10 +3687,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string", "oneOf": [{"minLength": 1}, {"maxLength": 0}]}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right oneOf formula product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3696,10 +3700,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string", "oneOf": [{"type": "integer"}, {"type": "number"}]}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right oneOf base witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -3714,10 +3718,10 @@ class TestProofEngineRouting(unittest.TestCase):
         }
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right allOf formula product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3731,10 +3735,10 @@ class TestProofEngineRouting(unittest.TestCase):
         }
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right allOf base witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -3767,10 +3771,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string"}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("left conditional formula product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3780,10 +3784,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string", "if": {"type": "string"}, "then": {"minLength": 1}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right conditional formula product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3793,10 +3797,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string", "if": {"type": "integer"}, "then": {"type": "number"}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right conditional base witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -3806,10 +3810,10 @@ class TestProofEngineRouting(unittest.TestCase):
         lhs = {"type": "array", "contains": {"type": "integer"}}
         rhs = {"type": "array", "contains": {"type": "number"}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT6)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("array contains difference rule should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3829,10 +3833,10 @@ class TestProofEngineRouting(unittest.TestCase):
             "maxContains": 1,
         }
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("array contains structural max proof should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -3851,10 +3855,10 @@ class TestProofEngineRouting(unittest.TestCase):
             "maxContains": 1,
         }
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("array contains max witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -3865,10 +3869,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"not": {"type": "integer", "minimum": 1}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("pure not complement witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -3881,10 +3885,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"not": {"type": "array", "items": {"type": "integer"}}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right-not array item witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -3897,10 +3901,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"not": {"type": "array", "contains": {"type": "integer"}, "minContains": 1}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right-not array contains witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -3926,10 +3930,10 @@ class TestProofEngineRouting(unittest.TestCase):
             with self.subTest(lhs=lhs, rhs=rhs):
                 engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-                def fail_blocked_search_path(*_args, **_kwargs):
+                def fail_unexpected_proof_path(*_args, **_kwargs):
                     raise AssertionError("right-not array contains witness should not need constructive proof path")
 
-                with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+                with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
                     proof = engine._bounded_ir_proof(lhs, rhs)
 
                 self.assertEqual(proof.status, "proved_false")
@@ -3942,10 +3946,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"not": {"type": "array", "prefixItems": [{"type": "integer"}], "items": False}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("right-not array prefixItems witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -3973,10 +3977,10 @@ class TestProofEngineRouting(unittest.TestCase):
             with self.subTest(lhs=lhs, rhs=rhs):
                 engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-                def fail_blocked_search_path(*_args, **_kwargs):
+                def fail_unexpected_proof_path(*_args, **_kwargs):
                     raise AssertionError("right-not object witness should not need constructive proof path")
 
-                with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+                with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
                     proof = engine._bounded_ir_proof(lhs, rhs)
 
                 self.assertEqual(proof.status, "proved_false")
@@ -3988,10 +3992,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "object", "required": ["a"], "properties": {"a": {"type": "integer"}}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object required property-value witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4007,10 +4011,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "object", "required": ["a"], "properties": {"a": {"type": "integer"}}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object required omission witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4022,10 +4026,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "object", "required": ["a"]}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object required omission witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4036,10 +4040,10 @@ class TestProofEngineRouting(unittest.TestCase):
         lhs = {"type": "array", "items": {"type": "integer"}}
         rhs = {"type": "array", "items": {"type": "number"}}
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("array item-values rule should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -4048,10 +4052,10 @@ class TestProofEngineRouting(unittest.TestCase):
         lhs = {"type": "array", "items": [{"type": "string"}]}
         rhs = {"type": "array", "items": {"type": "string"}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT4)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("array item-values witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4063,10 +4067,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "array", "items": {"type": "integer"}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("uniqueItems item-value witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4078,10 +4082,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "array", "uniqueItems": True, "minItems": 2, "maxItems": 2}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("uniqueItems duplicate witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4093,10 +4097,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "array", "prefixItems": [{"type": "integer"}], "items": False}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("contains closed-tail witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4108,10 +4112,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "array", "contains": {"const": 1}, "minContains": 1, "maxContains": 1}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("unique contains min witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4124,10 +4128,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 1, "maxContains": 1}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("unique contains type witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4141,10 +4145,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "array", "uniqueItems": True}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("contains duplicate witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4156,10 +4160,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "array", "items": {"type": "integer"}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("contains item-value witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4171,10 +4175,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "array", "items": {"not": {"type": "integer"}}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("contains item-value not witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4186,10 +4190,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 1, "maxContains": 1}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("contains rhs-only max witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4201,10 +4205,10 @@ class TestProofEngineRouting(unittest.TestCase):
         lhs = {"type": "array", "minItems": 1, "items": {"type": "number"}}
         rhs = {"type": "string"}
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("array-vs-non-array difference should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4214,10 +4218,10 @@ class TestProofEngineRouting(unittest.TestCase):
         lhs = {"type": "object", "minProperties": 2}
         rhs = {"type": "object", "maxProperties": 1}
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object difference rule should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4235,10 +4239,10 @@ class TestProofEngineRouting(unittest.TestCase):
             "additionalProperties": False,
         }
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("closed-object difference rule should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -4247,10 +4251,10 @@ class TestProofEngineRouting(unittest.TestCase):
         lhs = {"type": "object", "required": ["a", "b"]}
         rhs = {"type": "object", "required": ["a"]}
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object presence product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -4263,10 +4267,10 @@ class TestProofEngineRouting(unittest.TestCase):
         }
         rhs = {"type": "object", "minProperties": 2}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT201909)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object presence product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -4276,10 +4280,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "object", "properties": {"a": {"type": "integer"}}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("dependentRequired key-value witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4292,10 +4296,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "object", "properties": {"a": {"not": {"type": "integer"}}}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("dependentRequired not-value witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4308,10 +4312,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "object", "properties": {"a": {"type": "integer"}}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("dependentSchemas key-value witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4324,10 +4328,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "object", "dependentSchemas": {"a": {"required": ["b"]}}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("dependentSchemas presence witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4339,10 +4343,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "object", "dependentSchemas": {"a": {"required": ["b"]}}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("dependentSchemas propertyNames witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4354,10 +4358,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "object", "propertyNames": {"pattern": "^a"}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("dependentSchemas propertyNames keyspace witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4368,10 +4372,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "object", "patternProperties": {"^a": {"type": "integer"}}}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("dependentRequired pattern value witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4383,10 +4387,10 @@ class TestProofEngineRouting(unittest.TestCase):
         lhs = {"type": "object", "required": ["a"]}
         rhs = {"type": "object", "maxProperties": 2}
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object presence multi-fresh witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4397,10 +4401,10 @@ class TestProofEngineRouting(unittest.TestCase):
         lhs = {"type": "object", "properties": {"age": {"type": "integer"}}}
         rhs = {"type": "object", "properties": {"age": {"type": "number"}}}
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object property-values difference should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -4413,10 +4417,10 @@ class TestProofEngineRouting(unittest.TestCase):
             "required": ["age"],
         }
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object property-values required witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4426,10 +4430,10 @@ class TestProofEngineRouting(unittest.TestCase):
         lhs = {"type": "object", "additionalProperties": {"type": "integer"}}
         rhs = {"type": "object", "additionalProperties": {"type": "number"}}
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object additionalProperties value rule should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -4446,10 +4450,10 @@ class TestProofEngineRouting(unittest.TestCase):
             "additionalProperties": {"type": "number"},
         }
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT6)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object propertyNames key-value proof should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -4466,10 +4470,10 @@ class TestProofEngineRouting(unittest.TestCase):
             "additionalProperties": {"type": "integer"},
         }
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT6)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object propertyNames key-value witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4487,10 +4491,10 @@ class TestProofEngineRouting(unittest.TestCase):
             "additionalProperties": {"type": "integer"},
         }
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT6)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object propertyNames keyspace witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4500,10 +4504,10 @@ class TestProofEngineRouting(unittest.TestCase):
         lhs = {"type": "object", "patternProperties": {"^a": {"type": "number"}}}
         rhs = {"type": "object", "patternProperties": {"^a": {"type": "integer"}}}
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object patternProperties value witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4513,10 +4517,10 @@ class TestProofEngineRouting(unittest.TestCase):
         lhs = {"type": "object", "patternProperties": {"b.*b": {"type": "integer"}}}
         rhs = {"type": "object", "patternProperties": {"^ba+b$": {"type": "number"}}}
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object regex product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -4525,10 +4529,10 @@ class TestProofEngineRouting(unittest.TestCase):
         lhs = {"type": "object", "patternProperties": {"^ba+b$": {"type": "number"}}}
         rhs = {"type": "object", "patternProperties": {"b.*b": {"type": "integer"}}}
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object regex product witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4547,10 +4551,10 @@ class TestProofEngineRouting(unittest.TestCase):
             "patternProperties": {"^e": {"type": "number"}},
         }
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object explicit/pattern product should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -4567,10 +4571,10 @@ class TestProofEngineRouting(unittest.TestCase):
             "patternProperties": {"^e": {"type": "integer"}},
         }
         engine = ProofEngine.for_schemas(lhs, rhs)
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("object explicit/pattern product witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -4878,10 +4882,10 @@ class TestProofEngineRouting(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("embedded-resource static ref proof should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine.is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -4900,10 +4904,10 @@ class TestProofEngineRouting(unittest.TestCase):
         }
         engine = ProofEngine.for_schemas({"type": "integer"}, rhs, dialect=Dialect.DRAFT4)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("Draft4 id ref proof should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             true_proof = engine.is_subschema({"type": "integer"}, rhs)
             false_proof = engine.is_subschema({"type": "string"}, rhs)
 
@@ -5042,11 +5046,11 @@ class TestProofEngineRouting(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("acyclic dynamic-ref proof should not need constructive proof path")
 
         with (
-            patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True),
+            patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True),
         ):
             proof = engine.is_subschema(lhs, rhs)
 
@@ -5845,10 +5849,10 @@ class TestArrayUniquenessDomainProof(unittest.TestCase):
         rhs = {"type": "array", "uniqueItems": True}
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("array uniqueness duplicate witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -6656,10 +6660,10 @@ class TestIREngineHardFeatures(unittest.TestCase):
         }
         engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("local unevaluatedProperties witness should not need constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -6685,11 +6689,11 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("allOf unevaluatedProperties true proof must not use constructive proof path")
 
         with (
-            patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True),
+            patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True),
         ):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -6713,10 +6717,10 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("allOf unevaluatedProperties value proof must not use constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -6769,11 +6773,11 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("allOf unevaluatedItems true proof must not use constructive proof path")
 
         with (
-            patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True),
+            patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True),
         ):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -6797,10 +6801,10 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("allOf unevaluatedItems value proof must not use constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -6826,10 +6830,10 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("allOf unevaluatedItems extra item witness must not use constructive proof path")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -6887,11 +6891,11 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("static-ref unevaluatedProperties true proof must not use bounded search")
 
         with (
-            patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True),
+            patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True),
         ):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -6916,10 +6920,10 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("static-ref unevaluatedProperties value proof must not use bounded search")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -6950,11 +6954,11 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("static-ref unevaluatedItems true proof must not use bounded search")
 
         with (
-            patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True),
+            patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True),
         ):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -7037,7 +7041,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
         self.assertIs(first, second)
         self.assertGreater(first_call_count, 0)
         self.assertEqual(subproof.call_count, first_call_count)
-        self.assertTrue(engine.context.evaluation_expression_cache)
+        self.assertTrue(engine.context.cache)
 
     def test_evaluation_trace_facade_preserves_expression_sources(self):
         lhs = {
@@ -7093,11 +7097,11 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("schema-valued unevaluatedProperties proof must not use bounded search")
 
         with (
-            patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True),
+            patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True),
         ):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -7120,10 +7124,10 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("schema-valued unevaluatedProperties witness must not use bounded search")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -7147,11 +7151,11 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("schema-valued unevaluatedItems proof must not use bounded search")
 
         with (
-            patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True),
+            patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True),
         ):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -7174,10 +7178,10 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("schema-valued unevaluatedItems witness must not use bounded search")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
@@ -7210,10 +7214,10 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("covered anyOf unevaluatedProperties proof must not use bounded search")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -7243,10 +7247,10 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("covered oneOf unevaluatedProperties proof must not use bounded search")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -7272,10 +7276,10 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("covered conditional unevaluatedItems proof must not use bounded search")
 
-        with patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True):
+        with patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
@@ -7338,11 +7342,11 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        def fail_blocked_search_path(*_args, **_kwargs):
+        def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError("guaranteed contains evaluated-item proof must not use bounded search")
 
         with (
-            patch.object(engine.context, "blocked_search_path", fail_blocked_search_path, create=True),
+            patch.object(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, create=True),
         ):
             proof = engine._bounded_ir_proof(lhs, rhs)
 
