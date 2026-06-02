@@ -5,12 +5,10 @@
 For JSON Schemas `lhs` and `rhs`, `lhs <: rhs` means every JSON instance that
 validates against `lhs` also validates against `rhs`.
 
-The PyPI package, Python import package, and CLI command are named `subschema`.
-
 ## Install
 
 ```bash
-pip install subschema
+uv add subschema
 ```
 
 For local development:
