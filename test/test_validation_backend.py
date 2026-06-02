@@ -1,10 +1,14 @@
 import pytest
 from math import inf, nan
 
+from jsonschema.exceptions import SchemaError
 import jsonschema_rs
 
 from subschema.dialects import Dialect
-from subschema.kernel.validation import validate_schema_for_dialect, validation_backend_for
+from subschema.kernel.validation import (
+    validate_schema_for_dialect,
+    validation_backend_for,
+)
 from subschema.kernel.values import stable_key
 
 
@@ -16,7 +20,9 @@ def test_validation_backend_preserves_integer_valued_float_semantics(dialect):
     assert not backend.is_valid({"type": "integer"}, True)
 
 
-@pytest.mark.parametrize("keyword", ["format", "contentEncoding", "contentMediaType", "contentSchema"])
+@pytest.mark.parametrize(
+    "keyword", ["format", "contentEncoding", "contentMediaType", "contentSchema"]
+)
 def test_validation_backend_preserves_annotation_only_semantics(keyword):
     backend = validation_backend_for(Dialect.DRAFT202012)
     schema = {"type": "string", keyword: "email" if keyword == "format" else "ignored"}
@@ -109,7 +115,7 @@ def test_schema_validation_rejects_invalid_embedded_resources():
         "$ref": "#/$defs/draft7_tuple",
     }
 
-    with pytest.raises(Exception):
+    with pytest.raises(SchemaError):
         validate_schema_for_dialect(schema, Dialect.DRAFT202012)
 
 
@@ -125,8 +131,12 @@ def test_validation_backend_does_not_treat_instance_values_as_embedded_schemas()
     validator = backend.validator_for_schema(schema)
 
     assert isinstance(validator, jsonschema_rs.Draft202012Validator)
-    assert backend.is_valid(schema, {"$schema": "http://json-schema.org/draft-07/schema#", "x": 1})
-    assert not backend.is_valid(schema, {"$schema": "http://json-schema.org/draft-07/schema#", "x": 3})
+    assert backend.is_valid(
+        schema, {"$schema": "http://json-schema.org/draft-07/schema#", "x": 1}
+    )
+    assert not backend.is_valid(
+        schema, {"$schema": "http://json-schema.org/draft-07/schema#", "x": 3}
+    )
 
 
 @pytest.mark.parametrize("instance", [nan, inf, -inf])
@@ -136,10 +146,14 @@ def test_validation_backend_rejects_non_finite_json_instances(instance):
     assert not backend.is_valid(True, instance)
     assert not backend.is_valid({"type": "number"}, instance)
     assert not backend.is_valid({"type": "integer"}, instance)
-    assert not backend.is_valid({"anyOf": [{"type": "number"}, {"type": "string"}]}, instance)
+    assert not backend.is_valid(
+        {"anyOf": [{"type": "number"}, {"type": "string"}]}, instance
+    )
 
 
-@pytest.mark.parametrize("schema", [{"const": nan}, {"enum": [inf]}, {"properties": {"x": {"const": -inf}}}])
+@pytest.mark.parametrize(
+    "schema", [{"const": nan}, {"enum": [inf]}, {"properties": {"x": {"const": -inf}}}]
+)
 def test_validation_backend_rejects_non_finite_json_schemas(schema):
     backend = validation_backend_for(Dialect.DRAFT202012)
 

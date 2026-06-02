@@ -89,7 +89,12 @@ CONCRETE_EVALUATOR_REPRESENTATIVE_CASES = (
         {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "anyOf": [
-                {"type": "number", "minimum": 1, "exclusiveMaximum": 5, "multipleOf": 0.5},
+                {
+                    "type": "number",
+                    "minimum": 1,
+                    "exclusiveMaximum": 5,
+                    "multipleOf": 0.5,
+                },
                 {"type": "string", "minLength": 2, "maxLength": 4, "pattern": "^a"},
             ],
         },
@@ -138,13 +143,23 @@ CONCRETE_EVALUATOR_REPRESENTATIVE_CASES = (
     ),
     ConcreteEvaluatorCase(
         "draft7-minContains-is-annotation",
-        {"type": "array", "contains": {"type": "integer"}, "minContains": 2, "maxContains": 2},
+        {
+            "type": "array",
+            "contains": {"type": "integer"},
+            "minContains": 2,
+            "maxContains": 2,
+        },
         ([1], [1, 2], [1, 2, 3], ["x"]),
         dialect=Dialect.DRAFT7,
     ),
     ConcreteEvaluatorCase(
         "draft2019-minContains-is-assertion",
-        {"type": "array", "contains": {"type": "integer"}, "minContains": 2, "maxContains": 2},
+        {
+            "type": "array",
+            "contains": {"type": "integer"},
+            "minContains": 2,
+            "maxContains": 2,
+        },
         ([1], [1, 2], [1, 2, 3], ["x"]),
         dialect=Dialect.DRAFT201909,
     ),
@@ -174,7 +189,9 @@ CONCRETE_EVALUATOR_REPRESENTATIVE_CASES = (
                 "zip": {"type": "string"},
             },
             "dependentRequired": {"credit_card": ["billing_address"]},
-            "dependentSchemas": {"billing_address": {"properties": {"zip": {"type": "string"}}}},
+            "dependentSchemas": {
+                "billing_address": {"properties": {"zip": {"type": "string"}}}
+            },
             "additionalProperties": False,
         },
         (
@@ -414,7 +431,10 @@ EXACT_RULE_ORACLE_CASES = (
     (
         "typed-scalar-domain-ir",
         {"type": ["integer", "boolean"], "minimum": 10, "maximum": 20},
-        {"anyOf": [{"type": "integer"}, {"type": "boolean"}], "allOf": [{"minimum": 10}, {"maximum": 20}]},
+        {
+            "anyOf": [{"type": "integer"}, {"type": "boolean"}],
+            "allOf": [{"minimum": 10}, {"maximum": 20}],
+        },
         Dialect.DRAFT7,
     ),
     (
@@ -496,7 +516,11 @@ EXTENDED_TRUE_ORACLE_CASES = (
 GROUPED_FALSE_WITNESS_CASES = (
     (
         "symbolic-object-witness",
-        {"type": "object", "additionalProperties": {"type": "number"}, "minProperties": 1},
+        {
+            "type": "object",
+            "additionalProperties": {"type": "number"},
+            "minProperties": 1,
+        },
         {"type": "object", "additionalProperties": {"not": {"type": "number"}}},
         Dialect.DRAFT7,
         ProofOptions(endeavor=True),
@@ -560,9 +584,7 @@ def test_difference_rule_specs_have_proof_class_metadata():
 
 def test_exact_difference_rule_specs_have_step_d_oracle_coverage():
     exact_rule_names = {
-        spec.name
-        for spec in difference_rule_specs()
-        if spec.completeness == "exact"
+        spec.name for spec in difference_rule_specs() if spec.completeness == "exact"
     }
     covered_rule_names = {case[0] for case in EXACT_RULE_ORACLE_CASES}
 
@@ -590,7 +612,9 @@ def test_concrete_evaluator_oracle_unsupported_cases_stay_diagnostic(
     reason_contains,
 ):
     assert name
-    assert_concrete_evaluator_unsupported(schema, instance, reason_contains=reason_contains)
+    assert_concrete_evaluator_unsupported(
+        schema, instance, reason_contains=reason_contains
+    )
 
 
 @pytest.mark.parametrize(
@@ -614,15 +638,21 @@ def test_concrete_evaluator_rejects_non_json_instances(instance):
         evaluator.validate(instance)
 
 
-@pytest.mark.parametrize(("rule_name", "lhs", "rhs", "dialect"), EXACT_RULE_ORACLE_CASES)
+@pytest.mark.parametrize(
+    ("rule_name", "lhs", "rhs", "dialect"), EXACT_RULE_ORACLE_CASES
+)
 def test_exact_difference_rule_oracle_matrix(rule_name, lhs, rhs, dialect, monkeypatch):
     assert rule_name
     assert_proved(lhs, rhs, dialect, monkeypatch)
     assert_no_small_counterexample(lhs, rhs, dialect)
 
 
-@pytest.mark.parametrize(("fragment", "lhs", "rhs", "dialect"), EXTENDED_TRUE_ORACLE_CASES)
-def test_extended_default_fragment_oracle_matrix(fragment, lhs, rhs, dialect, monkeypatch):
+@pytest.mark.parametrize(
+    ("fragment", "lhs", "rhs", "dialect"), EXTENDED_TRUE_ORACLE_CASES
+)
+def test_extended_default_fragment_oracle_matrix(
+    fragment, lhs, rhs, dialect, monkeypatch
+):
     assert fragment
     assert_proved(lhs, rhs, dialect, monkeypatch)
     assert_no_small_counterexample(lhs, rhs, dialect)
@@ -655,7 +685,9 @@ def test_keyword_modern_unsupported_cases_return_solver_boundary(
     assert proof.status != "proved_true"
     assert reason_contains in proof.reason
     if diagnostic_category:
-        assert diagnostic_category in {diagnostic.category for diagnostic in proof.diagnostics}
+        assert diagnostic_category in {
+            diagnostic.category for diagnostic in proof.diagnostics
+        }
 
 
 def test_proof_contract_types_live_in_kernel_package():
@@ -666,12 +698,22 @@ def test_proof_contract_types_live_in_kernel_package():
     assert ArrayContainsDomainTactic.__module__ == "subschema.kernel.domains.arrays"
     assert FiniteDomainTactic.__module__ == "subschema.kernel.finite"
     assert NumericDomainTactic.__module__ == "subschema.kernel.domains.numbers"
-    assert ObjectPropertyCountDomainTactic.__module__ == "subschema.kernel.domains.objects"
+    assert (
+        ObjectPropertyCountDomainTactic.__module__ == "subschema.kernel.domains.objects"
+    )
     assert ObjectPresenceDomainTactic.__module__ == "subschema.kernel.domains.objects"
     assert ObjectStructureDomainTactic.__module__ == "subschema.kernel.domains.objects"
-    assert ObjectClosedPropertiesDomainTactic.__module__ == "subschema.kernel.domains.objects"
-    assert ObjectPropertyNamesDomainTactic.__module__ == "subschema.kernel.domains.objects"
-    assert ObjectPropertyValuesDomainTactic.__module__ == "subschema.kernel.domains.objects"
+    assert (
+        ObjectClosedPropertiesDomainTactic.__module__
+        == "subschema.kernel.domains.objects"
+    )
+    assert (
+        ObjectPropertyNamesDomainTactic.__module__ == "subschema.kernel.domains.objects"
+    )
+    assert (
+        ObjectPropertyValuesDomainTactic.__module__
+        == "subschema.kernel.domains.objects"
+    )
     assert TypeDomainTactic.__module__ == "subschema.kernel.domains.types"
     assert StringLengthDomainTactic.__module__ == "subschema.kernel.domains.strings"
     assert StringLanguageDomainTactic.__module__ == "subschema.kernel.domains.strings"
@@ -693,9 +735,13 @@ def test_schema_predicates_and_finite_values_live_in_kernel_package():
     assert schemas_equal({"enum": [1, 2]}, {"enum": [1, 2]})
     assert finite_values_for_schema({"const": 1}) == [1]
     assert finite_values_for_schema({"const": 1}, draft4_graph) is None
-    assert finite_values_for_schema({"anyOf": [{"const": 1}, {"const": 2}]}, draft7_graph) == [1, 2]
+    assert finite_values_for_schema(
+        {"anyOf": [{"const": 1}, {"const": 2}]}, draft7_graph
+    ) == [1, 2]
     assert finite_values_for_schema({"enum": [1, 1.0, True]}) == [1, True]
-    assert finite_values_for_schema({"not": {"not": {"const": "a"}}}, draft7_graph) == ["a"]
+    assert finite_values_for_schema({"not": {"not": {"const": "a"}}}, draft7_graph) == [
+        "a"
+    ]
     assert finite_values_for_schema({"not": True}) == []
     assert finite_values_for_schema({"not": {}}) == []
     assert finite_values_for_schema({"allOf": [{"enum": []}, True]}) == []
@@ -703,44 +749,54 @@ def test_schema_predicates_and_finite_values_live_in_kernel_package():
         {"allOf": [{"enum": [1, 2]}, {"const": 1}]},
         draft7_graph,
     ) == [1]
-    assert finite_values_for_schema(
-        {"allOf": [{"const": 1}, {"const": 2}]},
-        draft7_graph,
-    ) == []
+    assert (
+        finite_values_for_schema(
+            {"allOf": [{"const": 1}, {"const": 2}]},
+            draft7_graph,
+        )
+        == []
+    )
     assert finite_values_for_schema(
         {"oneOf": [{"enum": [1, 2]}, {"enum": [2, 3]}]},
         draft7_graph,
     ) == [1, 3]
-    assert finite_values_for_schema({"type": "string", "pattern": "[0-9a-f]{64}"}) is None
-    assert finite_values_for_schema({"type": "string", "pattern": "^[ab]$"}) == ["a", "b"]
+    assert (
+        finite_values_for_schema({"type": "string", "pattern": "[0-9a-f]{64}"}) is None
+    )
+    assert finite_values_for_schema({"type": "string", "pattern": "^[ab]$"}) == [
+        "a",
+        "b",
+    ]
+    assert finite_values_for_schema(
+        {
+            "type": "array",
+            "prefixItems": [{"const": index} for index in range(2)],
+            "items": False,
+            "minItems": 2,
+        },
+        ResourceGraph.build(True, dialect=Dialect.DRAFT202012),
+    ) == [[0, 1]]
     assert (
         finite_values_for_schema(
             {
                 "type": "array",
-                "prefixItems": [{"const": index} for index in range(2)],
+                "prefixItems": [{"const": index} for index in range(65)],
                 "items": False,
-                "minItems": 2,
+                "minItems": 65,
             },
             ResourceGraph.build(True, dialect=Dialect.DRAFT202012),
         )
-        == [[0, 1]]
+        is None
     )
-    assert finite_values_for_schema(
-        {
-            "type": "array",
-            "prefixItems": [{"const": index} for index in range(65)],
-            "items": False,
-            "minItems": 65,
-        },
-        ResourceGraph.build(True, dialect=Dialect.DRAFT202012),
-    ) is None
 
 
 def test_double_negated_finite_schema_is_proved_by_default():
     lhs = {"not": {"not": {"const": "a"}}}
     rhs = {"anyOf": [{"type": "string"}, {"type": "number"}]}
 
-    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(lhs, rhs)
+    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
+        lhs, rhs
+    )
 
     assert proof.status == "proved_true"
 
@@ -751,15 +807,21 @@ def test_json_number_semantic_equality_is_used_by_finite_proof():
     unique_items_rhs = {"type": "array", "uniqueItems": True}
     duplicate_number_lhs = {"enum": [[1, 1.0]]}
 
-    forward = ProofEngine.for_schemas(equal_number_lhs, equal_number_rhs, dialect=Dialect.DRAFT7).is_subschema(
+    forward = ProofEngine.for_schemas(
+        equal_number_lhs, equal_number_rhs, dialect=Dialect.DRAFT7
+    ).is_subschema(
         equal_number_lhs,
         equal_number_rhs,
     )
-    reverse = ProofEngine.for_schemas(equal_number_rhs, equal_number_lhs, dialect=Dialect.DRAFT7).is_subschema(
+    reverse = ProofEngine.for_schemas(
+        equal_number_rhs, equal_number_lhs, dialect=Dialect.DRAFT7
+    ).is_subschema(
         equal_number_rhs,
         equal_number_lhs,
     )
-    duplicate = ProofEngine.for_schemas(duplicate_number_lhs, unique_items_rhs, dialect=Dialect.DRAFT7).is_subschema(
+    duplicate = ProofEngine.for_schemas(
+        duplicate_number_lhs, unique_items_rhs, dialect=Dialect.DRAFT7
+    ).is_subschema(
         duplicate_number_lhs,
         unique_items_rhs,
     )
@@ -774,13 +836,20 @@ def test_uninhabited_required_array_slot_is_finite_empty():
     rhs = {"type": "integer", "minimum": 1}
 
     assert finite_values_for_schema(lhs) == []
-    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(lhs, rhs)
+    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
+        lhs, rhs
+    )
 
     assert proof.status == "proved_true"
 
 
 def test_202012_closed_tail_required_array_slot_is_finite_empty():
-    lhs = {"type": "array", "prefixItems": [{"type": "string"}], "items": False, "minItems": 2}
+    lhs = {
+        "type": "array",
+        "prefixItems": [{"type": "string"}],
+        "items": False,
+        "minItems": 2,
+    }
 
     assert finite_values_for_schema(lhs) == []
 
@@ -789,7 +858,9 @@ def test_finite_rhs_uses_constructive_lhs_object_witness():
     lhs = {"type": "object", "required": ["b"], "propertyNames": {"pattern": "^b"}}
     rhs = {"enum": [[], 0, [0], {"a": {"b": 1}}]}
 
-    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(lhs, rhs)
+    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
+        lhs, rhs
+    )
 
     assert proof.status == "proved_false"
     assert proof.witness == {"b": None}
@@ -809,7 +880,9 @@ def test_uninhabited_required_object_property_is_finite_empty(lhs):
     rhs = {"type": "string"}
 
     assert finite_values_for_schema(lhs) == []
-    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(lhs, rhs)
+    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
+        lhs, rhs
+    )
 
     assert proof.status == "proved_true"
 
@@ -824,12 +897,16 @@ def test_uninhabited_required_object_property_is_finite_empty(lhs):
         {"not": {"type": "string"}},
     ],
 )
-def test_empty_property_name_keyspace_with_min_properties_is_finite_empty(property_names):
+def test_empty_property_name_keyspace_with_min_properties_is_finite_empty(
+    property_names,
+):
     lhs = {"type": "object", "propertyNames": property_names, "minProperties": 1}
     rhs = {"type": "string"}
 
     assert finite_values_for_schema(lhs) == []
-    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(lhs, rhs)
+    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
+        lhs, rhs
+    )
 
     assert proof.status == "proved_true"
 
@@ -986,7 +1063,9 @@ def test_finite_model_oracle_for_representative_exact_fragments(lhs, rhs, dialec
         ),
     ],
 )
-def test_applicator_exact_fragments_have_finite_model_oracle_without_candidates(lhs, rhs, dialect, monkeypatch):
+def test_applicator_exact_fragments_have_finite_model_oracle(
+    lhs, rhs, dialect, monkeypatch
+):
     assert_proved(lhs, rhs, dialect, monkeypatch)
     assert_no_small_counterexample(lhs, rhs, dialect)
 
@@ -1068,8 +1147,12 @@ def test_false_witnesses_validate_for_representative_fragments(lhs, rhs, dialect
     assert_witness_validates(lhs, rhs, dialect, proof.witness)
 
 
-@pytest.mark.parametrize(("fragment", "lhs", "rhs", "dialect", "options"), GROUPED_FALSE_WITNESS_CASES)
-def test_grouped_false_witnesses_validate_by_generator_family(fragment, lhs, rhs, dialect, options):
+@pytest.mark.parametrize(
+    ("fragment", "lhs", "rhs", "dialect", "options"), GROUPED_FALSE_WITNESS_CASES
+)
+def test_grouped_false_witnesses_validate_by_generator_family(
+    fragment, lhs, rhs, dialect, options
+):
     assert fragment
     engine = ProofEngine.for_schemas(lhs, rhs, dialect=dialect, options=options)
 
@@ -1087,8 +1170,18 @@ def test_grouped_false_witnesses_validate_by_generator_family(fragment, lhs, rhs
         ({"type": "integer", "minimum": 1}, Dialect.DRAFT7),
         ({"type": "string", "pattern": "^a", "maxLength": 3}, Dialect.DRAFT7),
         ({"enum": [1, "a", None]}, Dialect.DRAFT7),
-        ({"type": "array", "items": {"type": "integer"}, "maxItems": 2}, Dialect.DRAFT7),
-        ({"type": "object", "required": ["a"], "properties": {"a": {"type": "integer"}}}, Dialect.DRAFT7),
+        (
+            {"type": "array", "items": {"type": "integer"}, "maxItems": 2},
+            Dialect.DRAFT7,
+        ),
+        (
+            {
+                "type": "object",
+                "required": ["a"],
+                "properties": {"a": {"type": "integer"}},
+            },
+            Dialect.DRAFT7,
+        ),
         ({"type": "array", "prefixItems": [{"type": "integer"}]}, Dialect.DRAFT202012),
     ],
 )
@@ -1131,7 +1224,9 @@ def test_reflexivity_invariant_for_representative_fragments(schema, dialect):
         ),
     ],
 )
-def test_transitivity_smoke_invariant_for_representative_fragments(narrow, middle, wide, dialect):
+def test_transitivity_smoke_invariant_for_representative_fragments(
+    narrow, middle, wide, dialect
+):
     assert_proved_subschema(narrow, middle, dialect)
     assert_proved_subschema(middle, wide, dialect)
     assert_proved_subschema(narrow, wide, dialect)
@@ -1218,33 +1313,34 @@ def test_non_regular_regex_fragments_are_structured_unsupported(rhs, reason):
     assert proof.diagnostics[0].category == "non-regular-regex"
 
 
-@pytest.mark.parametrize(
-    "invalid_budget_kwargs",
-    [
-        {"max_candidates": 0},
-        {"max_array_length": 2},
-        {"max_branch_expansions": 0},
-        {"max_object_universe": 1},
-        {"max_regex_states": 1},
-    ],
-)
-def test_invalid_budget_fields_are_rejected(invalid_budget_kwargs):
-    with pytest.raises(TypeError):
-        ProofBudgets(**invalid_budget_kwargs)
-
-
 def test_meet_and_join_use_modern_projection():
-    lhs = {"type": "object", "minProperties": 1, "patternProperties": {"^a": {"type": "integer"}}}
-    rhs = {"type": "object", "minProperties": 1, "patternProperties": {"^a+": {"type": "number"}}}
+    lhs = {
+        "type": "object",
+        "minProperties": 1,
+        "patternProperties": {"^a": {"type": "integer"}},
+    }
+    rhs = {
+        "type": "object",
+        "minProperties": 1,
+        "patternProperties": {"^a+": {"type": "number"}},
+    }
     engine = ProofEngine.for_schemas(lhs, rhs, options=ProofOptions())
 
     assert engine.meet(lhs, rhs) == lhs
     assert engine.join(lhs, rhs) == rhs
 
 
-def test_bounded_search_reports_resource_exhausted_when_candidate_budget_is_exceeded():
-    lhs = {"type": "object", "minProperties": 1, "patternProperties": {"^a": {"type": "number"}}}
-    rhs = {"type": "object", "minProperties": 1, "patternProperties": {"^a+": {"type": "integer"}}}
+def test_endeavor_object_product_reports_resource_exhausted_when_work_is_exceeded():
+    lhs = {
+        "type": "object",
+        "minProperties": 1,
+        "patternProperties": {"^a": {"type": "number"}},
+    }
+    rhs = {
+        "type": "object",
+        "minProperties": 1,
+        "patternProperties": {"^a+": {"type": "integer"}},
+    }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
     engine = ProofEngine.for_schemas(lhs, rhs, options=options)
 
@@ -1282,7 +1378,9 @@ def test_array_contains_witness_reports_resource_exhausted_when_array_budget_is_
     lhs = {"type": "array", "items": True, "minItems": 3}
     rhs = {"type": "array", "contains": True, "minContains": 0, "maxContains": 2}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=2))
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT201909, options=options)
+    engine = ProofEngine.for_schemas(
+        lhs, rhs, dialect=Dialect.DRAFT201909, options=options
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1303,7 +1401,9 @@ def test_array_contains_structural_max_violation_reports_resource_exhausted_when
         "maxContains": 1,
     }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012, options=options)
+    engine = ProofEngine.for_schemas(
+        lhs, rhs, dialect=Dialect.DRAFT202012, options=options
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1315,7 +1415,9 @@ def test_array_contains_min_violation_reports_resource_exhausted_when_array_budg
     lhs = {"type": "array", "items": {"type": "string"}, "minItems": 3}
     rhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 1}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=2))
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT201909, options=options)
+    engine = ProofEngine.for_schemas(
+        lhs, rhs, dialect=Dialect.DRAFT201909, options=options
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1327,7 +1429,9 @@ def test_array_item_values_preserve_resource_exhausted_from_subproofs():
     lhs = {"type": "array", "items": {"anyOf": [{"type": "integer"}]}, "minItems": 1}
     rhs = {"type": "array", "items": {"type": "number"}}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012, options=options)
+    engine = ProofEngine.for_schemas(
+        lhs, rhs, dialect=Dialect.DRAFT202012, options=options
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1348,7 +1452,9 @@ def test_array_item_values_reports_resource_exhausted_when_length_witness_exceed
         "items": False,
     }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=2))
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012, options=options)
+    engine = ProofEngine.for_schemas(
+        lhs, rhs, dialect=Dialect.DRAFT202012, options=options
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1386,7 +1492,9 @@ def test_unevaluated_items_reports_resource_exhausted_when_extra_item_witness_ex
         "unevaluatedItems": False,
     }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012, options=options)
+    engine = ProofEngine.for_schemas(
+        lhs, rhs, dialect=Dialect.DRAFT202012, options=options
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1406,7 +1514,9 @@ def test_unevaluated_items_reports_resource_exhausted_when_value_witness_exceeds
         "unevaluatedItems": False,
     }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012, options=options)
+    engine = ProofEngine.for_schemas(
+        lhs, rhs, dialect=Dialect.DRAFT202012, options=options
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1429,7 +1539,9 @@ def test_unevaluated_properties_branch_effect_budget_exhaustion_returns_resource
         endeavor=True,
         budgets=ProofBudgets(max_work=0),
     )
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012, options=options)
+    engine = ProofEngine.for_schemas(
+        lhs, rhs, dialect=Dialect.DRAFT202012, options=options
+    )
 
     proof = engine.is_subschema(lhs, rhs)
 
@@ -1453,7 +1565,9 @@ def test_unevaluated_items_branch_effect_budget_exhaustion_returns_resource_exha
         endeavor=True,
         budgets=ProofBudgets(max_work=0),
     )
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012, options=options)
+    engine = ProofEngine.for_schemas(
+        lhs, rhs, dialect=Dialect.DRAFT202012, options=options
+    )
 
     proof = engine.is_subschema(lhs, rhs)
 
@@ -1520,7 +1634,10 @@ def test_schema_valued_unevaluated_properties_unbounded_case_stays_unsupported()
     proof = engine.is_subschema(lhs, rhs)
 
     assert proof.status == "unsupported"
-    assert proof.reason == "SAT schema-valued unevaluatedProperties witness requires a finite closed left keyspace"
+    assert (
+        proof.reason
+        == "SAT schema-valued unevaluatedProperties witness requires a finite closed left keyspace"
+    )
 
 
 def test_object_presence_product_reports_resource_exhausted_when_universe_budget_is_exceeded():
@@ -1582,7 +1699,9 @@ def test_object_key_value_reports_resource_exhausted_for_pattern_obligation_budg
 def test_object_presence_domain_tactic_reports_resource_exhausted_when_universe_budget_is_exceeded():
     lhs = {"type": "object", "required": ["a", "b"]}
     rhs = {"type": "object"}
-    context = ProofContext(Dialect.DRAFT7, ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1)))
+    context = ProofContext(
+        Dialect.DRAFT7, ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
+    )
 
     proof = ObjectPresenceDomainTactic(context).is_subschema(lhs, rhs)
 
@@ -1593,7 +1712,9 @@ def test_object_presence_domain_tactic_reports_resource_exhausted_when_universe_
 def test_object_structure_domain_tactic_reports_resource_exhausted_when_universe_budget_is_exceeded():
     lhs = {"type": "object", "required": ["a", "b"], "minProperties": 2}
     rhs = {"type": "object", "minProperties": 1}
-    context = ProofContext(Dialect.DRAFT7, ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1)))
+    context = ProofContext(
+        Dialect.DRAFT7, ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
+    )
 
     proof = ObjectStructureDomainTactic(context).is_subschema(lhs, rhs)
 
@@ -1605,7 +1726,9 @@ def test_public_subschema_keeps_solver_resource_exhaustion_with_solver_path():
     lhs = {"type": "array", "items": {"anyOf": [{"type": "integer"}]}, "minItems": 1}
     rhs = {"type": "array", "items": {"type": "number"}}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012, options=options)
+    engine = ProofEngine.for_schemas(
+        lhs, rhs, dialect=Dialect.DRAFT202012, options=options
+    )
 
     proof = engine.is_subschema(lhs, rhs)
 
@@ -1619,9 +1742,16 @@ def test_bounded_ir_uses_sat_emptiness_solver_before_generic_search_path(monkeyp
     engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
     def fail_unexpected_proof_path(*_args, **_kwargs):
-        raise AssertionError("SAT solver should prove this difference inside the solver path")
+        raise AssertionError(
+            "SAT solver should prove this difference inside the solver path"
+        )
 
-    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
+    monkeypatch.setattr(
+        engine.context,
+        "unexpected_proof_path",
+        fail_unexpected_proof_path,
+        raising=False,
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1638,7 +1768,12 @@ def test_bounded_ir_sat_solver_can_prove_finite_empty_difference(monkeypatch):
     def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError("SAT solver should prove the finite difference is empty")
 
-    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
+    monkeypatch.setattr(
+        engine.context,
+        "unexpected_proof_path",
+        fail_unexpected_proof_path,
+        raising=False,
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1646,14 +1781,29 @@ def test_bounded_ir_sat_solver_can_prove_finite_empty_difference(monkeypatch):
 
 
 def test_object_pattern_obligations_with_property_counts_prove(monkeypatch):
-    lhs = {"type": "object", "minProperties": 1, "patternProperties": {"^a": {"type": "number"}}}
-    rhs = {"type": "object", "minProperties": 1, "patternProperties": {"^a+": {"type": "integer"}}}
+    lhs = {
+        "type": "object",
+        "minProperties": 1,
+        "patternProperties": {"^a": {"type": "number"}},
+    }
+    rhs = {
+        "type": "object",
+        "minProperties": 1,
+        "patternProperties": {"^a+": {"type": "integer"}},
+    }
     engine = ProofEngine.for_schemas(lhs, rhs)
 
     def fail_unexpected_proof_path(*_args, **_kwargs):
-        raise AssertionError("default proof policy must not use constructive proof path")
+        raise AssertionError(
+            "default proof policy must not use constructive proof path"
+        )
 
-    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
+    monkeypatch.setattr(
+        engine.context,
+        "unexpected_proof_path",
+        fail_unexpected_proof_path,
+        raising=False,
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1674,14 +1824,19 @@ def test_object_pattern_obligations_with_property_counts_prove(monkeypatch):
             "could not resolve rhs $dynamicRef",
         ),
         (
-            {"definitions": {"x": {"$ref": "#/definitions/x"}}, "$ref": "#/definitions/x"},
+            {
+                "definitions": {"x": {"$ref": "#/definitions/x"}},
+                "$ref": "#/definitions/x",
+            },
             {"type": "string"},
             Dialect.DRAFT7,
             "recursive lhs $ref",
         ),
     ],
 )
-def test_modern_unsupported_cases_do_not_return_success(lhs, rhs, dialect, reason_fragment):
+def test_modern_unsupported_cases_do_not_return_success(
+    lhs, rhs, dialect, reason_fragment
+):
     engine = ProofEngine.for_schemas(
         lhs,
         rhs,
@@ -1697,9 +1852,15 @@ def test_modern_unsupported_cases_do_not_return_success(lhs, rhs, dialect, reaso
 
 
 def test_rhs_not_uses_required_property_disjointness_for_object_values():
-    lhs = {"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"]}
+    lhs = {
+        "type": "object",
+        "properties": {"a": {"type": "integer"}},
+        "required": ["a"],
+    }
     rhs = {"not": {"required": ["a"], "properties": {"a": {"type": "string"}}}}
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7, options=ProofOptions())
+    engine = ProofEngine.for_schemas(
+        lhs, rhs, dialect=Dialect.DRAFT7, options=ProofOptions()
+    )
 
     proof = engine.is_subschema(lhs, rhs)
 
@@ -1707,8 +1868,18 @@ def test_rhs_not_uses_required_property_disjointness_for_object_values():
 
 
 def test_endeavor_object_product_expands_complex_value_obligations(monkeypatch):
-    lhs = {"type": "object", "patternProperties": {"^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 1}}}
-    rhs = {"type": "object", "patternProperties": {"^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 2}}}
+    lhs = {
+        "type": "object",
+        "patternProperties": {
+            "^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 1}
+        },
+    }
+    rhs = {
+        "type": "object",
+        "patternProperties": {
+            "^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 2}
+        },
+    }
     engine = ProofEngine.for_schemas(
         lhs,
         rhs,
@@ -1717,9 +1888,16 @@ def test_endeavor_object_product_expands_complex_value_obligations(monkeypatch):
     )
 
     def fail_unexpected_proof_path(*_args, **_kwargs):
-        raise AssertionError("endeavor object product should prove this inside the solver path")
+        raise AssertionError(
+            "endeavor object product should prove this inside the solver path"
+        )
 
-    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
+    monkeypatch.setattr(
+        engine.context,
+        "unexpected_proof_path",
+        fail_unexpected_proof_path,
+        raising=False,
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1727,18 +1905,28 @@ def test_endeavor_object_product_expands_complex_value_obligations(monkeypatch):
     assert_witness_validates(lhs, rhs, Dialect.DRAFT201909, proof.witness)
 
 
-def test_endeavor_object_product_expands_property_names_additional_obligations(monkeypatch):
+def test_endeavor_object_product_expands_property_names_additional_obligations(
+    monkeypatch,
+):
     lhs = {
         "type": "object",
         "minProperties": 1,
         "propertyNames": {"pattern": "^a"},
-        "additionalProperties": {"type": "array", "contains": {"type": "integer"}, "minContains": 1},
+        "additionalProperties": {
+            "type": "array",
+            "contains": {"type": "integer"},
+            "minContains": 1,
+        },
     }
     rhs = {
         "type": "object",
         "minProperties": 1,
         "propertyNames": {"pattern": "^a"},
-        "additionalProperties": {"type": "array", "contains": {"type": "integer"}, "minContains": 2},
+        "additionalProperties": {
+            "type": "array",
+            "contains": {"type": "integer"},
+            "minContains": 2,
+        },
     }
     engine = ProofEngine.for_schemas(
         lhs,
@@ -1748,9 +1936,16 @@ def test_endeavor_object_product_expands_property_names_additional_obligations(m
     )
 
     def fail_unexpected_proof_path(*_args, **_kwargs):
-        raise AssertionError("endeavor propertyNames/additionalProperties product should prove inside the solver path")
+        raise AssertionError(
+            "endeavor propertyNames/additionalProperties product should prove inside the solver path"
+        )
 
-    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
+    monkeypatch.setattr(
+        engine.context,
+        "unexpected_proof_path",
+        fail_unexpected_proof_path,
+        raising=False,
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1758,18 +1953,26 @@ def test_endeavor_object_product_expands_property_names_additional_obligations(m
     assert_witness_validates(lhs, rhs, Dialect.DRAFT201909, proof.witness)
 
 
-def test_endeavor_object_product_expands_pattern_properties_to_additional_obligations(monkeypatch):
+def test_endeavor_object_product_expands_pattern_properties_to_additional_obligations(
+    monkeypatch,
+):
     lhs = {
         "type": "object",
         "minProperties": 1,
         "propertyNames": {"pattern": "^a"},
-        "patternProperties": {"^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 1}},
+        "patternProperties": {
+            "^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 1}
+        },
     }
     rhs = {
         "type": "object",
         "minProperties": 1,
         "propertyNames": {"pattern": "^a"},
-        "additionalProperties": {"type": "array", "contains": {"type": "integer"}, "minContains": 2},
+        "additionalProperties": {
+            "type": "array",
+            "contains": {"type": "integer"},
+            "minContains": 2,
+        },
     }
     engine = ProofEngine.for_schemas(
         lhs,
@@ -1779,9 +1982,16 @@ def test_endeavor_object_product_expands_pattern_properties_to_additional_obliga
     )
 
     def fail_unexpected_proof_path(*_args, **_kwargs):
-        raise AssertionError("endeavor patternProperties/additionalProperties product should prove inside the solver path")
+        raise AssertionError(
+            "endeavor patternProperties/additionalProperties product should prove inside the solver path"
+        )
 
-    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
+    monkeypatch.setattr(
+        engine.context,
+        "unexpected_proof_path",
+        fail_unexpected_proof_path,
+        raising=False,
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1790,8 +2000,18 @@ def test_endeavor_object_product_expands_pattern_properties_to_additional_obliga
 
 
 def test_default_mode_does_not_enter_endeavor_object_product():
-    lhs = {"type": "object", "patternProperties": {"^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 1}}}
-    rhs = {"type": "object", "patternProperties": {"^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 2}}}
+    lhs = {
+        "type": "object",
+        "patternProperties": {
+            "^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 1}
+        },
+    }
+    rhs = {
+        "type": "object",
+        "patternProperties": {
+            "^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 2}
+        },
+    }
     engine = ProofEngine.for_schemas(
         lhs,
         rhs,
@@ -1815,9 +2035,16 @@ def test_endeavor_array_contains_product_proves_min_violation(monkeypatch):
     )
 
     def fail_unexpected_proof_path(*_args, **_kwargs):
-        raise AssertionError("endeavor array product should prove this inside the solver path")
+        raise AssertionError(
+            "endeavor array product should prove this inside the solver path"
+        )
 
-    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
+    monkeypatch.setattr(
+        engine.context,
+        "unexpected_proof_path",
+        fail_unexpected_proof_path,
+        raising=False,
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1836,9 +2063,16 @@ def test_endeavor_array_contains_product_proves_max_violation(monkeypatch):
     )
 
     def fail_unexpected_proof_path(*_args, **_kwargs):
-        raise AssertionError("endeavor array max product should prove this inside the solver path")
+        raise AssertionError(
+            "endeavor array max product should prove this inside the solver path"
+        )
 
-    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
+    monkeypatch.setattr(
+        engine.context,
+        "unexpected_proof_path",
+        fail_unexpected_proof_path,
+        raising=False,
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1857,9 +2091,16 @@ def test_endeavor_evaluation_trace_expands_contains_unevaluated_items(monkeypatc
     )
 
     def fail_unexpected_proof_path(*_args, **_kwargs):
-        raise AssertionError("endeavor evaluation trace should prove this inside the solver path")
+        raise AssertionError(
+            "endeavor evaluation trace should prove this inside the solver path"
+        )
 
-    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
+    monkeypatch.setattr(
+        engine.context,
+        "unexpected_proof_path",
+        fail_unexpected_proof_path,
+        raising=False,
+    )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1874,8 +2115,26 @@ def test_endeavor_evaluation_trace_expands_contains_unevaluated_items(monkeypatc
     ("lhs", "rhs", "dialect", "reason"),
     (
         (
-            {"type": "object", "patternProperties": {"^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 1}}},
-            {"type": "object", "patternProperties": {"^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 2}}},
+            {
+                "type": "object",
+                "patternProperties": {
+                    "^a": {
+                        "type": "array",
+                        "contains": {"type": "integer"},
+                        "minContains": 1,
+                    }
+                },
+            },
+            {
+                "type": "object",
+                "patternProperties": {
+                    "^a": {
+                        "type": "array",
+                        "contains": {"type": "integer"},
+                        "minContains": 2,
+                    }
+                },
+            },
             Dialect.DRAFT201909,
             "object product exceeded proof work budget",
         ),
@@ -1886,8 +2145,17 @@ def test_endeavor_evaluation_trace_expands_contains_unevaluated_items(monkeypatc
             "array product exceeded proof work budget",
         ),
         (
-            {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "number"}},
-            {"type": "array", "contains": {"type": "integer"}, "unevaluatedItems": False},
+            {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 1,
+                "items": {"type": "number"},
+            },
+            {
+                "type": "array",
+                "contains": {"type": "integer"},
+                "unevaluatedItems": False,
+            },
             Dialect.DRAFT202012,
             "evaluation trace exceeded proof work budget",
         ),
@@ -1910,11 +2178,15 @@ def test_endeavor_expanded_products_exhaust_first_work_unit(lhs, rhs, dialect, r
 def test_endeavor_expanded_product_small_positive_budgets_track_frontiers():
     object_lhs = {
         "type": "object",
-        "patternProperties": {"^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 1}},
+        "patternProperties": {
+            "^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 1}
+        },
     }
     object_rhs = {
         "type": "object",
-        "patternProperties": {"^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 2}},
+        "patternProperties": {
+            "^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 2}
+        },
     }
     object_engine = ProofEngine.for_schemas(
         object_lhs,
@@ -1940,10 +2212,21 @@ def test_endeavor_expanded_product_small_positive_budgets_track_frontiers():
     array_proof = array_engine._bounded_ir_proof(array_lhs, array_rhs)
 
     assert array_proof.status == "proved_false"
-    assert_witness_validates(array_lhs, array_rhs, Dialect.DRAFT201909, array_proof.witness)
+    assert_witness_validates(
+        array_lhs, array_rhs, Dialect.DRAFT201909, array_proof.witness
+    )
 
-    evaluation_lhs = {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "number"}}
-    evaluation_rhs = {"type": "array", "contains": {"type": "integer"}, "unevaluatedItems": False}
+    evaluation_lhs = {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 1,
+        "items": {"type": "number"},
+    }
+    evaluation_rhs = {
+        "type": "array",
+        "contains": {"type": "integer"},
+        "unevaluatedItems": False,
+    }
     evaluation_engine = ProofEngine.for_schemas(
         evaluation_lhs,
         evaluation_rhs,
@@ -1951,10 +2234,14 @@ def test_endeavor_expanded_product_small_positive_budgets_track_frontiers():
         options=ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=2)),
     )
 
-    evaluation_proof = evaluation_engine._bounded_ir_proof(evaluation_lhs, evaluation_rhs)
+    evaluation_proof = evaluation_engine._bounded_ir_proof(
+        evaluation_lhs, evaluation_rhs
+    )
 
     assert evaluation_proof.status == "proved_false"
-    assert_witness_validates(evaluation_lhs, evaluation_rhs, Dialect.DRAFT202012, evaluation_proof.witness)
+    assert_witness_validates(
+        evaluation_lhs, evaluation_rhs, Dialect.DRAFT202012, evaluation_proof.witness
+    )
 
     max_lhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 2}
     max_rhs = {"type": "array", "contains": {"type": "integer"}, "maxContains": 1}
@@ -1971,9 +2258,17 @@ def test_endeavor_expanded_product_small_positive_budgets_track_frontiers():
     assert max_budget_proof.reason == "array product exceeded proof work budget"
 
 
-def test_candidate_budget_applies_only_to_final_witness_search():
-    lhs = {"type": "object", "minProperties": 1, "patternProperties": {"^a": {"type": "array", "minItems": 1}}}
-    rhs = {"type": "object", "minProperties": 1, "patternProperties": {"^a": {"type": "array", "minItems": 2}}}
+def test_endeavor_object_product_budget_applies_to_nested_witness_construction():
+    lhs = {
+        "type": "object",
+        "minProperties": 1,
+        "patternProperties": {"^a": {"type": "array", "minItems": 1}},
+    }
+    rhs = {
+        "type": "object",
+        "minProperties": 1,
+        "patternProperties": {"^a": {"type": "array", "minItems": 2}},
+    }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
     engine = ProofEngine.for_schemas(lhs, rhs, options=options)
 
@@ -1984,7 +2279,9 @@ def test_candidate_budget_applies_only_to_final_witness_search():
 
 
 def test_sat_solver_exposes_language_difference_formula():
-    formula = DifferenceFormula.from_schemas({"type": "integer"}, {"type": "number"}, Dialect.DRAFT7)
+    formula = DifferenceFormula.from_schemas(
+        {"type": "integer"}, {"type": "number"}, Dialect.DRAFT7
+    )
     solver = EmptinessSolver(ProofContext(Dialect.DRAFT7))
 
     proof = solver.prove_formula_difference_empty(formula)
@@ -2029,7 +2326,10 @@ def test_formula_lowering_handles_booleans_not_oneof_and_conditionals():
         Dialect.DRAFT7,
     )
     assert isinstance(not_formula.negative_rhs.formula, AndFormula)
-    assert any(isinstance(child, AssertionFormula) for child in not_formula.negative_rhs.formula.children)
+    assert any(
+        isinstance(child, AssertionFormula)
+        for child in not_formula.negative_rhs.formula.children
+    )
 
     positive_not_formula = DifferenceFormula.from_schemas(
         {"not": {"type": "string"}},

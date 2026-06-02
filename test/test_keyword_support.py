@@ -50,12 +50,54 @@ DIALECT_ORDER = (
 
 
 KEYWORD_MATRIX = (
-    KeywordMatrixCase("$anchor", KeywordCategory.RESOURCE, Dialect.DRAFT201909, Dialect.DRAFT201909, "resource", "resource-ref"),
-    KeywordMatrixCase("$comment", KeywordCategory.ANNOTATION, Dialect.DRAFT7, Dialect.DRAFT4, "annotation", "annotation"),
-    KeywordMatrixCase("$defs", KeywordCategory.RESOURCE, Dialect.DRAFT201909, Dialect.DRAFT4, "resource", "resource-ref"),
-    KeywordMatrixCase("$dynamicAnchor", KeywordCategory.RESOURCE, Dialect.DRAFT202012, Dialect.DRAFT202012, "resource", "dynamic-ref"),
-    KeywordMatrixCase("$dynamicRef", KeywordCategory.RESOURCE, Dialect.DRAFT202012, Dialect.DRAFT202012, "resource", "dynamic-ref"),
-    KeywordMatrixCase("$id", KeywordCategory.RESOURCE, Dialect.DRAFT6, Dialect.DRAFT6, "resource", "resource-ref"),
+    KeywordMatrixCase(
+        "$anchor",
+        KeywordCategory.RESOURCE,
+        Dialect.DRAFT201909,
+        Dialect.DRAFT201909,
+        "resource",
+        "resource-ref",
+    ),
+    KeywordMatrixCase(
+        "$comment",
+        KeywordCategory.ANNOTATION,
+        Dialect.DRAFT7,
+        Dialect.DRAFT4,
+        "annotation",
+        "annotation",
+    ),
+    KeywordMatrixCase(
+        "$defs",
+        KeywordCategory.RESOURCE,
+        Dialect.DRAFT201909,
+        Dialect.DRAFT4,
+        "resource",
+        "resource-ref",
+    ),
+    KeywordMatrixCase(
+        "$dynamicAnchor",
+        KeywordCategory.RESOURCE,
+        Dialect.DRAFT202012,
+        Dialect.DRAFT202012,
+        "resource",
+        "dynamic-ref",
+    ),
+    KeywordMatrixCase(
+        "$dynamicRef",
+        KeywordCategory.RESOURCE,
+        Dialect.DRAFT202012,
+        Dialect.DRAFT202012,
+        "resource",
+        "dynamic-ref",
+    ),
+    KeywordMatrixCase(
+        "$id",
+        KeywordCategory.RESOURCE,
+        Dialect.DRAFT6,
+        Dialect.DRAFT6,
+        "resource",
+        "resource-ref",
+    ),
     KeywordMatrixCase(
         "$recursiveAnchor",
         KeywordCategory.RESOURCE,
@@ -76,20 +118,118 @@ KEYWORD_MATRIX = (
         "unsupported_unreliable",
         accepted_until=Dialect.DRAFT201909,
     ),
-    KeywordMatrixCase("$ref", KeywordCategory.RESOURCE, Dialect.DRAFT4, Dialect.DRAFT4, "resource", "resource-ref"),
-    KeywordMatrixCase("$schema", KeywordCategory.RESOURCE, Dialect.DRAFT4, Dialect.DRAFT4, "resource", "dialect"),
-    KeywordMatrixCase("$vocabulary", KeywordCategory.VOCABULARY, Dialect.DRAFT201909, Dialect.DRAFT201909, "vocabulary", "vocabulary"),
-    KeywordMatrixCase("additionalItems", KeywordCategory.APPLICATOR, Dialect.DRAFT4, Dialect.DRAFT4, "array", "array"),
-    KeywordMatrixCase("additionalProperties", KeywordCategory.APPLICATOR, Dialect.DRAFT4, Dialect.DRAFT4, "object", "object"),
-    KeywordMatrixCase("allOf", KeywordCategory.APPLICATOR, Dialect.DRAFT4, Dialect.DRAFT4, "applicator", "applicator"),
-    KeywordMatrixCase("anyOf", KeywordCategory.APPLICATOR, Dialect.DRAFT4, Dialect.DRAFT4, "applicator", "applicator"),
-    KeywordMatrixCase("const", KeywordCategory.ASSERTION, Dialect.DRAFT6, Dialect.DRAFT6, "scalar", "scalar"),
-    KeywordMatrixCase("contains", KeywordCategory.APPLICATOR, Dialect.DRAFT6, Dialect.DRAFT6, "array", "array"),
-    KeywordMatrixCase("contentEncoding", KeywordCategory.ANNOTATION, Dialect.DRAFT7, Dialect.DRAFT4, "annotation", "annotation"),
-    KeywordMatrixCase("contentMediaType", KeywordCategory.ANNOTATION, Dialect.DRAFT7, Dialect.DRAFT4, "annotation", "annotation"),
-    KeywordMatrixCase("contentSchema", KeywordCategory.ANNOTATION, Dialect.DRAFT201909, Dialect.DRAFT4, "annotation", "annotation"),
-    KeywordMatrixCase("default", KeywordCategory.ANNOTATION, Dialect.DRAFT4, Dialect.DRAFT4, "annotation", "annotation"),
-    KeywordMatrixCase("definitions", KeywordCategory.RESOURCE, Dialect.DRAFT4, Dialect.DRAFT4, "resource", "resource-ref"),
+    KeywordMatrixCase(
+        "$ref",
+        KeywordCategory.RESOURCE,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "resource",
+        "resource-ref",
+    ),
+    KeywordMatrixCase(
+        "$schema",
+        KeywordCategory.RESOURCE,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "resource",
+        "dialect",
+    ),
+    KeywordMatrixCase(
+        "$vocabulary",
+        KeywordCategory.VOCABULARY,
+        Dialect.DRAFT201909,
+        Dialect.DRAFT201909,
+        "vocabulary",
+        "vocabulary",
+    ),
+    KeywordMatrixCase(
+        "additionalItems",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "array",
+        "array",
+    ),
+    KeywordMatrixCase(
+        "additionalProperties",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "object",
+        "object",
+    ),
+    KeywordMatrixCase(
+        "allOf",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "applicator",
+        "applicator",
+    ),
+    KeywordMatrixCase(
+        "anyOf",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "applicator",
+        "applicator",
+    ),
+    KeywordMatrixCase(
+        "const",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT6,
+        Dialect.DRAFT6,
+        "scalar",
+        "scalar",
+    ),
+    KeywordMatrixCase(
+        "contains",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT6,
+        Dialect.DRAFT6,
+        "array",
+        "array",
+    ),
+    KeywordMatrixCase(
+        "contentEncoding",
+        KeywordCategory.ANNOTATION,
+        Dialect.DRAFT7,
+        Dialect.DRAFT4,
+        "annotation",
+        "annotation",
+    ),
+    KeywordMatrixCase(
+        "contentMediaType",
+        KeywordCategory.ANNOTATION,
+        Dialect.DRAFT7,
+        Dialect.DRAFT4,
+        "annotation",
+        "annotation",
+    ),
+    KeywordMatrixCase(
+        "contentSchema",
+        KeywordCategory.ANNOTATION,
+        Dialect.DRAFT201909,
+        Dialect.DRAFT4,
+        "annotation",
+        "annotation",
+    ),
+    KeywordMatrixCase(
+        "default",
+        KeywordCategory.ANNOTATION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "annotation",
+        "annotation",
+    ),
+    KeywordMatrixCase(
+        "definitions",
+        KeywordCategory.RESOURCE,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "resource",
+        "resource-ref",
+    ),
     KeywordMatrixCase(
         "dependencies",
         KeywordCategory.APPLICATOR,
@@ -99,42 +239,297 @@ KEYWORD_MATRIX = (
         "object",
         accepted_until=Dialect.DRAFT7,
     ),
-    KeywordMatrixCase("dependentRequired", KeywordCategory.ASSERTION, Dialect.DRAFT201909, Dialect.DRAFT201909, "object", "object"),
-    KeywordMatrixCase("dependentSchemas", KeywordCategory.APPLICATOR, Dialect.DRAFT201909, Dialect.DRAFT201909, "object", "object"),
-    KeywordMatrixCase("deprecated", KeywordCategory.ANNOTATION, Dialect.DRAFT201909, Dialect.DRAFT4, "annotation", "annotation"),
-    KeywordMatrixCase("description", KeywordCategory.ANNOTATION, Dialect.DRAFT4, Dialect.DRAFT4, "annotation", "annotation"),
-    KeywordMatrixCase("else", KeywordCategory.APPLICATOR, Dialect.DRAFT7, Dialect.DRAFT7, "applicator", "conditional"),
-    KeywordMatrixCase("enum", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "scalar", "scalar"),
-    KeywordMatrixCase("examples", KeywordCategory.ANNOTATION, Dialect.DRAFT6, Dialect.DRAFT4, "annotation", "annotation"),
-    KeywordMatrixCase("exclusiveMaximum", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "scalar", "scalar"),
-    KeywordMatrixCase("exclusiveMinimum", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "scalar", "scalar"),
-    KeywordMatrixCase("format", KeywordCategory.ANNOTATION, Dialect.DRAFT4, Dialect.DRAFT4, "annotation", "annotation"),
-    KeywordMatrixCase("id", KeywordCategory.RESOURCE, Dialect.DRAFT4, Dialect.DRAFT4, "resource", "resource-ref", accepted_until=Dialect.DRAFT4),
-    KeywordMatrixCase("if", KeywordCategory.APPLICATOR, Dialect.DRAFT7, Dialect.DRAFT7, "applicator", "conditional"),
-    KeywordMatrixCase("items", KeywordCategory.APPLICATOR, Dialect.DRAFT4, Dialect.DRAFT4, "array", "array"),
-    KeywordMatrixCase("maxContains", KeywordCategory.ASSERTION, Dialect.DRAFT201909, Dialect.DRAFT201909, "array", "array"),
-    KeywordMatrixCase("maxItems", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "array", "array"),
-    KeywordMatrixCase("maxLength", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "scalar", "scalar"),
-    KeywordMatrixCase("maxProperties", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "object", "object"),
-    KeywordMatrixCase("maximum", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "scalar", "scalar"),
-    KeywordMatrixCase("minContains", KeywordCategory.ASSERTION, Dialect.DRAFT201909, Dialect.DRAFT201909, "array", "array"),
-    KeywordMatrixCase("minItems", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "array", "array"),
-    KeywordMatrixCase("minLength", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "scalar", "scalar"),
-    KeywordMatrixCase("minProperties", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "object", "object"),
-    KeywordMatrixCase("minimum", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "scalar", "scalar"),
-    KeywordMatrixCase("multipleOf", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "scalar", "scalar"),
-    KeywordMatrixCase("not", KeywordCategory.APPLICATOR, Dialect.DRAFT4, Dialect.DRAFT4, "applicator", "applicator", "endeavor_expensive"),
-    KeywordMatrixCase("oneOf", KeywordCategory.APPLICATOR, Dialect.DRAFT4, Dialect.DRAFT4, "applicator", "applicator", "endeavor_expensive"),
-    KeywordMatrixCase("pattern", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "scalar", "scalar"),
-    KeywordMatrixCase("patternProperties", KeywordCategory.APPLICATOR, Dialect.DRAFT4, Dialect.DRAFT4, "object", "object"),
-    KeywordMatrixCase("prefixItems", KeywordCategory.APPLICATOR, Dialect.DRAFT202012, Dialect.DRAFT202012, "array", "array"),
-    KeywordMatrixCase("properties", KeywordCategory.APPLICATOR, Dialect.DRAFT4, Dialect.DRAFT4, "object", "object"),
-    KeywordMatrixCase("propertyNames", KeywordCategory.APPLICATOR, Dialect.DRAFT6, Dialect.DRAFT6, "object", "object"),
-    KeywordMatrixCase("readOnly", KeywordCategory.ANNOTATION, Dialect.DRAFT7, Dialect.DRAFT4, "annotation", "annotation"),
-    KeywordMatrixCase("required", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "object", "object"),
-    KeywordMatrixCase("then", KeywordCategory.APPLICATOR, Dialect.DRAFT7, Dialect.DRAFT7, "applicator", "conditional"),
-    KeywordMatrixCase("title", KeywordCategory.ANNOTATION, Dialect.DRAFT4, Dialect.DRAFT4, "annotation", "annotation"),
-    KeywordMatrixCase("type", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "scalar", "scalar"),
+    KeywordMatrixCase(
+        "dependentRequired",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT201909,
+        Dialect.DRAFT201909,
+        "object",
+        "object",
+    ),
+    KeywordMatrixCase(
+        "dependentSchemas",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT201909,
+        Dialect.DRAFT201909,
+        "object",
+        "object",
+    ),
+    KeywordMatrixCase(
+        "deprecated",
+        KeywordCategory.ANNOTATION,
+        Dialect.DRAFT201909,
+        Dialect.DRAFT4,
+        "annotation",
+        "annotation",
+    ),
+    KeywordMatrixCase(
+        "description",
+        KeywordCategory.ANNOTATION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "annotation",
+        "annotation",
+    ),
+    KeywordMatrixCase(
+        "else",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT7,
+        Dialect.DRAFT7,
+        "applicator",
+        "conditional",
+    ),
+    KeywordMatrixCase(
+        "enum",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "scalar",
+        "scalar",
+    ),
+    KeywordMatrixCase(
+        "examples",
+        KeywordCategory.ANNOTATION,
+        Dialect.DRAFT6,
+        Dialect.DRAFT4,
+        "annotation",
+        "annotation",
+    ),
+    KeywordMatrixCase(
+        "exclusiveMaximum",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "scalar",
+        "scalar",
+    ),
+    KeywordMatrixCase(
+        "exclusiveMinimum",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "scalar",
+        "scalar",
+    ),
+    KeywordMatrixCase(
+        "format",
+        KeywordCategory.ANNOTATION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "annotation",
+        "annotation",
+    ),
+    KeywordMatrixCase(
+        "id",
+        KeywordCategory.RESOURCE,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "resource",
+        "resource-ref",
+        accepted_until=Dialect.DRAFT4,
+    ),
+    KeywordMatrixCase(
+        "if",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT7,
+        Dialect.DRAFT7,
+        "applicator",
+        "conditional",
+    ),
+    KeywordMatrixCase(
+        "items",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "array",
+        "array",
+    ),
+    KeywordMatrixCase(
+        "maxContains",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT201909,
+        Dialect.DRAFT201909,
+        "array",
+        "array",
+    ),
+    KeywordMatrixCase(
+        "maxItems",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "array",
+        "array",
+    ),
+    KeywordMatrixCase(
+        "maxLength",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "scalar",
+        "scalar",
+    ),
+    KeywordMatrixCase(
+        "maxProperties",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "object",
+        "object",
+    ),
+    KeywordMatrixCase(
+        "maximum",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "scalar",
+        "scalar",
+    ),
+    KeywordMatrixCase(
+        "minContains",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT201909,
+        Dialect.DRAFT201909,
+        "array",
+        "array",
+    ),
+    KeywordMatrixCase(
+        "minItems",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "array",
+        "array",
+    ),
+    KeywordMatrixCase(
+        "minLength",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "scalar",
+        "scalar",
+    ),
+    KeywordMatrixCase(
+        "minProperties",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "object",
+        "object",
+    ),
+    KeywordMatrixCase(
+        "minimum",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "scalar",
+        "scalar",
+    ),
+    KeywordMatrixCase(
+        "multipleOf",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "scalar",
+        "scalar",
+    ),
+    KeywordMatrixCase(
+        "not",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "applicator",
+        "applicator",
+        "endeavor_expensive",
+    ),
+    KeywordMatrixCase(
+        "oneOf",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "applicator",
+        "applicator",
+        "endeavor_expensive",
+    ),
+    KeywordMatrixCase(
+        "pattern",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "scalar",
+        "scalar",
+    ),
+    KeywordMatrixCase(
+        "patternProperties",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "object",
+        "object",
+    ),
+    KeywordMatrixCase(
+        "prefixItems",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT202012,
+        Dialect.DRAFT202012,
+        "array",
+        "array",
+    ),
+    KeywordMatrixCase(
+        "properties",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "object",
+        "object",
+    ),
+    KeywordMatrixCase(
+        "propertyNames",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT6,
+        Dialect.DRAFT6,
+        "object",
+        "object",
+    ),
+    KeywordMatrixCase(
+        "readOnly",
+        KeywordCategory.ANNOTATION,
+        Dialect.DRAFT7,
+        Dialect.DRAFT4,
+        "annotation",
+        "annotation",
+    ),
+    KeywordMatrixCase(
+        "required",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "object",
+        "object",
+    ),
+    KeywordMatrixCase(
+        "then",
+        KeywordCategory.APPLICATOR,
+        Dialect.DRAFT7,
+        Dialect.DRAFT7,
+        "applicator",
+        "conditional",
+    ),
+    KeywordMatrixCase(
+        "title",
+        KeywordCategory.ANNOTATION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "annotation",
+        "annotation",
+    ),
+    KeywordMatrixCase(
+        "type",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "scalar",
+        "scalar",
+    ),
     KeywordMatrixCase(
         "unevaluatedItems",
         KeywordCategory.UNEVALUATED,
@@ -153,8 +548,22 @@ KEYWORD_MATRIX = (
         "unevaluated",
         "endeavor_expensive",
     ),
-    KeywordMatrixCase("uniqueItems", KeywordCategory.ASSERTION, Dialect.DRAFT4, Dialect.DRAFT4, "array", "array"),
-    KeywordMatrixCase("writeOnly", KeywordCategory.ANNOTATION, Dialect.DRAFT7, Dialect.DRAFT4, "annotation", "annotation"),
+    KeywordMatrixCase(
+        "uniqueItems",
+        KeywordCategory.ASSERTION,
+        Dialect.DRAFT4,
+        Dialect.DRAFT4,
+        "array",
+        "array",
+    ),
+    KeywordMatrixCase(
+        "writeOnly",
+        KeywordCategory.ANNOTATION,
+        Dialect.DRAFT7,
+        Dialect.DRAFT4,
+        "annotation",
+        "annotation",
+    ),
 )
 
 ANNOTATION_VALUES = {
@@ -173,9 +582,30 @@ ANNOTATION_VALUES = {
 }
 
 EXACT_PROOF_CASES = (
-    KeywordProofCase("const", Dialect.DRAFT7, {"const": 1}, {"type": "integer"}, {"const": 1}, {"const": 2}),
-    KeywordProofCase("enum", Dialect.DRAFT7, {"const": 1}, {"enum": [1, 2]}, {"const": 3}, {"enum": [1, 2]}),
-    KeywordProofCase("type", Dialect.DRAFT7, {"type": "integer"}, {"type": "number"}, {"const": "x"}, {"type": "number"}),
+    KeywordProofCase(
+        "const",
+        Dialect.DRAFT7,
+        {"const": 1},
+        {"type": "integer"},
+        {"const": 1},
+        {"const": 2},
+    ),
+    KeywordProofCase(
+        "enum",
+        Dialect.DRAFT7,
+        {"const": 1},
+        {"enum": [1, 2]},
+        {"const": 3},
+        {"enum": [1, 2]},
+    ),
+    KeywordProofCase(
+        "type",
+        Dialect.DRAFT7,
+        {"type": "integer"},
+        {"type": "number"},
+        {"const": "x"},
+        {"type": "number"},
+    ),
     KeywordProofCase(
         "minimum",
         Dialect.DRAFT7,
@@ -276,9 +706,17 @@ EXACT_PROOF_CASES = (
         "additionalItems",
         Dialect.DRAFT7,
         {"const": [1, "x"]},
-        {"type": "array", "items": [{"type": "number"}], "additionalItems": {"type": "string"}},
+        {
+            "type": "array",
+            "items": [{"type": "number"}],
+            "additionalItems": {"type": "string"},
+        },
         {"const": [1, 2]},
-        {"type": "array", "items": [{"type": "number"}], "additionalItems": {"type": "string"}},
+        {
+            "type": "array",
+            "items": [{"type": "number"}],
+            "additionalItems": {"type": "string"},
+        },
     ),
     KeywordProofCase(
         "prefixItems",
@@ -392,10 +830,38 @@ EXACT_PROOF_CASES = (
         {"const": {"Upper": 1}},
         {"type": "object", "propertyNames": {"pattern": "^[a-z]+$"}},
     ),
-    KeywordProofCase("allOf", Dialect.DRAFT7, {"const": 1}, {"allOf": [{"type": "number"}]}, {"const": "x"}, {"allOf": [{"type": "number"}]}),
-    KeywordProofCase("anyOf", Dialect.DRAFT7, {"const": 1}, {"anyOf": [{"type": "number"}, {"type": "string"}]}, {"const": True}, {"anyOf": [{"type": "number"}, {"type": "string"}]}),
-    KeywordProofCase("oneOf", Dialect.DRAFT7, {"const": 1}, {"oneOf": [{"type": "number"}, {"type": "string"}]}, {"const": 1}, {"oneOf": [{"type": "number"}, {"const": 1}]}),
-    KeywordProofCase("not", Dialect.DRAFT7, {"const": "x"}, {"not": {"type": "number"}}, {"const": 1}, {"not": {"type": "number"}}),
+    KeywordProofCase(
+        "allOf",
+        Dialect.DRAFT7,
+        {"const": 1},
+        {"allOf": [{"type": "number"}]},
+        {"const": "x"},
+        {"allOf": [{"type": "number"}]},
+    ),
+    KeywordProofCase(
+        "anyOf",
+        Dialect.DRAFT7,
+        {"const": 1},
+        {"anyOf": [{"type": "number"}, {"type": "string"}]},
+        {"const": True},
+        {"anyOf": [{"type": "number"}, {"type": "string"}]},
+    ),
+    KeywordProofCase(
+        "oneOf",
+        Dialect.DRAFT7,
+        {"const": 1},
+        {"oneOf": [{"type": "number"}, {"type": "string"}]},
+        {"const": 1},
+        {"oneOf": [{"type": "number"}, {"const": 1}]},
+    ),
+    KeywordProofCase(
+        "not",
+        Dialect.DRAFT7,
+        {"const": "x"},
+        {"not": {"type": "number"}},
+        {"const": 1},
+        {"not": {"type": "number"}},
+    ),
     KeywordProofCase(
         "if/then/else",
         Dialect.DRAFT7,
@@ -408,38 +874,43 @@ EXACT_PROOF_CASES = (
 
 
 @pytest.mark.parametrize("case", KEYWORD_MATRIX, ids=lambda case: case.keyword)
-def test_keyword_matrix_have_stable_categories(case):
+def test_keyword_categories_are_stable(case):
     assert keyword_category(case.keyword) is case.category
 
 
-def test_keyword_keyword_matrix_covers_draft_2020_12_known_keywords():
+def test_keyword_inventory_covers_draft_2020_12_known_keywords():
     matrix_keywords = {
         case.keyword
         for case in KEYWORD_MATRIX
-        if case.accepted_until is None or _dialect_index(Dialect.DRAFT202012) <= _dialect_index(case.accepted_until)
+        if case.accepted_until is None
+        or _dialect_index(Dialect.DRAFT202012) <= _dialect_index(case.accepted_until)
     }
 
     assert matrix_keywords == known_keywords_for_dialect(Dialect.DRAFT202012)
     assert all(case.category is not KeywordCategory.UNKNOWN for case in KEYWORD_MATRIX)
     assert all(case.test_anchor for case in KEYWORD_MATRIX)
     assert all(
-        case.proof_class in {"simple_exact", "endeavor_expensive", "unsupported_unreliable"}
+        case.proof_class
+        in {"simple_exact", "endeavor_expensive", "unsupported_unreliable"}
         for case in KEYWORD_MATRIX
     )
 
 
-def test_keyword_keyword_matrix_matches_current_dialect_gates():
+def test_keyword_inventory_matches_current_dialect_gates():
     for dialect in DIALECT_ORDER:
         expected = {
             case.keyword
             for case in KEYWORD_MATRIX
             if _dialect_index(dialect) >= _dialect_index(case.accepted_from)
-            and (case.accepted_until is None or _dialect_index(dialect) <= _dialect_index(case.accepted_until))
+            and (
+                case.accepted_until is None
+                or _dialect_index(dialect) <= _dialect_index(case.accepted_until)
+            )
         }
         assert known_keywords_for_dialect(dialect) == expected
 
 
-def test_modern_dialect_gates_are_centralized():
+def test_inactive_modern_keywords_are_ignored_by_older_dialects():
     assert "contains" not in known_keywords_for_dialect(Dialect.DRAFT4)
     assert "contains" in known_keywords_for_dialect(Dialect.DRAFT6)
     assert "if" not in known_keywords_for_dialect(Dialect.DRAFT6)
@@ -451,10 +922,14 @@ def test_modern_dialect_gates_are_centralized():
 
     validate_supported_keywords({"contains": {"type": "integer"}}, Dialect.DRAFT4)
     validate_supported_keywords({"minContains": 1}, Dialect.DRAFT7)
-    validate_supported_keywords({"prefixItems": [{"type": "integer"}]}, Dialect.DRAFT201909)
+    validate_supported_keywords(
+        {"prefixItems": [{"type": "integer"}]}, Dialect.DRAFT201909
+    )
 
 
-def test_annotation_and_content_keywords_are_transparent_with_modern_kernel(monkeypatch):
+def test_annotation_and_content_keywords_are_transparent_with_modern_kernel(
+    monkeypatch,
+):
     rhs = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$comment": "annotation only",
@@ -473,7 +948,9 @@ def test_annotation_and_content_keywords_are_transparent_with_modern_kernel(monk
     }
 
     assert_proved({"type": "string"}, rhs, Dialect.DRAFT202012, monkeypatch)
-    assert_concrete_evaluator_matches_validator(rhs, ("user@example.com", "not-email", 1), Dialect.DRAFT202012)
+    assert_concrete_evaluator_matches_validator(
+        rhs, ("user@example.com", "not-email", 1), Dialect.DRAFT202012
+    )
 
 
 @pytest.mark.parametrize("keyword", sorted(ANNOTATION_VALUES))
@@ -512,23 +989,33 @@ def test_required_format_assertion_vocabulary_remains_unsupported():
 
 
 @pytest.mark.parametrize("case", EXACT_PROOF_CASES, ids=lambda case: case.keyword)
-def test_keyword_matrix_exact_true_cases_prove_without_generic_search_path(case, monkeypatch):
+def test_keyword_matrix_exact_true_cases_prove_without_generic_search_path(
+    case, monkeypatch
+):
     assert_proved(case.true_lhs, case.true_rhs, case.dialect, monkeypatch)
 
 
 @pytest.mark.parametrize("case", EXACT_PROOF_CASES, ids=lambda case: case.keyword)
 def test_keyword_matrix_exact_false_cases_return_validated_witness(case, monkeypatch):
-    proof = _proof_without_generic_search_path(case.false_lhs, case.false_rhs, case.dialect, monkeypatch)
+    proof = _proof_without_generic_search_path(
+        case.false_lhs, case.false_rhs, case.dialect, monkeypatch
+    )
 
     assert proof.status == "proved_false", proof
-    assert_witness_validates(case.false_lhs, case.false_rhs, case.dialect, proof.witness)
+    assert_witness_validates(
+        case.false_lhs, case.false_rhs, case.dialect, proof.witness
+    )
 
 
 @pytest.mark.parametrize(
     ("lhs", "rhs", "dialect"),
     (
         ({"const": 1}, {"type": "integer"}, Dialect.DRAFT7),
-        ({"type": "number", "exclusiveMinimum": 1}, {"type": "number", "minimum": 1}, Dialect.DRAFT6),
+        (
+            {"type": "number", "exclusiveMinimum": 1},
+            {"type": "number", "minimum": 1},
+            Dialect.DRAFT6,
+        ),
         (
             {
                 "type": "array",
@@ -551,17 +1038,25 @@ def test_keyword_matrix_exact_false_cases_return_validated_witness(case, monkeyp
         ),
         (
             {"type": "object", "required": ["credit_card", "billing_address"]},
-            {"type": "object", "dependentRequired": {"credit_card": ["billing_address"]}},
+            {
+                "type": "object",
+                "dependentRequired": {"credit_card": ["billing_address"]},
+            },
             Dialect.DRAFT201909,
         ),
         (
             {"type": "object", "required": ["credit_card", "billing_address"]},
-            {"type": "object", "dependentSchemas": {"credit_card": {"required": ["billing_address"]}}},
+            {
+                "type": "object",
+                "dependentSchemas": {"credit_card": {"required": ["billing_address"]}},
+            },
             Dialect.DRAFT201909,
         ),
     ),
 )
-def test_keyword_local_keyword_true_fragments_prove_without_generic_search_path(lhs, rhs, dialect, monkeypatch):
+def test_keyword_local_keyword_true_fragments_prove_without_generic_search_path(
+    lhs, rhs, dialect, monkeypatch
+):
     assert_proved(lhs, rhs, dialect, monkeypatch)
 
 
@@ -569,30 +1064,56 @@ def test_keyword_local_keyword_true_fragments_prove_without_generic_search_path(
     ("lhs", "rhs", "dialect"),
     (
         ({"const": 1}, {"const": 2}, Dialect.DRAFT7),
-        ({"type": "number", "minimum": 1, "maximum": 1}, {"type": "number", "exclusiveMinimum": 1}, Dialect.DRAFT6),
-        ({"const": [0.5]}, {"type": "array", "contains": {"type": "integer"}}, Dialect.DRAFT202012),
-        ({"const": {"Upper": 1}}, {"type": "object", "propertyNames": {"pattern": "^[a-z]+$"}}, Dialect.DRAFT6),
-        ({"const": "a"}, {"if": {"type": "string"}, "then": {"minLength": 2}, "else": False}, Dialect.DRAFT7),
+        (
+            {"type": "number", "minimum": 1, "maximum": 1},
+            {"type": "number", "exclusiveMinimum": 1},
+            Dialect.DRAFT6,
+        ),
+        (
+            {"const": [0.5]},
+            {"type": "array", "contains": {"type": "integer"}},
+            Dialect.DRAFT202012,
+        ),
+        (
+            {"const": {"Upper": 1}},
+            {"type": "object", "propertyNames": {"pattern": "^[a-z]+$"}},
+            Dialect.DRAFT6,
+        ),
+        (
+            {"const": "a"},
+            {"if": {"type": "string"}, "then": {"minLength": 2}, "else": False},
+            Dialect.DRAFT7,
+        ),
         (
             {"const": {"credit_card": 1}},
-            {"type": "object", "dependentRequired": {"credit_card": ["billing_address"]}},
+            {
+                "type": "object",
+                "dependentRequired": {"credit_card": ["billing_address"]},
+            },
             Dialect.DRAFT201909,
         ),
         (
             {"const": {"credit_card": 1}},
-            {"type": "object", "dependentSchemas": {"credit_card": {"required": ["billing_address"]}}},
+            {
+                "type": "object",
+                "dependentSchemas": {"credit_card": {"required": ["billing_address"]}},
+            },
             Dialect.DRAFT201909,
         ),
     ),
 )
-def test_keyword_local_keyword_false_fragments_return_validated_witness(lhs, rhs, dialect, monkeypatch):
+def test_keyword_local_keyword_false_fragments_return_validated_witness(
+    lhs, rhs, dialect, monkeypatch
+):
     proof = _proof_without_generic_search_path(lhs, rhs, dialect, monkeypatch)
 
     assert proof.status == "proved_false", proof
     assert_witness_validates(lhs, rhs, dialect, proof.witness)
 
 
-def test_keyword_static_ref_anchor_and_embedded_id_prove_with_modern_kernel(monkeypatch):
+def test_keyword_static_ref_anchor_and_embedded_id_prove_with_modern_kernel(
+    monkeypatch,
+):
     lhs = {
         "$id": "https://example.com/root",
         "$defs": {
@@ -613,7 +1134,9 @@ def test_keyword_static_ref_anchor_and_embedded_id_prove_with_modern_kernel(monk
     assert_proved(lhs, {"type": "string"}, Dialect.DRAFT202012, monkeypatch)
 
 
-def test_keyword_acyclic_dynamic_ref_proves_and_recursive_dynamic_ref_stays_unsupported(monkeypatch):
+def test_keyword_acyclic_dynamic_ref_proves_and_recursive_dynamic_ref_stays_unsupported(
+    monkeypatch,
+):
     rhs = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$defs": {
@@ -656,10 +1179,16 @@ def test_keyword_array_tuple_prefix_and_unevaluated_items_boundaries(monkeypatch
         "items": {"type": "string"},
     }
 
-    assert_concrete_evaluator_matches_validator(draft7_tuple, ([1], [1, "x"], [1, 2]), Dialect.DRAFT7)
-    assert_concrete_evaluator_matches_validator(draft202012_prefix, ([1], [1, "x"], [1, 2]), Dialect.DRAFT202012)
+    assert_concrete_evaluator_matches_validator(
+        draft7_tuple, ([1], [1, "x"], [1, 2]), Dialect.DRAFT7
+    )
+    assert_concrete_evaluator_matches_validator(
+        draft202012_prefix, ([1], [1, "x"], [1, 2]), Dialect.DRAFT202012
+    )
     assert_proved({"const": [1, "x"]}, draft7_tuple, Dialect.DRAFT7, monkeypatch)
-    assert_proved({"const": [1, "x"]}, draft202012_prefix, Dialect.DRAFT202012, monkeypatch)
+    assert_proved(
+        {"const": [1, "x"]}, draft202012_prefix, Dialect.DRAFT202012, monkeypatch
+    )
 
     unevaluated = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -667,10 +1196,14 @@ def test_keyword_array_tuple_prefix_and_unevaluated_items_boundaries(monkeypatch
         "unevaluatedItems": False,
     }
     assert_proved({"const": [1]}, unevaluated, Dialect.DRAFT202012, monkeypatch)
-    proof = _proof_without_generic_search_path({"const": [1, "x"]}, unevaluated, Dialect.DRAFT202012, monkeypatch)
+    proof = _proof_without_generic_search_path(
+        {"const": [1, "x"]}, unevaluated, Dialect.DRAFT202012, monkeypatch
+    )
 
     assert proof.status == "proved_false", proof
-    assert_witness_validates({"const": [1, "x"]}, unevaluated, Dialect.DRAFT202012, proof.witness)
+    assert_witness_validates(
+        {"const": [1, "x"]}, unevaluated, Dialect.DRAFT202012, proof.witness
+    )
 
 
 def test_keyword_ambiguous_unevaluated_branch_effect_stays_unsupported_with_modern_kernel():
@@ -733,9 +1266,16 @@ def _proof_without_generic_search_path(lhs, rhs, dialect, monkeypatch):
     )
 
     def fail_unexpected_proof_path(*_args, **_kwargs):
-        raise AssertionError("keyword exact fragment must not use constructive proof path")
+        raise AssertionError(
+            "keyword exact fragment must not use constructive proof path"
+        )
 
-    monkeypatch.setattr(engine.context, "unexpected_proof_path", fail_unexpected_proof_path, raising=False)
+    monkeypatch.setattr(
+        engine.context,
+        "unexpected_proof_path",
+        fail_unexpected_proof_path,
+        raising=False,
+    )
     return engine.is_subschema(lhs, rhs)
 
 

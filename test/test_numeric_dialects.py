@@ -45,7 +45,9 @@ class TestDraft6NumericBounds(unittest.TestCase):
 
         self.assertTrue(is_equivalent(exclusive, next_integer, dialect=Dialect.DRAFT6))
 
-    def test_integer_inclusive_boundary_is_not_subschema_of_number_exclusive_minimum(self):
+    def test_integer_inclusive_boundary_is_not_subschema_of_number_exclusive_minimum(
+        self,
+    ):
         lhs = {"type": "integer", "minimum": 0}
         rhs = {
             "$schema": DRAFT6_SCHEMA,
@@ -63,9 +65,13 @@ class TestDraft6NumericBounds(unittest.TestCase):
         }
         previous_integer = {"type": "integer", "maximum": 4}
 
-        self.assertTrue(is_equivalent(exclusive, previous_integer, dialect=Dialect.DRAFT6))
+        self.assertTrue(
+            is_equivalent(exclusive, previous_integer, dialect=Dialect.DRAFT6)
+        )
 
-    def test_integer_inclusive_boundary_is_not_subschema_of_number_exclusive_maximum(self):
+    def test_integer_inclusive_boundary_is_not_subschema_of_number_exclusive_maximum(
+        self,
+    ):
         lhs = {"type": "integer", "maximum": 0}
         rhs = {
             "$schema": DRAFT6_SCHEMA,
@@ -84,7 +90,9 @@ class TestDraft6NumericBounds(unittest.TestCase):
         }
 
         self.assertTrue(
-            is_equivalent(schema, {"type": "number", "minimum": 5}, dialect=Dialect.DRAFT6)
+            is_equivalent(
+                schema, {"type": "number", "minimum": 5}, dialect=Dialect.DRAFT6
+            )
         )
 
     def test_weaker_exclusive_maximum_does_not_override_maximum(self):
@@ -96,7 +104,9 @@ class TestDraft6NumericBounds(unittest.TestCase):
         }
 
         self.assertTrue(
-            is_equivalent(schema, {"type": "number", "maximum": 5}, dialect=Dialect.DRAFT6)
+            is_equivalent(
+                schema, {"type": "number", "maximum": 5}, dialect=Dialect.DRAFT6
+            )
         )
 
     def test_number_enum_keeps_integer_values(self):
@@ -105,7 +115,7 @@ class TestDraft6NumericBounds(unittest.TestCase):
         with self.subTest("integer JSON values are numbers"):
             self.assertTrue(is_subschema(schema, {"type": "number"}))
 
-        with self.subTest("integer JSON values remain integer-compatible"):
+        with self.subTest("integer JSON values remain valid integers"):
             self.assertTrue(is_subschema(schema, {"type": "integer"}))
 
     def test_draft6_integer_enum_accepts_zero_fraction_number(self):
@@ -119,4 +129,6 @@ class TestDraft6NumericBounds(unittest.TestCase):
             self.assertTrue(is_subschema(schema, {"type": "integer"}))
 
         with self.subTest("the enum is equivalent to the same const value"):
-            self.assertTrue(is_equivalent(schema, {"const": 1.0}, dialect=Dialect.DRAFT6))
+            self.assertTrue(
+                is_equivalent(schema, {"const": 1.0}, dialect=Dialect.DRAFT6)
+            )

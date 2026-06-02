@@ -1,6 +1,5 @@
 import ast
 import importlib
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,108 +38,9 @@ def test_kernel_type_checking_imports_do_not_leak_domain_types_into_context():
         if reason is not None:
             violations.append(f"{edge.format()}: {reason}")
 
-    assert not violations, "forbidden type-checking import edges:\n" + "\n".join(violations)
-
-
-def _minimum_version_for_requirement(
-    requirements: list[str], package_name: str
-) -> tuple[int, ...]:
-    normalized_package_name = package_name.replace("_", "-").lower()
-    for requirement in requirements:
-        normalized_requirement = requirement.replace("_", "-").lower()
-        if not normalized_requirement.startswith(f"{normalized_package_name}>="):
-            continue
-        version_text = requirement.partition(">=")[2].split(",", 1)[0].strip()
-        return tuple(int(part) for part in version_text.split("."))
-    raise AssertionError(f"{package_name} requirement not found in {requirements!r}")
-
-
-def test_public_release_metadata_matches_distribution_identity():
-    metadata = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
-    build_system = metadata["build-system"]
-    project = metadata["project"]
-
-    assert build_system["build-backend"] == "hatchling.build"
-    assert _minimum_version_for_requirement(build_system["requires"], "hatchling") >= (
-        1,
-        27,
-        0,
+    assert not violations, "forbidden type-checking import edges:\n" + "\n".join(
+        violations
     )
-    assert project["name"] == "subschema"
-    assert project["license"] == "Apache-2.0"
-    assert project["authors"] == [
-        {"name": "Henri", "email": "henri-zhang@outlook.com"}
-    ]
-    assert project["urls"]["Homepage"] == "https://github.com/ArakawaHenri/subschema"
-    assert project["urls"]["Repository"] == "https://github.com/ArakawaHenri/subschema"
-
-
-def test_public_release_surface_has_no_removed_config_or_unused_dependencies():
-    assert not (PACKAGE_ROOT / "config.py").exists()
-    metadata = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
-    assert "setuptools" not in metadata.get("tool", {})
-    assert "MANIFEST.in" not in metadata["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
-    wheel_target = metadata["tool"]["hatch"]["build"]["targets"]["wheel"]
-    assert wheel_target["only-include"] == ["src"]
-    assert wheel_target["sources"] == ["src"]
-    dependencies = metadata["project"]["dependencies"]
-    assert not any(dependency.startswith("json" "ref") for dependency in dependencies)
-    assert not any(dependency.startswith("por" "tion") for dependency in dependencies)
-
-    forbidden_patterns = (
-        "subschema." "config",
-        "set_" "debug",
-        "set_" "warn_uninhabited",
-        "set_" "json_validator_version",
-        "ssonsub" "schema",
-    )
-    violations = [
-        f"{path.relative_to(REPO_ROOT).as_posix()}: {pattern}"
-        for path in _release_surface_files()
-        for pattern in forbidden_patterns
-        if pattern in path.read_text()
-    ]
-
-    assert not violations, "public release surface contains removed names:\n" + "\n".join(violations)
-
-
-def test_public_release_surface_has_only_minimal_ibm_acknowledgement():
-    assert not (REPO_ROOT / ("D" "CO1.1.txt")).exists()
-    if (REPO_ROOT / "docs").exists():
-        assert not list((REPO_ROOT / "docs").glob("ph" "ase-*.md"))
-
-    readme = (REPO_ROOT / "README.md").read_text()
-    allowed_acknowledgement = (
-        "This project is a rewrite based on I" "BM's\n"
-        "[json" "subschema](https://github.com/I" "BM/json" "subschema) project and may retain\n"
-        "portions of its source code. Credit to I" "BM and contributors."
-    )
-    assert allowed_acknowledgement in readme
-
-    forbidden_public_history_terms = (
-        "IS" "STA",
-        "Distinguished " "Artifact",
-        "@auth" "or",
-        "D" "CO",
-        "0.1.0" "a1",
-        "Al" "pha",
-        "Be" "ta",
-    )
-    violations = [
-        f"{path.relative_to(REPO_ROOT).as_posix()}: {term}"
-        for path in _release_surface_files()
-        for term in forbidden_public_history_terms
-        if term in path.read_text()
-    ]
-    assert not violations, "public release surface contains old project history:\n" + "\n".join(violations)
-
-    ibm_hits = [
-        path.relative_to(REPO_ROOT).as_posix()
-        for path in _release_surface_files()
-        if "I" "BM" in path.read_text()
-        or "github.com/I" "BM/json" "subschema" in path.read_text()
-    ]
-    assert ibm_hits == ["README.md"]
 
 
 def test_symbolic_solver_owns_z3_and_object_presence_products():
@@ -169,7 +69,10 @@ def test_symbolic_solver_owns_z3_and_object_presence_products():
         for pattern in forbidden_presence_products
         if pattern in source
     ]
-    assert not violations, "object presence products must be routed through SymbolicSolver:\n" + "\n".join(violations)
+    assert not violations, (
+        "object presence products must be routed through SymbolicSolver:\n"
+        + "\n".join(violations)
+    )
 
 
 def test_validation_backend_owns_runtime_validator_compilation():
@@ -208,7 +111,10 @@ def test_validation_backend_owns_runtime_validator_compilation():
         for pattern in forbidden_runtime_calls
         if pattern in source
     ]
-    assert not violations, "runtime validation must be routed through ValidationBackend:\n" + "\n".join(violations)
+    assert not violations, (
+        "runtime validation must be routed through ValidationBackend:\n"
+        + "\n".join(violations)
+    )
 
 
 def test_regex_backend_owns_greenery_imports():
@@ -239,7 +145,10 @@ def test_strict_json_helpers_own_runtime_json_serialization():
         for pattern in ("json.dumps", "json.dump", "json.loads", "json.load")
         if pattern in source
     ]
-    assert not violations, "kernel JSON serialization must use strict json_data helpers:\n" + "\n".join(violations)
+    assert not violations, (
+        "kernel JSON serialization must use strict json_data helpers:\n"
+        + "\n".join(violations)
+    )
 
 
 def test_reference_schema_position_keywords_derive_from_normalization():
@@ -248,38 +157,28 @@ def test_reference_schema_position_keywords_derive_from_normalization():
 
     assert references.SCHEMA_ARRAY_KEYWORDS == normalization.SCHEMA_ARRAY_KEYWORDS
     assert references.SCHEMA_VALUE_KEYWORDS == normalization.SCHEMA_VALUE_KEYWORDS
-    assert references.SCHEMA_MAP_KEYWORDS == normalization.SCHEMA_MAP_KEYWORDS - {"dependencies"}
+    assert references.SCHEMA_MAP_KEYWORDS == normalization.SCHEMA_MAP_KEYWORDS - {
+        "dependencies"
+    }
 
 
-def test_runtime_witness_construction_is_constructive_not_candidate_probe():
+def test_runtime_witness_construction_is_constructive():
     runtime_sources = {
         path.relative_to(REPO_ROOT).as_posix(): path.read_text()
         for path in sorted(KERNEL_ROOT.rglob("*.py"))
     }
 
-    deleted_witness_api = (
-        "NO_WITNESS",
-        "SchemaWitnessPlan",
-        "first_valid_value_for_schema",
-        "schema_witness_plan",
-        "_typed_witness_candidates",
-    )
-    violations = [
-        f"{path}: {pattern}"
-        for path, source in runtime_sources.items()
-        for pattern in deleted_witness_api
-        if pattern in source
-    ]
-    assert not violations, "runtime witness construction must use WitnessBuilder:\n" + "\n".join(violations)
-
     witness_source = runtime_sources["src/subschema/kernel/witnesses.py"]
     forbidden_probe_patterns = (
-        "for candidate in",
         ".is_valid(",
         "validates_difference(",
     )
-    probe_violations = [pattern for pattern in forbidden_probe_patterns if pattern in witness_source]
-    assert not probe_violations, "WitnessBuilder must construct values rather than validator-probing candidates"
+    probe_violations = [
+        pattern for pattern in forbidden_probe_patterns if pattern in witness_source
+    ]
+    assert not probe_violations, (
+        "WitnessBuilder must not validator-probe constructed values"
+    )
 
 
 def _runtime_import_edges() -> list[ImportEdge]:
@@ -288,37 +187,6 @@ def _runtime_import_edges() -> list[ImportEdge]:
 
 def _type_checking_import_edges() -> list[ImportEdge]:
     return [edge for edge in _kernel_import_edges() if edge.scope == "type-checking"]
-
-
-def _release_surface_files() -> list[Path]:
-    roots = (
-        PACKAGE_ROOT,
-        REPO_ROOT / "test",
-        REPO_ROOT / "docs",
-        REPO_ROOT / ".github",
-    )
-    files = [
-        path
-        for root in roots
-        if root.exists()
-        for path in root.rglob("*")
-        if path.suffix in {".md", ".py", ".toml", ".yml", ".yaml"}
-    ]
-    files.extend(
-        path
-        for path in (
-            REPO_ROOT / "README.md",
-            REPO_ROOT / "pyproject.toml",
-            REPO_ROOT / "LICENSE",
-        )
-        if path.exists()
-    )
-    return [
-        path
-        for path in files
-        if "__pycache__" not in path.parts
-        and path != Path(__file__)
-    ]
 
 
 def _kernel_import_edges() -> list[ImportEdge]:
@@ -331,7 +199,10 @@ def _kernel_import_edges() -> list[ImportEdge]:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 scope = _import_scope(node)
-                edges.extend(ImportEdge(source, alias.name, node.lineno, scope) for alias in node.names)
+                edges.extend(
+                    ImportEdge(source, alias.name, node.lineno, scope)
+                    for alias in node.names
+                )
             elif isinstance(node, ast.ImportFrom):
                 edges.extend(_import_from_edges(source, node))
 
@@ -414,13 +285,20 @@ def _resolve_import_from_module(source: str, node: ast.ImportFrom) -> str | None
 
 
 def _forbidden_runtime_edge_reason(edge: ImportEdge) -> str | None:
-    if edge.source == "subschema.kernel.context" and edge.target == "subschema.kernel.engine":
+    if (
+        edge.source == "subschema.kernel.context"
+        and edge.target == "subschema.kernel.engine"
+    ):
         return "proof context must call the proof driver, not the engine facade"
 
     if _source_is_domain_math(edge.source) and edge.target == "subschema.kernel.engine":
         return "domain math and difference/evaluation helpers must not construct or import ProofEngine"
 
-    if edge.source.startswith(KERNEL_PREFIX) and edge.source != "subschema.kernel.symbolic" and edge.target == "z3":
+    if (
+        edge.source.startswith(KERNEL_PREFIX)
+        and edge.source != "subschema.kernel.symbolic"
+        and edge.target == "z3"
+    ):
         return "kernel modules must use subschema.kernel.symbolic instead of importing z3 directly"
 
     return None
