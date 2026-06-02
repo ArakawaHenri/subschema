@@ -59,6 +59,11 @@ def _schemas_are_disjoint(
         return ProofResult.true()
     if string_language_fragments_are_disjoint(lhs, rhs):
         return ProofResult.true()
+    closed_object_disjointness = _closed_finite_object_disjointness(
+        lhs, rhs, context, depth=depth
+    )
+    if closed_object_disjointness.status != "unsupported":
+        return closed_object_disjointness
     object_property_conflict = _object_required_property_conflict(
         lhs, rhs, context, depth=depth
     )
@@ -79,6 +84,77 @@ def _schemas_are_disjoint(
             return ProofResult.false(intersection_witness.witness)
 
     return ProofResult.unsupported("schema disjointness could not be proven exactly")
+
+
+def _closed_finite_object_disjointness(
+    lhs: Any,
+    rhs: Any,
+    context: ProofContext,
+    *,
+    depth: int,
+) -> ProofResult:
+    if not isinstance(lhs, dict) or not isinstance(rhs, dict):
+        return ProofResult.unsupported(
+            "closed object disjointness requires object schemas"
+        )
+
+    shared_types = type_overapproximation_for_schema(
+        lhs
+    ) & type_overapproximation_for_schema(rhs)
+    if shared_types != {"object"}:
+        return ProofResult.unsupported(
+            "closed object disjointness requires object-only intersection"
+        )
+
+    from subschema.kernel.domains.objects import (
+        closed_object_properties_shape_for_schema,
+    )
+
+    lhs_shape = closed_object_properties_shape_for_schema(lhs)
+    rhs_shape = closed_object_properties_shape_for_schema(rhs)
+    if (
+        lhs_shape is None
+        or rhs_shape is None
+        or not _is_finite_closed_object_shape(lhs_shape)
+        or not _is_finite_closed_object_shape(rhs_shape)
+    ):
+        return ProofResult.unsupported(
+            "closed object disjointness requires finite closed-property shapes"
+        )
+
+    intersection = lhs_shape.intersect(rhs_shape)
+    if not intersection.object_is_inhabited():
+        return ProofResult.true()
+
+    for name in sorted(intersection.required):
+        value_disjoint = _schemas_are_disjoint(
+            lhs_shape.property_schema_for(name),
+            rhs_shape.property_schema_for(name),
+            context,
+            depth=depth + 1,
+        )
+        if value_disjoint.status == "proved_true":
+            return ProofResult.true()
+        if value_disjoint.status == "resource_exhausted":
+            return value_disjoint
+
+    witness = intersection.object_witness(context.dialect)
+    if witness is not None:
+        backend = validation_backend_for(context.dialect)
+        if backend.is_valid(lhs, witness) and backend.is_valid(rhs, witness):
+            return ProofResult.false(witness)
+
+    return ProofResult.unsupported(
+        "closed object disjointness could not be proven exactly"
+    )
+
+
+def _is_finite_closed_object_shape(shape: Any) -> bool:
+    return (
+        shape.has_finite_keyspace
+        and not shape.accepts_non_object
+        and not shape.pattern_property_schemas
+    )
 
 
 def _object_required_property_conflict(
