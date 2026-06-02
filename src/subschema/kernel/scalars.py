@@ -272,15 +272,15 @@ def typed_scalar_difference_plan_from_constraints(
             if isinstance(string_subset, ProofResult):
                 return string_subset
             if not string_subset:
-                witness = lhs_string.shape.witness_not_in(rhs_string.shape)
-                if isinstance(witness, ProofResult):
-                    return witness
-                if witness is None:
+                string_witness = lhs_string.shape.witness_not_in(rhs_string.shape)
+                if isinstance(string_witness, ProofResult):
+                    return string_witness
+                if string_witness is None:
                     return ScalarDifferencePlan.unsupported(
                         "SAT typed-scalar string witness could not be constructed"
                     )
                 return ScalarDifferencePlan.counterexample(
-                    witness,
+                    string_witness,
                     (
                         "SAT typed-scalar string witness was rejected by concrete "
                         "validation"
@@ -292,7 +292,7 @@ def typed_scalar_difference_plan_from_constraints(
 
 def numeric_difference_plan(
     lhs: LogicalSchemaIR, rhs: LogicalSchemaIR
-) -> ScalarDifferencePlan:
+) -> ScalarDifferencePlan | ProofResult:
     return numeric_difference_plan_from_constraints(
         lhs.numeric_constraint, rhs.numeric_constraint
     )
@@ -628,7 +628,7 @@ def _finite_values_for_type_constraint(
     if lhs_type is None:
         return None
     atoms = lhs_type.atoms
-    values = []
+    values: list[Any] = []
     if "null" in atoms:
         values.append(None)
     if "boolean" in atoms:
@@ -639,7 +639,7 @@ def _finite_values_for_type_constraint(
 
 
 def _dedupe_json_values(values: tuple[Any, ...]) -> tuple[Any, ...]:
-    deduped = []
+    deduped: list[Any] = []
     for value in values:
         if any(_json_values_equal(value, existing) for existing in deduped):
             continue

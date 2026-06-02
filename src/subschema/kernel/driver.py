@@ -11,7 +11,12 @@ from subschema.dialects import (
     validate_supported_keywords,
 )
 from subschema.exceptions import UnsupportedKeywordError
-from subschema.kernel.contracts import ProofResult, ProofSide, UnsupportedDiagnostic
+from subschema.kernel.contracts import (
+    ProofResult,
+    ProofSide,
+    UnsupportedCategory,
+    UnsupportedDiagnostic,
+)
 from subschema.kernel.json_data import ensure_json_value
 from subschema.kernel.references import inline_static_refs_for_proof
 from subschema.kernel.validation import validate_schema_for_dialect
@@ -68,7 +73,7 @@ def _diagnostic_from_unsupported_keyword(
 ) -> UnsupportedDiagnostic:
     keyword = str(err.keyword)
     path = _unsupported_keyword_path(err)
-    category = "dialect-keyword"
+    category: UnsupportedCategory = "dialect-keyword"
     reason = str(err)
 
     if keyword == "$vocabulary":

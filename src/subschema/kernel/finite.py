@@ -7,7 +7,7 @@ from __future__ import annotations
 from fractions import Fraction
 from functools import lru_cache
 from itertools import product
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from subschema.dialects import (
     Dialect,
@@ -224,7 +224,7 @@ def _finite_values_for_type_keyword(type_keyword: Any) -> list[Any] | None:
         return None
     if not atoms <= {"boolean", "null"}:
         return None
-    values = []
+    values: list[Any] = []
     if "boolean" in atoms:
         values.extend((False, True))
     if "null" in atoms:
@@ -626,7 +626,7 @@ def _numeric_atom_finite_values(
         return ()
     finite_values = normalized.finite_values(max_values=max_values)
     if finite_values is not None:
-        return finite_values
+        return cast(tuple[Fraction, ...], finite_values)
     if (
         normalized.lower is not None
         and normalized.upper is not None

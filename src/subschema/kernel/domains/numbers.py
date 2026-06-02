@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 from subschema.dialects import Dialect
 from subschema.kernel.contracts import ProofResult
@@ -64,10 +64,10 @@ class NumericDomainTactic:
                 "schema is outside the exact numeric fragment"
             )
         if lhs_shape.accepts_non_numeric and not rhs_shape.accepts_non_numeric:
-            witness = ""
+            non_numeric_witness = ""
             backend = validation_backend_for(self.dialect)
-            if backend.validates_difference(lhs, rhs, witness):
-                return ProofResult.false(witness)
+            if backend.validates_difference(lhs, rhs, non_numeric_witness):
+                return ProofResult.false(non_numeric_witness)
             return ProofResult.unsupported(
                 "numeric non-number counterexample was rejected by concrete validation"
             )
@@ -80,15 +80,15 @@ class NumericDomainTactic:
                 "numeric union coverage could not be proven exactly"
             )
 
-        witness = lhs_shape.witness_not_in(rhs_shape)
-        if witness is None:
+        numeric_witness = lhs_shape.witness_not_in(rhs_shape)
+        if numeric_witness is None:
             return ProofResult.unsupported(
                 "numeric counterexample could not be constructed"
             )
 
         backend = validation_backend_for(self.dialect)
-        if backend.validates_difference(lhs, rhs, witness):
-            return ProofResult.false(witness)
+        if backend.validates_difference(lhs, rhs, numeric_witness):
+            return ProofResult.false(numeric_witness)
         return ProofResult.unsupported(
             "numeric counterexample was rejected by concrete validation"
         )
@@ -515,10 +515,10 @@ def _local_numeric_shape(
     else:
         return NumericShape((), accepts_non_numeric=accepts_non_numeric)
 
-    atom = _apply_numeric_keywords(atom, schema, dialect)
-    if atom is None:
+    applied_atom = _apply_numeric_keywords(atom, schema, dialect)
+    if applied_atom is None:
         return None
-    return NumericShape((atom,), accepts_non_numeric=accepts_non_numeric)
+    return NumericShape((applied_atom,), accepts_non_numeric=accepts_non_numeric)
 
 
 def _apply_numeric_keywords(
@@ -704,7 +704,7 @@ def _last_multiple_at_or_below(value: Fraction, multiple_of: Fraction) -> Fracti
     return multiple_of * math.floor(value / multiple_of)
 
 
-def _is_number(value: Any) -> bool:
+def _is_number(value: Any) -> TypeGuard[int | float]:
     return isinstance(value, int | float) and not isinstance(value, bool)
 
 

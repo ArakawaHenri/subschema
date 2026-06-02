@@ -9,7 +9,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import product
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 from subschema.dialects import Dialect
 from subschema.kernel.applicators import (
@@ -23,6 +23,7 @@ from subschema.kernel.applicators import (
     ApplicatorNnfBranchProduct,
     ApplicatorNnfFragment,
     ApplicatorNnfSchemaProduct,
+    ApplicatorOneOfBranchProduct,
     ApplicatorOneOfCardinalityPlan,
     ApplicatorOneOfDisjointnessProduct,
     ApplicatorPlanSet,
@@ -280,7 +281,7 @@ def _proof_after_rule_class_guard(
 
 
 def difference_rules() -> tuple[DifferenceRule, ...]:
-    return (
+    rules = (
         _rule(
             "trivial-difference",
             _prove_trivial_difference,
@@ -527,6 +528,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
             budget_use="domain",
         ),
     )
+    return cast(tuple[DifferenceRule, ...], rules)
 
 
 def difference_rule_specs() -> tuple[DifferenceRuleSpec, ...]:
@@ -1040,14 +1042,16 @@ def _prove_conditional_difference(
             validated.reason or product.witness_rejected_reason
         )
 
-    choice = conditional_final_proof_choice(
+    final_choice = conditional_final_proof_choice(
         base_proof.status, has_unsupported_branch=unsupported is not None
     )
-    if choice == "proved_true":
+    if final_choice == "proved_true":
         return ProofResult.true()
-    if choice == "base":
+    if final_choice == "base":
         return base_proof
-    return unsupported
+    return unsupported or ProofResult.unsupported(
+        "SAT conditional proof had no supported branch result"
+    )
 
 
 def _prove_rhs_conditional_product_empty(
@@ -1408,14 +1412,16 @@ def _prove_rhs_one_of_cardinality_difference(
         problem, one_of_disjointness_expansion_budget(plan)
     ):
         return proof
-    for product in _one_of_disjointness_products(problem, plan, covered_index):
-        disjoint = _prove_rhs_one_of_disjointness_product(problem, product)
+    for disjoint_product in _one_of_disjointness_products(problem, plan, covered_index):
+        disjoint = _prove_rhs_one_of_disjointness_product(problem, disjoint_product)
         choice = one_of_disjointness_proof_choice(disjoint.status)
         if choice == "proved_true":
             continue
         if choice == "validate_witness" and disjoint.witness is not None:
             return _validated_false(
-                problem, disjoint.witness, product.witness_rejected_reason
+                problem,
+                disjoint.witness,
+                disjoint_product.witness_rejected_reason,
             )
         return disjoint
     return ProofResult.true()
@@ -2154,22 +2160,26 @@ def _prove_array_contains_difference(problem: DifferenceProblem) -> ProofResult:
         return ProofResult.unsupported(plan.reason)
     if plan.status == "proved_true":
         if model.has_rhs_item_value_constraints():
-            witness = _array_contains_rhs_item_value_witness(problem, model)
-            if witness is not None:
-                return witness
+            rhs_item_value_proof = _array_contains_rhs_item_value_witness(
+                problem, model
+            )
+            if rhs_item_value_proof is not None:
+                return rhs_item_value_proof
             return ProofResult.unsupported(
                 "SAT array contains difference cannot prove RHS item value constraints"
             )
         return ProofResult.true()
 
-    witness = plan.witness
+    contains_witness = plan.witness
     if plan.witness_plan is not None:
-        witness = materialize_array_witness_plan(plan.witness_plan, problem.dialect)
-    if witness is None:
+        contains_witness = materialize_array_witness_plan(
+            plan.witness_plan, problem.dialect
+        )
+    if contains_witness is None:
         return ProofResult.unsupported(
             plan.reason or "SAT array contains witness could not be constructed"
         )
-    return _validated_false(problem, witness, plan.rejected_reason)
+    return _validated_false(problem, contains_witness, plan.rejected_reason)
 
 
 def _array_contains_rhs_item_value_witness(

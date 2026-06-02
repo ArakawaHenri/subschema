@@ -56,14 +56,16 @@ from subschema.kernel.evaluation import (
     evaluation_frontier_for_schema,
 )
 from subschema.kernel.finite import finite_values_for_schema
+from subschema.kernel.normalization import (
+    SCHEMA_ARRAY_KEYWORDS,
+    SCHEMA_MAP_KEYWORDS,
+    SCHEMA_VALUE_KEYWORDS,
+)
 from subschema.kernel.references import ResourceGraph
 from subschema.kernel.references import SchemaIR as ResourceSchemaIR
 from subschema.kernel.regex import RegexLanguage
 from subschema.kernel.schemas import (
     HARD_KEYWORDS,
-    SCHEMA_ARRAY_KEYWORDS,
-    SCHEMA_MAP_KEYWORDS,
-    SCHEMA_VALUE_KEYWORDS,
 )
 
 IRAssertionKind = Literal[
@@ -275,23 +277,24 @@ class DomainFacts:
         return None if constraint is None else constraint.shape
 
     def assertions(self) -> tuple[AssertionAtom, ...]:
+        assertion_values: tuple[tuple[IRAssertionKind, Any | None], ...] = (
+            ("finite", self.finite_constraint),
+            ("type", self.type_constraint),
+            ("numeric", self.numeric_constraint),
+            ("string-length", self.string_length_constraint),
+            ("string-language", self.string_language_constraint),
+            ("array-length-lhs", self.array_length_lhs_constraint),
+            ("array-length-rhs", self.array_length_rhs_constraint),
+            ("array-uniqueness-lhs", self.array_uniqueness_lhs_constraint),
+            ("array-uniqueness-rhs", self.array_uniqueness_rhs_constraint),
+            ("object-property-count", self.object_property_count_constraint),
+            ("object-property-values", self.object_property_values_constraint),
+            ("object-closed-properties", self.object_closed_properties_constraint),
+            ("object-property-names", self.object_property_names_constraint),
+        )
         return tuple(
             AssertionAtom(kind, value)
-            for kind, value in (
-                ("finite", self.finite_constraint),
-                ("type", self.type_constraint),
-                ("numeric", self.numeric_constraint),
-                ("string-length", self.string_length_constraint),
-                ("string-language", self.string_language_constraint),
-                ("array-length-lhs", self.array_length_lhs_constraint),
-                ("array-length-rhs", self.array_length_rhs_constraint),
-                ("array-uniqueness-lhs", self.array_uniqueness_lhs_constraint),
-                ("array-uniqueness-rhs", self.array_uniqueness_rhs_constraint),
-                ("object-property-count", self.object_property_count_constraint),
-                ("object-property-values", self.object_property_values_constraint),
-                ("object-closed-properties", self.object_closed_properties_constraint),
-                ("object-property-names", self.object_property_names_constraint),
-            )
+            for kind, value in assertion_values
             if value is not None
         )
 
@@ -541,8 +544,13 @@ class SchemaIRCompiler:
         if depth > 16 or not isinstance(schema, dict):
             return ()
 
-        applicators = []
-        for keyword in ("allOf", "anyOf", "oneOf"):
+        applicators: list[ApplicatorNode] = []
+        schema_array_applicators: tuple[ApplicatorKind, ...] = (
+            "allOf",
+            "anyOf",
+            "oneOf",
+        )
+        for keyword in schema_array_applicators:
             value = schema.get(keyword)
             if isinstance(value, list):
                 applicators.append(
@@ -560,7 +568,13 @@ class SchemaIRCompiler:
                     )
                 )
 
-        for keyword in ("not", "if", "then", "else"):
+        schema_value_applicators: tuple[ApplicatorKind, ...] = (
+            "not",
+            "if",
+            "then",
+            "else",
+        )
+        for keyword in schema_value_applicators:
             value = schema.get(keyword)
             if isinstance(value, bool | dict):
                 applicators.append(

@@ -217,7 +217,7 @@ class WitnessBuilder:
         if not isinstance(prefix, list):
             prefix = []
 
-        values = []
+        values: list[Any] = []
         for index in range(minimum):
             item_schema = (
                 contains
@@ -286,10 +286,10 @@ class WitnessBuilder:
             )
 
         witness = {}
-        for name in required_names:
-            value = self._build(properties.get(name, True), depth=depth + 1)
+        for required_name in required_names:
+            value = self._build(properties.get(required_name, True), depth=depth + 1)
             if value.status == "witness":
-                witness[name] = value.witness
+                witness[required_name] = value.witness
                 continue
             return value
         target_size = max(len(witness), minimum)
@@ -309,20 +309,22 @@ class WitnessBuilder:
                 )
             )
         while len(witness) < target_size:
-            name = self._next_object_witness_name(
+            generated_name = self._next_object_witness_name(
                 schema, properties, frozenset(witness)
             )
-            if name is None:
+            if generated_name is None:
                 return WitnessBuildResult.unsupported(
                     "object witness could not satisfy keyspace constraints"
                 )
             value = self._build(
-                _object_property_schema_for_witness(schema, properties, name),
+                _object_property_schema_for_witness(
+                    schema, properties, generated_name
+                ),
                 depth=depth + 1,
             )
             if value.status != "witness":
                 return value
-            witness[name] = value.witness
+            witness[generated_name] = value.witness
         return WitnessBuildResult.concrete(witness)
 
     def _next_object_witness_name(
@@ -333,20 +335,20 @@ class WitnessBuilder:
     ) -> str | None:
         additional = schema.get("additionalProperties", True)
         if additional is False:
-            for name in sorted(properties):
-                if name not in used_names:
-                    return name
+            for property_name in sorted(properties):
+                if property_name not in used_names:
+                    return property_name
             return None
         property_names = schema.get("propertyNames", True)
         if isinstance(property_names, dict):
-            name = self._property_names_witness(property_names)
-            if name is not None and name not in used_names:
-                return name
+            candidate_name = self._property_names_witness(property_names)
+            if candidate_name is not None and candidate_name not in used_names:
+                return candidate_name
         index = 0
         while True:
-            name = f"k{index}"
-            if name not in used_names:
-                return name
+            generated_name = f"k{index}"
+            if generated_name not in used_names:
+                return generated_name
             index += 1
 
     def _property_names_witness(self, schema: dict[str, Any]) -> str | None:

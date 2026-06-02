@@ -5,7 +5,7 @@ Proof context, policy, and budget state for the kernel.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import subschema.kernel.driver as proof_driver
 from subschema.dialects import Dialect
@@ -16,6 +16,9 @@ from subschema.kernel.contracts import (
     ProofWorkMeter,
 )
 from subschema.kernel.values import stable_key
+
+if TYPE_CHECKING:
+    from subschema.kernel.evaluation import EvaluationExpression
 
 _EXPENSIVE_PROOF_WORK_LABELS: dict[ExpensiveProofKind, str] = {
     "array_product": "array product",
@@ -33,7 +36,7 @@ class ProofContext:
     dialect: Dialect
     options: ProofOptions = field(default_factory=ProofOptions)
     subproof_cache: dict[tuple[Any, ...], ProofResult] = field(default_factory=dict)
-    evaluation_expression_cache: dict[tuple[Any, ...], Any] = field(
+    evaluation_expression_cache: dict[tuple[Any, ...], EvaluationExpression] = field(
         default_factory=dict
     )
     work_meter: ProofWorkMeter = field(init=False)

@@ -88,6 +88,8 @@ class ProjectionEngine:
             return None
 
         candidates = lhs_values if lhs_values is not None else rhs_values
+        if candidates is None:
+            return None
         backend = validation_backend_for(self.dialect)
         values = [
             value

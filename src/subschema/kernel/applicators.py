@@ -539,7 +539,8 @@ def applicator_formula_fragments(
 ) -> tuple[ApplicatorFormulaFragment, ...]:
     fragments: list[ApplicatorFormulaFragment] = []
 
-    for kind in ("anyOf", "oneOf", "allOf"):
+    positive_kinds: tuple[ApplicatorKind, ...] = ("anyOf", "oneOf", "allOf")
+    for kind in positive_kinds:
         fragment = _pure_applicator_formula(formula.positive_lhs, kind)
         if fragment is not None:
             fragments.append(fragment)
@@ -548,7 +549,7 @@ def applicator_formula_fragments(
     if rhs_not is not None:
         fragments.append(rhs_not)
 
-    for kind in ("anyOf", "oneOf", "allOf"):
+    for kind in positive_kinds:
         fragment = _pure_applicator_formula(formula.negative_rhs, kind)
         if fragment is not None:
             fragments.append(fragment)
@@ -1537,7 +1538,11 @@ def _reason_for_pure_applicator(fragment: ApplicatorFormulaFragment) -> str:
 
 
 def _positive_nnf_operator(kind: ApplicatorKind) -> ApplicatorNnfOperator:
-    if kind in {"allOf", "anyOf", "oneOf"}:
+    if kind == "allOf":
+        return "allOf"
+    if kind == "anyOf":
+        return "anyOf"
+    if kind == "oneOf":
         return kind
     return "unsupported"
 

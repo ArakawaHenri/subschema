@@ -34,6 +34,7 @@ from subschema.kernel.domains.types import (
     witness_for_type_atom,
 )
 from subschema.kernel.evaluation import (
+    EvaluatedItemSource,
     EvaluationTraceExpression,
     evaluation_trace_for_source,
 )
@@ -649,7 +650,7 @@ def _constructive_witness_values_for_schema(
 
     numeric = numeric_shape_for_schema(schema, dialect)
     if numeric is not None:
-        values = []
+        values: list[Any] = []
         for atom in numeric.normalized_atoms():
             values.extend(
                 _json_number_from_fraction(fraction)
@@ -1022,6 +1023,13 @@ class ArrayDifferenceModel:
                         )
                     )
                     if contains_obligation is not None:
+                        if self.problem is None:
+                            return (
+                                ArrayUnevaluatedItemsDifferencePlan.unsupported(
+                                    "SAT unevaluatedItems expanded proof requires "
+                                    "a proof context"
+                                )
+                            )
                         exhausted = self.problem.context.spend_work(
                             1,
                             "evaluation trace",
@@ -1555,7 +1563,7 @@ class ArrayDifferenceModel:
         )
         if not found:
             return None
-        overrides = []
+        overrides: list[ArrayWitnessOverride] = []
         index = 0
         while len(overrides) < count:
             if index not in excluded_indexes:
@@ -1752,7 +1760,7 @@ class ArrayDifferenceModel:
                 return ArrayContainsDifferencePlan.unsupported(
                     "SAT array contains max violation witness could not be constructed"
                 )
-            overrides = ()
+            overrides: tuple[ArrayWitnessOverride, ...] = ()
             if self.lhs_contains is not None:
                 contains_overrides = _array_contains_overrides(
                     self.lhs_contains.schema,
@@ -1932,8 +1940,12 @@ class ArrayDifferenceModel:
         skeleton = self.array_witness_skeleton(length, budget=budget)
         if skeleton is None:
             return None, budget >= 0 and length > budget
+        if self.problem is None:
+            return None, False
         overrides = _array_contains_overrides(
-            lhs_contains.schema, self.problem.dialect, length
+            lhs_contains.schema,
+            self.problem.dialect,
+            length,
         )
         if overrides is None:
             return None, False
@@ -2000,7 +2012,7 @@ class ArrayDifferenceModel:
             return None, False
 
         seen = {json_semantic_key(override.value) for override in lhs_overrides}
-        extra_overrides = []
+        extra_overrides: list[ArrayWitnessOverride] = []
         for value in rhs_only_values:
             key = json_semantic_key(value)
             if distinct and key in seen:
@@ -3485,27 +3497,29 @@ class ObjectDifferenceModel:
         names = self.finite_closed_lhs_names()
         if names is None:
             return None
-        obligations = []
+        lhs_closed = self.lhs_closed_properties
+        rhs_closed = self.rhs_closed_properties
+        obligations: list[ClosedObjectValueObligation] = []
         for name in sorted(
             names,
             key=lambda item: (
                 contains_reference_keyword(
-                    self.lhs_closed_properties.property_schema_for(item),
+                    lhs_closed.property_schema_for(item),
                     {"$ref", "$recursiveRef"},
                 )
                 or contains_reference_keyword(
-                    self.rhs_closed_properties.property_schema_for(item),
+                    rhs_closed.property_schema_for(item),
                     {"$ref", "$recursiveRef"},
                 ),
                 item,
             ),
         ):
-            rhs_schema = self.rhs_closed_properties.property_schema_for(name)
+            rhs_schema = rhs_closed.property_schema_for(name)
             if not schema_is_true(rhs_schema):
                 obligations.append(
                     ClosedObjectValueObligation(
                         name,
-                        self.lhs_closed_properties.property_schema_for(name),
+                        lhs_closed.property_schema_for(name),
                         rhs_schema,
                     )
                 )
@@ -4687,7 +4701,10 @@ def _object_key_value_pattern_obligations(
         for text in pattern_texts:
             branch = pattern_map[text]
             branch_pattern = branch if text in included else branch.complement()
-            pattern = pattern.intersection(branch_pattern)
+            intersection = pattern.intersection(branch_pattern)
+            if isinstance(intersection, ProofResult):
+                return None
+            pattern = intersection
             if pattern.is_empty():
                 break
         if pattern.is_empty():
@@ -4697,6 +4714,8 @@ def _object_key_value_pattern_obligations(
         if representative is _EMPTY_KEY_CLASS:
             continue
         if representative is None:
+            return None
+        if not isinstance(representative, str):
             return None
         obligations.append(
             ObjectKeyValueObligation(representative, lhs_schema, rhs_schema)
@@ -4914,13 +4933,13 @@ def _distinct_lhs_object_property_names(
         if language is None:
             continue
         while len(names) < count:
-            name = _object_key_pattern_witness_excluding(
+            key_candidate = _object_key_pattern_witness_excluding(
                 language, set(names) | set(blocked)
             )
-            if not isinstance(name, str):
+            if not isinstance(key_candidate, str):
                 break
             before = len(names)
-            add(name)
+            add(key_candidate)
             if len(names) == before:
                 break
         if len(names) >= count:
@@ -4933,13 +4952,13 @@ def _distinct_lhs_object_property_names(
             else lhs.keyspace_pattern
         )
         while len(names) < count:
-            name = _object_key_pattern_witness_excluding(
+            key_candidate = _object_key_pattern_witness_excluding(
                 language, set(names) | set(blocked)
             )
-            if not isinstance(name, str):
+            if not isinstance(key_candidate, str):
                 break
             before = len(names)
-            add(name)
+            add(key_candidate)
             if len(names) == before:
                 break
 
@@ -4974,7 +4993,8 @@ def _shape_keyspace_restricted_pattern(
 
 
 def _object_key_pattern_witness(pattern: Any) -> str | None:
-    return string_language_witness(pattern)
+    witness = string_language_witness(pattern)
+    return witness if isinstance(witness, str) else None
 
 
 def _object_key_pattern_witness_excluding(
@@ -5158,7 +5178,9 @@ def _rhs_evaluated_item_schema_for_index(
 
 
 def _rhs_evaluates_item_source_index(
-    source: Any, index: int, model: ArrayDifferenceModel | None = None
+    source: EvaluatedItemSource,
+    index: int,
+    model: ArrayDifferenceModel | None = None,
 ) -> bool:
     if source.index is not None:
         return source.index == index
@@ -5170,7 +5192,7 @@ def _rhs_evaluates_item_source_index(
 
 
 def _rhs_contains_source_guaranteed_for_index(
-    source: Any, index: int, model: ArrayDifferenceModel
+    source: EvaluatedItemSource, index: int, model: ArrayDifferenceModel
 ) -> bool:
     if not source.marks_contains_matches or model.problem is None:
         return False
@@ -5200,9 +5222,15 @@ def _first_rhs_unevaluated_item_index_reachable(
 
 
 def _first_unevaluated_item_probe_limit(sources: tuple[Any, ...]) -> int:
-    indexes = [source.index for source in sources if source.index is not None]
+    indexes = [
+        source.index
+        for source in sources
+        if isinstance(source.index, int)
+    ]
     starts = [
-        source.start_index for source in sources if source.start_index is not None
+        source.start_index
+        for source in sources
+        if isinstance(source.start_index, int)
     ]
     return max([*indexes, *starts, 0]) + 2
 
@@ -5359,9 +5387,13 @@ def _unevaluated_property_witness_name(
                     "SAT unevaluatedProperties witness requires supported "
                     "evaluated property regex"
                 )
-            pattern = pattern.intersection(source_pattern.complement())
-            if isinstance(pattern, ProofResult):
-                return pattern
+            source_complement = source_pattern.complement()
+            if isinstance(source_complement, ProofResult):
+                return source_complement
+            intersection = pattern.intersection(source_complement)
+            if isinstance(intersection, ProofResult):
+                return intersection
+            pattern = intersection
             if pattern.is_empty():
                 return None
 
@@ -5962,7 +5994,7 @@ def _object_schema_max_properties_bound(schema: Any, depth: int = 0) -> int | No
         value = schema.get(keyword)
         if not isinstance(value, list):
             continue
-        branch_bounds = []
+        branch_bounds: list[int] = []
         for subschema in value:
             bound = _object_schema_max_properties_bound(subschema, depth + 1)
             if bound is None:

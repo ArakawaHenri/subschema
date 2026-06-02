@@ -324,19 +324,20 @@ class StringLanguageShape:
 
     def intersect(self, other: StringLanguageShape) -> StringLanguageShape:
         return StringLanguageShape(
-            self.pattern.intersection(other.pattern),
+            _expect_regex_language(self.pattern.intersection(other.pattern)),
             self.accepts_non_string and other.accepts_non_string,
         )
 
     def union(self, other: StringLanguageShape) -> StringLanguageShape:
         return StringLanguageShape(
-            self.pattern.union(other.pattern),
+            _expect_regex_language(self.pattern.union(other.pattern)),
             self.accepts_non_string or other.accepts_non_string,
         )
 
     def complement(self) -> StringLanguageShape:
         return StringLanguageShape(
-            self.pattern.complement(), not self.accepts_non_string
+            _expect_regex_language(self.pattern.complement()),
+            not self.accepts_non_string,
         )
 
 
@@ -628,7 +629,7 @@ def _local_string_language_shape(schema: dict[str, Any]) -> StringLanguageShape 
         if schema_pattern is None:
             return None
         if has_length_constraint:
-            pattern = pattern.intersection(schema_pattern)
+            pattern = _expect_regex_language(pattern.intersection(schema_pattern))
         else:
             pattern = schema_pattern
 
@@ -637,7 +638,7 @@ def _local_string_language_shape(schema: dict[str, Any]) -> StringLanguageShape 
 
 def _finite_string_language_shape(schema: dict[str, Any]) -> StringLanguageShape | None:
     if "const" in schema:
-        values = (schema["const"],)
+        values: tuple[Any, ...] | None = (schema["const"],)
     elif "enum" in schema:
         values = tuple(schema["enum"]) if isinstance(schema["enum"], list) else None
     else:
@@ -659,6 +660,12 @@ def _finite_string_language_shape(schema: dict[str, Any]) -> StringLanguageShape
             return None
         pattern = next_pattern
     return StringLanguageShape(pattern, accepts_non_string=accepts_non_string)
+
+
+def _expect_regex_language(value: RegexLanguage | ProofResult) -> RegexLanguage:
+    if isinstance(value, ProofResult):
+        raise TypeError("unexpected regex proof result in unbudgeted shape operation")
+    return value
 
 
 def _merge_string_intervals(

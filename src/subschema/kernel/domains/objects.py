@@ -220,7 +220,7 @@ class ObjectPresenceDomainTactic:
             return ProofResult.unsupported(
                 "schema is outside the exact object presence fragment"
             )
-        if symbolic is not False:
+        if isinstance(symbolic, frozenset):
             witness = dict.fromkeys(sorted(symbolic))
             if backend.validates_difference(lhs, rhs, witness):
                 return ProofResult.false(witness)
@@ -275,7 +275,7 @@ class ObjectStructureDomainTactic:
             return ProofResult.unsupported(
                 "schema is outside the exact object structure fragment"
             )
-        if symbolic is not False:
+        if isinstance(symbolic, tuple):
             present, count = symbolic
             witness = _object_structure_witness(present, names, count)
             if backend.validates_difference(lhs, rhs, witness):
@@ -1593,7 +1593,7 @@ def _local_object_property_values_shape(
 @dataclass(frozen=True)
 class ClosedObjectPropertiesShape:
     allowed_names: frozenset[str]
-    keyspace_pattern: Any | None
+    keyspace_pattern: RegexLanguage | None
     required: frozenset[str]
     property_schemas: dict[str, tuple[Any, ...]]
     pattern_property_schemas: tuple[tuple[Any, Any], ...]
@@ -1731,9 +1731,10 @@ def closed_object_properties_shape_for_schema(
     if _is_closed_object_properties_all_of_wrapper_schema(schema):
         shape = _top_closed_object_properties_shape()
     elif _is_closed_object_properties_fragment_schema(schema):
-        shape = _local_closed_object_properties_shape(schema)
-        if shape is None:
+        local_shape = _local_closed_object_properties_shape(schema)
+        if local_shape is None:
             return None
+        shape = local_shape
     else:
         return None
 
@@ -1972,13 +1973,15 @@ class ObjectPropertyNamesShape:
         if isinstance(difference, ProofResult):
             return None
         bad_name = string_language_witness(difference)
-        if bad_name is None:
+        if not isinstance(bad_name, str):
             return None
         return self._object_witness(extra_name=bad_name)
 
     def intersect(self, other: ObjectPropertyNamesShape) -> ObjectPropertyNamesShape:
         return ObjectPropertyNamesShape(
-            self.keyspace_pattern.intersection(other.keyspace_pattern),
+            _expect_regex_language(
+                self.keyspace_pattern.intersection(other.keyspace_pattern)
+            ),
             self.required | other.required,
             self.accepts_object and other.accepts_object,
             self.accepts_non_object and other.accepts_non_object,
@@ -2096,7 +2099,9 @@ def _local_object_property_names_shape(
         allowed_pattern = _closed_object_allowed_name_pattern(schema)
         if allowed_pattern is None:
             return None
-        keyspace_pattern = name_pattern.intersection(allowed_pattern)
+        keyspace_pattern = _expect_regex_language(
+            name_pattern.intersection(allowed_pattern)
+        )
 
     return ObjectPropertyNamesShape(
         keyspace_pattern,
@@ -2114,7 +2119,9 @@ def _is_pattern_properties_map(value: Any) -> bool:
     )
 
 
-def _closed_object_allowed_name_pattern(schema: dict[str, Any]) -> Any | None:
+def _closed_object_allowed_name_pattern(
+    schema: dict[str, Any],
+) -> RegexLanguage | None:
     patterns = [RegexLanguage.exact(name) for name in schema.get("properties", {})]
     for pattern in schema.get("patternProperties", {}):
         compiled = RegexLanguage.maybe_from_json_regex(pattern)
@@ -2123,8 +2130,14 @@ def _closed_object_allowed_name_pattern(schema: dict[str, Any]) -> Any | None:
         patterns.append(compiled)
     union = RegexLanguage.empty()
     for pattern in patterns:
-        union = union.union(pattern)
+        union = _expect_regex_language(union.union(pattern))
     return union
+
+
+def _expect_regex_language(value: RegexLanguage | ProofResult) -> RegexLanguage:
+    if isinstance(value, ProofResult):
+        raise TypeError("unexpected regex proof result in unbudgeted object operation")
+    return value
 
 
 def _repair_object_witness_for_schema(

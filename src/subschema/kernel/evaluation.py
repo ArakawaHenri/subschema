@@ -273,12 +273,13 @@ def evaluation_expression_for_source(
     lhs_schema: Any = None,
     context: ProofContext | None = None,
 ) -> EvaluationExpression:
-    cache_key = None
     if context is not None:
         cache_key = _evaluation_expression_cache_key(source, lhs_schema, context)
         cached = context.evaluation_expression_cache.get(cache_key)
         if cached is not None:
             return cached
+    else:
+        cache_key = None
 
     expression = _evaluation_expression_for_source(
         source,
@@ -287,7 +288,7 @@ def evaluation_expression_for_source(
         context=context,
         seen=frozenset(),
     )
-    if context is not None:
+    if context is not None and cache_key is not None:
         context.evaluation_expression_cache[cache_key] = expression
     return expression
 
@@ -541,7 +542,7 @@ def _branch_applicator_expression(
 def _branch_collection_expression(
     source: Any,
     graph: Any,
-    keyword: str,
+    keyword: Literal["anyOf", "oneOf"],
     subschemas: list[Any],
     *,
     lhs_schema: Any,

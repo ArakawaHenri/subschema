@@ -175,10 +175,10 @@ class ArrayUniquenessDomainTactic:
         if not lhs_shape.accepts_array:
             return ProofResult.true()
         if not rhs_shape.accepts_array:
-            witness: list[Any] = []
+            array_witness: list[Any] = []
             backend = validation_backend_for(self.dialect)
-            if backend.validates_difference(lhs, rhs, witness):
-                return ProofResult.false(witness)
+            if backend.validates_difference(lhs, rhs, array_witness):
+                return ProofResult.false(array_witness)
             return ProofResult.unsupported(
                 "array uniqueness array counterexample could not be constructed"
             )
@@ -707,7 +707,8 @@ def _minimum_contains_matches_guaranteed(
         ]
         if any(bound is None for bound in branch_bounds):
             return None
-        guaranteed = max(guaranteed, max(branch_bounds, default=0))
+        concrete_bounds = [bound for bound in branch_bounds if bound is not None]
+        guaranteed = max(guaranteed, max(concrete_bounds, default=0))
 
     lhs_counts = _array_contains_counts(lhs)
     if lhs_counts is None:
@@ -832,8 +833,10 @@ def _subschema_is_proved(
     rhs: Any,
     dialect: Dialect,
     *,
-    context: ProofContext,
+    context: ProofContext | None,
 ) -> bool:
+    if context is None:
+        return False
     return context.subproof(lhs, rhs).status == "proved_true"
 
 
