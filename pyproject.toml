@@ -1,0 +1,76 @@
+[build-system]
+requires = ["hatchling>=1.30.1"]
+build-backend = "hatchling.build"
+
+[project]
+name = "subschema"
+version = "0.0.1"
+description = "A conservative JSON Schema subschema prover"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Henri", email = "henri-zhang@outlook.com" },
+]
+dependencies = [
+    "greenery>=4.0.0",
+    "jsonschema",
+    "jsonschema-rs>=0.46.5",
+    "referencing",
+    "z3-solver",
+]
+
+[project.urls]
+Homepage = "https://github.com/ArakawaHenri/subschema"
+Repository = "https://github.com/ArakawaHenri/subschema"
+
+[project.scripts]
+subschema = "subschema.cli:main"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["src"]
+sources = ["src"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src",
+    "LICENSE",
+    "README.md",
+    "pyproject.toml",
+    "uv.lock",
+]
+
+[dependency-groups]
+dev = [
+    "coverage[toml]",
+    "pytest",
+    "ruff",
+]
+security = [
+    "cyclonedx-bom>=4.1.0",
+    "pip-audit>=2.8.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "C4",
+    "E",
+    "F401",
+    "F841",
+    "I",
+    "N",
+    "PERF401",
+    "RET504",
+    "RET505",
+    "SIM118",
+    "UP",
+    "W605",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test/**/*.py" = ["E", "I", "N", "W"]
