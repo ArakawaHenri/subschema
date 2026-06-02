@@ -1,8 +1,7 @@
 import unittest
 
-from jsonschema import SchemaError
-
 from subschema import is_subschema
+from subschema.exceptions import SchemaError
 
 
 class TestUnknownTypes(unittest.TestCase):

@@ -6,12 +6,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from subschema.kernel.disjointness import schemas_are_disjoint
 from subschema.kernel.finite import (
     finite_values_projection,
     inhabited_finite_values_for_schema,
     schema_is_empty_finite,
 )
 from subschema.kernel.schemas import (
+    empty_schema_for_dialect,
     schema_is_false,
     schema_is_true,
     schemas_equal,
@@ -50,7 +52,10 @@ class ProjectionEngine:
         if schema_is_empty_finite(lhs, self.dialect) or schema_is_empty_finite(
             rhs, self.dialect
         ):
-            return False
+            return empty_schema_for_dialect(self.dialect)
+        disjoint = schemas_are_disjoint(lhs, rhs, self.context)
+        if disjoint.status == "proved_true":
+            return empty_schema_for_dialect(self.dialect)
         lhs_sub_rhs = self.context.subproof(lhs, rhs)
         if lhs_sub_rhs.status == "proved_true":
             return lhs

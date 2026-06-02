@@ -15,7 +15,8 @@ from subschema.kernel.domains.types import (
     schema_type_overapproximations_are_disjoint,
     type_overapproximation_for_schema,
 )
-from subschema.kernel.witnesses import finite_projection_witness
+from subschema.kernel.validation import validation_backend_for
+from subschema.kernel.witnesses import build_schema_witness, finite_projection_witness
 
 if TYPE_CHECKING:
     from subschema.kernel.context import ProofContext
@@ -63,6 +64,19 @@ def _schemas_are_disjoint(
     )
     if object_property_conflict.status != "unsupported":
         return object_property_conflict
+    intersection_witness = build_schema_witness(
+        {"allOf": [lhs, rhs]},
+        context.dialect,
+        context,
+    )
+    if intersection_witness.status == "resource_exhausted":
+        return ProofResult.resource_exhausted(intersection_witness.reason)
+    if intersection_witness.has_witness:
+        backend = validation_backend_for(context.dialect)
+        if backend.is_valid(lhs, intersection_witness.witness) and backend.is_valid(
+            rhs, intersection_witness.witness
+        ):
+            return ProofResult.false(intersection_witness.witness)
 
     return ProofResult.unsupported("schema disjointness could not be proven exactly")
 

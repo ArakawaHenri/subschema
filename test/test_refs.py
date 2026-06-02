@@ -1,7 +1,7 @@
 import unittest
 
 from subschema import Dialect, is_subschema
-from subschema.exceptions import UnsupportedKeywordError
+from subschema.exceptions import UnsupportedProofError
 
 
 class TestSimpleRefs(unittest.TestCase):
@@ -162,7 +162,7 @@ class TestModernRefs(unittest.TestCase):
             "$ref": "#positiveInteger",
         }
 
-        with self.assertRaises(UnsupportedKeywordError):
+        with self.assertRaises(UnsupportedProofError):
             is_subschema({"const": 1}, schema, dialect=Dialect.DRAFT4)
 
     def test_plain_fragment_id_ref(self):
@@ -198,7 +198,7 @@ class TestModernRefs(unittest.TestCase):
             "$ref": "#positiveInteger",
         }
 
-        with self.assertRaises(UnsupportedKeywordError):
+        with self.assertRaises(UnsupportedProofError):
             is_subschema({"const": 1}, schema, dialect=Dialect.DRAFT4)
 
     def test_draft4_id_ref_is_inactive_after_draft4(self):
@@ -213,7 +213,7 @@ class TestModernRefs(unittest.TestCase):
             "$ref": "#positiveInteger",
         }
 
-        with self.assertRaises(UnsupportedKeywordError):
+        with self.assertRaises(UnsupportedProofError):
             is_subschema({"const": 1}, schema, dialect=Dialect.DRAFT6)
 
     def test_dynamic_ref_is_resolved_by_ir_engine(self):

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from subschema.dialects import Dialect
-from subschema.exceptions import UnsupportedKeywordError
+from subschema.exceptions import UnsupportedProofError
 
 ProofStatus = Literal[
     "proved_true", "proved_false", "unsupported", "resource_exhausted"
@@ -145,13 +145,17 @@ class ProofResult:
         return cls("resource_exhausted", reason=reason)
 
     def as_bool(self, dialect: Dialect) -> bool:
+        _ = dialect
         if self.status == "proved_true":
             return True
         if self.status == "proved_false":
             return False
         if self.error is not None:
             raise self.error
-        raise UnsupportedKeywordError(self.reason or "schema proof", dialect)
+        raise UnsupportedProofError(
+            self.reason or "schema proof could not be proven",
+            status=self.status,
+        )
 
 
 @dataclass(frozen=True)

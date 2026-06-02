@@ -2,44 +2,53 @@
 Public API entrypoints.
 """
 
+from __future__ import annotations
+
+from collections.abc import Iterable
 from copy import deepcopy
+from typing import Any
 
 from subschema.dialects import (
+    Dialect,
     resolve_dialect,
     strip_inactive_keywords_for_dialect,
     validate_supported_keywords,
 )
 from subschema.kernel.contracts import ProofBudgets, ProofOptions
+from subschema.kernel.disjointness import schemas_are_disjoint
 from subschema.kernel.engine import ProofEngine
 from subschema.kernel.json_data import ensure_json_value
 from subschema.kernel.normalization import normalize_boolean_schemas
+from subschema.kernel.schemas import empty_schema_for_dialect
 from subschema.kernel.validation import validate_raw_schema_for_dialect
 
 
-def canonicalize_schema(s, *, dialect=None):
+def canonicalize_schema(
+    schema: Any, *, dialect: Dialect | str | None = None
+) -> Any:
     """Return a modern normalized schema without embedding removed checker objects."""
-    ensure_json_value(s, label="schema")
-    resolved_dialect = resolve_dialect(s, dialect=dialect)
-    _validate_public_schema(s, resolved_dialect)
+    ensure_json_value(schema, label="schema")
+    resolved_dialect = resolve_dialect(schema, dialect=dialect)
+    _validate_public_schema(schema, resolved_dialect)
     schema = strip_inactive_keywords_for_dialect(
-        normalize_boolean_schemas(deepcopy(s)), resolved_dialect
+        normalize_boolean_schemas(deepcopy(schema)), resolved_dialect
     )
     validate_supported_keywords(schema, resolved_dialect)
     return schema
 
 
-def _validate_public_schema(schema, dialect):
+def _validate_public_schema(schema: Any, dialect: Dialect) -> None:
     stripped = strip_inactive_keywords_for_dialect(schema, dialect)
     validate_raw_schema_for_dialect(stripped, dialect)
 
 
 def _resolve_proof_options(
-    proof_options=None,
+    proof_options: ProofOptions | None = None,
     *,
-    endeavor=False,
-    max_work=None,
-    timeout_ms=None,
-):
+    endeavor: bool = False,
+    max_work: int | None = None,
+    timeout_ms: int | None = None,
+) -> ProofOptions | None:
     if not isinstance(endeavor, bool):
         raise TypeError("endeavor must be a boolean")
     if proof_options is not None:
@@ -65,21 +74,21 @@ def _resolve_proof_options(
 
 
 def is_subschema(
-    s1,
-    s2,
+    lhs: Any,
+    rhs: Any,
     *,
-    dialect=None,
-    proof_options=None,
-    endeavor=False,
-    max_work=None,
-    timeout_ms=None,
-):
+    dialect: Dialect | str | None = None,
+    proof_options: ProofOptions | None = None,
+    endeavor: bool = False,
+    max_work: int | None = None,
+    timeout_ms: int | None = None,
+) -> bool:
     """Entry point for schema subtype checking."""
-    ensure_json_value(s1, label="lhs schema")
-    ensure_json_value(s2, label="rhs schema")
-    resolved_dialect = resolve_dialect(s1, s2, dialect=dialect)
-    _validate_public_schema(s1, resolved_dialect)
-    _validate_public_schema(s2, resolved_dialect)
+    ensure_json_value(lhs, label="lhs schema")
+    ensure_json_value(rhs, label="rhs schema")
+    resolved_dialect = resolve_dialect(lhs, rhs, dialect=dialect)
+    _validate_public_schema(lhs, resolved_dialect)
+    _validate_public_schema(rhs, resolved_dialect)
     options = _resolve_proof_options(
         proof_options,
         endeavor=endeavor,
@@ -87,26 +96,26 @@ def is_subschema(
         timeout_ms=timeout_ms,
     )
     return ProofEngine.for_schemas(
-        s1, s2, dialect=resolved_dialect, options=options
-    ).is_subschema_bool(s1, s2)
+        lhs, rhs, dialect=resolved_dialect, options=options
+    ).is_subschema_bool(lhs, rhs)
 
 
 def meet_schemas(
-    s1,
-    s2,
+    lhs: Any,
+    rhs: Any,
     *,
-    dialect=None,
-    proof_options=None,
-    endeavor=False,
-    max_work=None,
-    timeout_ms=None,
-):
+    dialect: Dialect | str | None = None,
+    proof_options: ProofOptions | None = None,
+    endeavor: bool = False,
+    max_work: int | None = None,
+    timeout_ms: int | None = None,
+) -> Any:
     """Entry point for schema meet operation."""
-    ensure_json_value(s1, label="lhs schema")
-    ensure_json_value(s2, label="rhs schema")
-    resolved_dialect = resolve_dialect(s1, s2, dialect=dialect)
-    _validate_public_schema(s1, resolved_dialect)
-    _validate_public_schema(s2, resolved_dialect)
+    ensure_json_value(lhs, label="lhs schema")
+    ensure_json_value(rhs, label="rhs schema")
+    resolved_dialect = resolve_dialect(lhs, rhs, dialect=dialect)
+    _validate_public_schema(lhs, resolved_dialect)
+    _validate_public_schema(rhs, resolved_dialect)
     options = _resolve_proof_options(
         proof_options,
         endeavor=endeavor,
@@ -114,26 +123,26 @@ def meet_schemas(
         timeout_ms=timeout_ms,
     )
     return ProofEngine.for_schemas(
-        s1, s2, dialect=resolved_dialect, options=options
-    ).meet(s1, s2)
+        lhs, rhs, dialect=resolved_dialect, options=options
+    ).meet(lhs, rhs)
 
 
 def join_schemas(
-    s1,
-    s2,
+    lhs: Any,
+    rhs: Any,
     *,
-    dialect=None,
-    proof_options=None,
-    endeavor=False,
-    max_work=None,
-    timeout_ms=None,
-):
+    dialect: Dialect | str | None = None,
+    proof_options: ProofOptions | None = None,
+    endeavor: bool = False,
+    max_work: int | None = None,
+    timeout_ms: int | None = None,
+) -> Any:
     """Entry point for schema join operation."""
-    ensure_json_value(s1, label="lhs schema")
-    ensure_json_value(s2, label="rhs schema")
-    resolved_dialect = resolve_dialect(s1, s2, dialect=dialect)
-    _validate_public_schema(s1, resolved_dialect)
-    _validate_public_schema(s2, resolved_dialect)
+    ensure_json_value(lhs, label="lhs schema")
+    ensure_json_value(rhs, label="rhs schema")
+    resolved_dialect = resolve_dialect(lhs, rhs, dialect=dialect)
+    _validate_public_schema(lhs, resolved_dialect)
+    _validate_public_schema(rhs, resolved_dialect)
     options = _resolve_proof_options(
         proof_options,
         endeavor=endeavor,
@@ -141,20 +150,20 @@ def join_schemas(
         timeout_ms=timeout_ms,
     )
     return ProofEngine.for_schemas(
-        s1, s2, dialect=resolved_dialect, options=options
-    ).join(s1, s2)
+        lhs, rhs, dialect=resolved_dialect, options=options
+    ).join(lhs, rhs)
 
 
 def is_equivalent(
-    s1,
-    s2,
+    lhs: Any,
+    rhs: Any,
     *,
-    dialect=None,
-    proof_options=None,
-    endeavor=False,
-    max_work=None,
-    timeout_ms=None,
-):
+    dialect: Dialect | str | None = None,
+    proof_options: ProofOptions | None = None,
+    endeavor: bool = False,
+    max_work: int | None = None,
+    timeout_ms: int | None = None,
+) -> bool:
     """Entry point for schema equivalence check operation."""
     options = _resolve_proof_options(
         proof_options,
@@ -163,10 +172,111 @@ def is_equivalent(
         timeout_ms=timeout_ms,
     )
     return is_subschema(
-        s1, s2, dialect=dialect, proof_options=options
+        lhs, rhs, dialect=dialect, proof_options=options
     ) and is_subschema(
-        s2,
-        s1,
+        rhs,
+        lhs,
         dialect=dialect,
         proof_options=options,
     )
+
+
+def is_empty(
+    schema: Any,
+    *,
+    dialect: Dialect | str | None = None,
+    proof_options: ProofOptions | None = None,
+    endeavor: bool = False,
+    max_work: int | None = None,
+    timeout_ms: int | None = None,
+) -> bool:
+    """Return whether a schema accepts no JSON instances."""
+    ensure_json_value(schema, label="schema")
+    resolved_dialect = resolve_dialect(schema, dialect=dialect)
+    _validate_public_schema(schema, resolved_dialect)
+    options = _resolve_proof_options(
+        proof_options,
+        endeavor=endeavor,
+        max_work=max_work,
+        timeout_ms=timeout_ms,
+    )
+    empty_schema = empty_schema_for_dialect(resolved_dialect)
+    return ProofEngine.for_schemas(
+        schema,
+        empty_schema,
+        dialect=resolved_dialect,
+        options=options,
+    ).is_subschema_bool(schema, empty_schema)
+
+
+def is_disjoint(
+    lhs: Any,
+    rhs: Any,
+    *,
+    dialect: Dialect | str | None = None,
+    proof_options: ProofOptions | None = None,
+    endeavor: bool = False,
+    max_work: int | None = None,
+    timeout_ms: int | None = None,
+) -> bool:
+    """Return whether two schemas accept no common JSON instance."""
+    ensure_json_value(lhs, label="lhs schema")
+    ensure_json_value(rhs, label="rhs schema")
+    resolved_dialect = resolve_dialect(lhs, rhs, dialect=dialect)
+    _validate_public_schema(lhs, resolved_dialect)
+    _validate_public_schema(rhs, resolved_dialect)
+    options = _resolve_proof_options(
+        proof_options,
+        endeavor=endeavor,
+        max_work=max_work,
+        timeout_ms=timeout_ms,
+    )
+    engine = ProofEngine.for_schemas(
+        lhs,
+        rhs,
+        dialect=resolved_dialect,
+        options=options,
+    )
+    return schemas_are_disjoint(lhs, rhs, engine.context).as_bool(resolved_dialect)
+
+
+def covers(
+    lhs: Any,
+    rhs_alternatives: Iterable[Any],
+    *,
+    dialect: Dialect | str | None = None,
+    proof_options: ProofOptions | None = None,
+    endeavor: bool = False,
+    max_work: int | None = None,
+    timeout_ms: int | None = None,
+) -> bool:
+    """Return whether lhs is covered by any of the RHS alternative schemas."""
+    rhs_schemas = _materialize_rhs_alternatives(rhs_alternatives)
+    if not rhs_schemas:
+        return is_empty(
+            lhs,
+            dialect=dialect,
+            proof_options=proof_options,
+            endeavor=endeavor,
+            max_work=max_work,
+            timeout_ms=timeout_ms,
+        )
+    rhs = {"anyOf": rhs_schemas}
+    return is_subschema(
+        lhs,
+        rhs,
+        dialect=dialect,
+        proof_options=proof_options,
+        endeavor=endeavor,
+        max_work=max_work,
+        timeout_ms=timeout_ms,
+    )
+
+
+def _materialize_rhs_alternatives(rhs_alternatives: Iterable[Any]) -> list[Any]:
+    if isinstance(rhs_alternatives, dict | str | bytes):
+        raise TypeError("rhs_alternatives must be an iterable of schemas")
+    try:
+        return list(rhs_alternatives)
+    except TypeError as err:
+        raise TypeError("rhs_alternatives must be an iterable of schemas") from err

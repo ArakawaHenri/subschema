@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from subschema.dialects import Dialect
 from subschema.kernel.normalization import (
     SCHEMA_ARRAY_KEYWORDS,
     SCHEMA_MAP_KEYWORDS,
@@ -55,6 +56,12 @@ IGNORED_SCHEMA_METADATA_KEYS = frozenset(
 
 def schema_is_false(schema: Any) -> bool:
     return schema is False or schema == {"not": {}}
+
+
+def empty_schema_for_dialect(dialect: Dialect) -> Any:
+    if dialect == Dialect.DRAFT4:
+        return {"not": {}}
+    return False
 
 
 def schema_is_true(schema: Any) -> bool:

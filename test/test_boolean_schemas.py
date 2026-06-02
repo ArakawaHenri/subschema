@@ -1,8 +1,7 @@
 import unittest
 
-from jsonschema.exceptions import SchemaError
-
 from subschema import Dialect, is_equivalent, is_subschema
+from subschema.exceptions import SchemaError
 
 
 class TestBooleanSchemas(unittest.TestCase):

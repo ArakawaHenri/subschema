@@ -6,17 +6,20 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from jsonschema.exceptions import SchemaError
-
 from subschema import (
     Dialect,
+    SchemaError,
+    SubschemaError,
+    UnsupportedProofError,
     canonicalize_schema,
+    covers,
     is_equivalent,
+    is_disjoint,
+    is_empty,
     is_subschema,
     join_schemas,
     meet_schemas,
 )
-from subschema.api import canonicalize_schema
 from subschema.exceptions import UnsupportedKeywordError
 from subschema.kernel import ProofOptions
 from subschema.kernel.json_data import strict_json_loads
@@ -78,6 +81,37 @@ class TestAPI(unittest.TestCase):
         self.assertEqual(join_schemas(s1, s1), s1)
         self.assertEqual(join_schemas(s2, s2), s2)
 
+    def test_api_is_empty(self):
+        self.assertTrue(is_empty(False))
+        self.assertFalse(is_empty({"type": "integer"}))
+        self.assertTrue(is_empty({"not": {}}, dialect=Dialect.DRAFT4))
+
+    def test_api_is_disjoint(self):
+        self.assertTrue(is_disjoint({"type": "string"}, {"type": "integer"}))
+        self.assertFalse(is_disjoint({"type": "integer"}, {"type": "number"}))
+
+    def test_api_covers(self):
+        self.assertTrue(covers({"type": "integer"}, [{"type": "number"}]))
+        self.assertFalse(covers({"type": "number"}, [{"type": "integer"}]))
+        self.assertTrue(covers(False, []))
+        self.assertFalse(covers({"type": "integer"}, []))
+        with self.assertRaises(TypeError):
+            covers({"type": "integer"}, {"type": "number"})
+
+    def test_api_meet_canonicalizes_obvious_contradiction(self):
+        lhs = {"type": "string"}
+        rhs = {"type": "integer"}
+
+        self.assertIs(meet_schemas(lhs, rhs), False)
+        self.assertEqual(
+            meet_schemas(lhs, rhs, dialect=Dialect.DRAFT4),
+            {"not": {}},
+        )
+
+    def test_package_declares_typed_public_surface(self):
+        py_typed = Path(__file__).parents[1] / "src" / "subschema" / "py.typed"
+        self.assertTrue(py_typed.exists())
+
     def test_canonicalize_schema_is_modern_normalization(self):
         self.assertEqual(canonicalize_schema(True, dialect=Dialect.DRAFT6), {})
         self.assertEqual(canonicalize_schema(False, dialect=Dialect.DRAFT6), {"not": {}})
@@ -106,8 +140,14 @@ class TestAPI(unittest.TestCase):
         schema = {"type": "string", "pattern": "(?=a)"}
 
         self.assertEqual(canonicalize_schema(schema, dialect=Dialect.DRAFT202012), schema)
-        with self.assertRaises(UnsupportedKeywordError):
+        with self.assertRaises(UnsupportedProofError):
             is_subschema({"type": "string"}, schema, dialect=Dialect.DRAFT202012)
+
+    def test_public_error_hierarchy(self):
+        self.assertTrue(issubclass(UnsupportedProofError, SubschemaError))
+        self.assertTrue(issubclass(UnsupportedKeywordError, UnsupportedProofError))
+        with self.assertRaises(SubschemaError):
+            is_subschema({"$ref": "#"}, {"type": "object"})
 
     def test_public_api_rejects_non_json_numbers(self):
         invalid_schemas = (

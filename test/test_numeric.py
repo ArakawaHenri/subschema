@@ -1,8 +1,7 @@
 import unittest
 
-from jsonschema.exceptions import SchemaError
-
 from subschema import Dialect, is_subschema
+from subschema.exceptions import SchemaError
 
 
 class TestIntegerSubtype(unittest.TestCase):
