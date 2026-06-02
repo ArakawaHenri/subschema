@@ -67,6 +67,11 @@ from subschema.kernel.regex import RegexLanguage
 from subschema.kernel.schemas import (
     HARD_KEYWORDS,
 )
+from subschema.kernel.tagged_unions import (
+    TaggedOneOf,
+    schema_required_singleton_tag,
+    tagged_one_of,
+)
 
 IRAssertionKind = Literal[
     "array-length-lhs",
@@ -105,6 +110,7 @@ __all__ = [
     "SchemaNode",
     "StringLanguageConstraint",
     "StringLengthConstraint",
+    "TaggedOneOf",
     "TypeConstraint",
     "UnsupportedNode",
 ]
@@ -275,6 +281,13 @@ class DomainFacts:
     def object_property_names_shape(self) -> ObjectPropertyNamesShape | None:
         constraint = self.object_property_names_constraint
         return None if constraint is None else constraint.shape
+
+    @cached_property
+    def tagged_one_of(self) -> TaggedOneOf | None:
+        return tagged_one_of(self.schema)
+
+    def required_singleton_tag(self, tag_name: str) -> Any | None:
+        return schema_required_singleton_tag(self.schema, tag_name)
 
     def assertions(self) -> tuple[AssertionAtom, ...]:
         assertion_values: tuple[tuple[IRAssertionKind, Any | None], ...] = (
@@ -489,6 +502,13 @@ class LogicalSchemaIR:
         self,
     ) -> ObjectClosedPropertiesConstraint | None:
         return self.facts.object_closed_properties_constraint
+
+    @property
+    def tagged_one_of(self) -> TaggedOneOf | None:
+        return self.facts.tagged_one_of
+
+    def required_singleton_tag(self, tag_name: str) -> Any | None:
+        return self.facts.required_singleton_tag(tag_name)
 
 
 class SchemaIRCompiler:

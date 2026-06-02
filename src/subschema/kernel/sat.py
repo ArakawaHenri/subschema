@@ -130,12 +130,11 @@ from subschema.kernel.scalars import (
     typed_scalar_difference_plan_from_constraints,
 )
 from subschema.kernel.schemas import contains_reference_keyword
-from subschema.kernel.tagged_unions import matching_tagged_one_of_branch
 from subschema.kernel.validation import (
     ValidationUnsupportedError,
     validation_backend_for,
 )
-from subschema.kernel.values import json_semantic_key
+from subschema.kernel.values import json_semantic_key, json_values_equal
 from subschema.kernel.witnesses import build_schema_witness
 
 if TYPE_CHECKING:
@@ -926,10 +925,7 @@ def _prove_right_one_of_applicator_difference(
 def _prove_tagged_right_one_of_difference(
     problem: DifferenceProblem,
 ) -> ProofResult:
-    matching_branch = matching_tagged_one_of_branch(
-        problem.lhs_schema,
-        problem.rhs_schema,
-    )
+    matching_branch = _matching_tagged_rhs_one_of_branch(problem)
     if matching_branch is None:
         return ProofResult.unsupported(
             "SAT right-oneOf tagged fragment requires unique required tags"
@@ -957,6 +953,19 @@ def _prove_tagged_right_one_of_difference(
     return ProofResult.unsupported(
         "SAT right-oneOf tagged branch proof was inconclusive"
     )
+
+
+def _matching_tagged_rhs_one_of_branch(problem: DifferenceProblem) -> Any | None:
+    tagged = problem.formula.rhs.tagged_one_of
+    if tagged is None:
+        return None
+    lhs_tag = problem.formula.lhs.required_singleton_tag(tagged.tag_name)
+    if lhs_tag is None:
+        return None
+    for branch in tagged.branches:
+        if json_values_equal(lhs_tag, branch.tag_value):
+            return branch.schema
+    return None
 
 
 def _prove_right_all_of_applicator_difference(

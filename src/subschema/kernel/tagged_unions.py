@@ -7,12 +7,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from subschema.kernel.values import json_semantic_key, json_values_equal
+from subschema.kernel.values import json_semantic_key
 
 __all__ = [
     "TaggedBranch",
     "TaggedOneOf",
-    "matching_tagged_one_of_branch",
     "schema_required_singleton_tag",
     "tagged_one_of",
 ]
@@ -29,19 +28,6 @@ class TaggedBranch:
 class TaggedOneOf:
     tag_name: str
     branches: tuple[TaggedBranch, ...]
-
-
-def matching_tagged_one_of_branch(lhs: Any, rhs: Any) -> Any | None:
-    tagged = tagged_one_of(rhs)
-    if tagged is None:
-        return None
-    lhs_tag = schema_required_singleton_tag(lhs, tagged.tag_name)
-    if lhs_tag is None:
-        return None
-    for branch in tagged.branches:
-        if json_values_equal(lhs_tag, branch.tag_value):
-            return branch.schema
-    return None
 
 
 def tagged_one_of(schema: Any) -> TaggedOneOf | None:

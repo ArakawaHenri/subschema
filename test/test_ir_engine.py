@@ -198,6 +198,7 @@ from subschema.kernel.ir import (
     LogicalSchemaIR,
     SchemaIRCompiler,
     SchemaNode,
+    TaggedOneOf,
     UnsupportedNode,
 )
 from subschema.kernel.overlaps import (
@@ -1106,6 +1107,30 @@ class TestProofEngineRouting(unittest.TestCase):
             object_closed_formula.lhs.object_closed_properties_constraint,
             ObjectClosedPropertiesConstraint,
         )
+        tagged_formula = DifferenceFormula.from_schemas(
+            {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {"kind": {"const": "cat"}},
+            },
+            {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "required": ["kind"],
+                        "properties": {"kind": {"const": "cat"}},
+                    },
+                    {
+                        "type": "object",
+                        "required": ["kind"],
+                        "properties": {"kind": {"const": "dog"}},
+                    },
+                ]
+            },
+            Dialect.DRAFT202012,
+        )
+        self.assertIsInstance(tagged_formula.rhs.tagged_one_of, TaggedOneOf)
+        self.assertEqual(tagged_formula.lhs.required_singleton_tag("kind"), "cat")
         rule_names = [rule.name for rule in difference_rules()]
         self.assertIn("numeric-domain-ir", rule_names)
         self.assertNotIn("applicator-domain-ir", rule_names)
@@ -2983,6 +3008,18 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIn(
             "ApplicatorProofFlow",
             inspect.getsource(sat_module._prove_right_one_of_applicator_difference),
+        )
+        self.assertIn(
+            "problem.formula.rhs.tagged_one_of",
+            inspect.getsource(sat_module._matching_tagged_rhs_one_of_branch),
+        )
+        self.assertNotIn(
+            "problem.rhs_schema",
+            inspect.getsource(sat_module._matching_tagged_rhs_one_of_branch),
+        )
+        self.assertNotIn(
+            "problem.lhs_schema",
+            inspect.getsource(sat_module._matching_tagged_rhs_one_of_branch),
         )
         self.assertIn(
             "subproof(product.lhs_schema",
