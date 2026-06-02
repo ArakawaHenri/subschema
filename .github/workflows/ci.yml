@@ -34,6 +34,9 @@ jobs:
       - name: Lint
         run: uv run ruff check .
 
+      - name: Type check
+        run: uv run mypy --strict src/subschema
+
       - name: Run tests
         run: uv run pytest -q
 

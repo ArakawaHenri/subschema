@@ -17,6 +17,7 @@ For local development:
 uv sync --locked --group dev
 uv run pytest -q
 uv run ruff check .
+uv run mypy --strict src/subschema
 ```
 
 ## CLI
