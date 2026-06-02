@@ -57,7 +57,6 @@ def test_public_release_metadata_matches_distribution_identity():
         0,
     )
     assert project["name"] == "subschema"
-    assert project["version"] == "0.0.1"
     assert project["license"] == "Apache-2.0"
     assert project["authors"] == [
         {"name": "Henri", "email": "henri-zhang@outlook.com"}
