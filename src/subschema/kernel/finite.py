@@ -14,8 +14,12 @@ from subschema.dialects import (
     resolve_dialect,
     strip_inactive_keywords_for_dialect,
 )
+from subschema.kernel.domains.numbers import numeric_shape_for_schema
+from subschema.kernel.domains.strings import string_language_shape_for_schema
 from subschema.kernel.json_data import strict_json_loads
+from subschema.kernel.literals import explicit_finite_values_for_schema
 from subschema.kernel.references import ResourceGraph
+from subschema.kernel.regex import RegexLanguage
 from subschema.kernel.schemas import (
     IGNORED_SCHEMA_METADATA_KEYS,
     contains_reference_keyword,
@@ -97,10 +101,9 @@ def _finite_values_for_schema_uncached(
     if _schema_is_boolean_empty(schema):
         return []
 
-    if "const" in schema:
-        return [schema["const"]]
-    if "enum" in schema:
-        return dedupe(list(schema["enum"]))
+    explicit_values = explicit_finite_values_for_schema(schema)
+    if explicit_values is not None:
+        return explicit_values
     finite_type_values = _finite_values_for_type_keyword(schema.get("type"))
     if finite_type_values is not None:
         return finite_type_values
@@ -192,8 +195,6 @@ def _finite_values_for_type_keyword(type_keyword: Any) -> list[Any] | None:
 def _finite_numeric_values_for_schema(
     schema: dict[str, Any], graph: ResourceGraph | None
 ) -> list[Any] | None:
-    from subschema.kernel.domains.numbers import numeric_shape_for_schema
-
     dialect = graph.dialect if graph is not None else resolve_dialect(schema)
     shape = numeric_shape_for_schema(schema, dialect)
     if shape is None or shape.accepts_non_numeric:
@@ -214,8 +215,6 @@ def _finite_numeric_values_for_schema(
 
 
 def _finite_string_values_for_schema(schema: dict[str, Any]) -> list[str] | None:
-    from subschema.kernel.domains.strings import string_language_shape_for_schema
-
     if not _is_string_only_schema(schema):
         return None
     if not _string_schema_has_finite_length_horizon(schema):
@@ -474,8 +473,6 @@ def _property_names_schema_rejects_all_strings(
     if finite is not None:
         return not any(isinstance(value, str) for value in finite)
 
-    from subschema.kernel.domains.strings import string_language_shape_for_schema
-
     shape = string_language_shape_for_schema(schema)
     return shape is not None and shape.pattern.is_empty()
 
@@ -504,8 +501,6 @@ def _schema_is_known_empty(
 
 
 def _regex_language_for_json_pattern(pattern: str) -> Any | None:
-    from subschema.kernel.regex import RegexLanguage
-
     language = RegexLanguage.from_json_regex(pattern)
     return language if isinstance(language, RegexLanguage) else None
 

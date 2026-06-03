@@ -7,13 +7,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from subschema.kernel.finite import finite_values_for_schema
+from subschema.kernel.literals import explicit_finite_values_for_schema
 from subschema.kernel.regex import RegexLanguage
 from subschema.kernel.schemas import (
     IGNORED_SCHEMA_METADATA_KEYS,
     contains_reference_keyword,
     schema_is_true,
 )
+from subschema.kernel.values import dedupe, json_semantic_key
 
 JSON_TYPE_ATOMS = frozenset(
     {"null", "boolean", "integer", "number", "string", "array", "object"}
@@ -146,7 +147,7 @@ def schema_covers_type_atom(schema: Any, atom: str, depth: int = 0) -> bool:
     if contains_reference_keyword(schema, {"$ref", "$recursiveRef", "$dynamicRef"}):
         return False
 
-    finite_values = finite_values_for_schema(schema)
+    finite_values = _finite_values_for_type_reasoning(schema)
     if finite_values is not None:
         if atom == "boolean":
             return any(value is False for value in finite_values) and any(
@@ -435,7 +436,7 @@ def _contains_unsupported_regex(schema: Any) -> bool:
 
 
 def _finite_exhausted_type_shape(schema: Any) -> TypeShape | None:
-    values = finite_values_for_schema(schema)
+    values = _finite_values_for_type_reasoning(schema)
     if values is None:
         return None
     removed_atoms = set()
@@ -449,7 +450,7 @@ def _finite_exhausted_type_shape(schema: Any) -> TypeShape | None:
 
 
 def _finite_value_type_shape(schema: Any) -> TypeShape | None:
-    values = finite_values_for_schema(schema)
+    values = _finite_values_for_type_reasoning(schema)
     if values is None:
         return None
     atoms = {_json_type_atom(value) for value in values}
@@ -472,6 +473,109 @@ def _json_type_atom(value: Any) -> str:
     if isinstance(value, dict):
         return "object"
     return "object"
+
+
+def _finite_values_for_type_reasoning(
+    schema: Any, depth: int = 0
+) -> list[Any] | None:
+    if depth > 8:
+        return None
+    explicit_values = explicit_finite_values_for_schema(schema)
+    if explicit_values is not None:
+        return explicit_values
+    if not isinstance(schema, dict):
+        return None
+
+    double_negated = _double_negated_schema(schema)
+    if double_negated is not None:
+        return _finite_values_for_type_reasoning(double_negated, depth + 1)
+    if "not" in schema and schema_is_true(schema["not"]):
+        return []
+
+    type_values = _finite_values_for_type_keyword(schema.get("type"))
+    if type_values is not None:
+        return type_values
+
+    if "allOf" in schema and isinstance(schema["allOf"], list):
+        return _all_of_finite_values_for_type_reasoning(schema["allOf"], depth)
+    if "anyOf" in schema and isinstance(schema["anyOf"], list):
+        values: list[Any] = []
+        for subschema in schema["anyOf"]:
+            branch = _finite_values_for_type_reasoning(subschema, depth + 1)
+            if branch is None:
+                return None
+            values.extend(branch)
+        return dedupe(values)
+    if "oneOf" in schema and isinstance(schema["oneOf"], list):
+        branches = []
+        for subschema in schema["oneOf"]:
+            branch = _finite_values_for_type_reasoning(subschema, depth + 1)
+            if branch is None:
+                return None
+            branches.append(branch)
+        return _one_of_finite_values(branches)
+    return None
+
+
+def _finite_values_for_type_keyword(type_keyword: Any) -> list[Any] | None:
+    if isinstance(type_keyword, str):
+        atoms = {type_keyword}
+    elif isinstance(type_keyword, list) and all(
+        isinstance(item, str) for item in type_keyword
+    ):
+        atoms = set(type_keyword)
+    else:
+        return None
+    if not atoms <= {"boolean", "null"}:
+        return None
+    values: list[Any] = []
+    if "boolean" in atoms:
+        values.extend((False, True))
+    if "null" in atoms:
+        values.append(None)
+    return values
+
+
+def _all_of_finite_values_for_type_reasoning(
+    subschemas: list[Any], depth: int
+) -> list[Any] | None:
+    finite_branches = []
+    for subschema in subschemas:
+        branch = _finite_values_for_type_reasoning(subschema, depth + 1)
+        if branch == []:
+            return []
+        if branch is not None:
+            finite_branches.append(branch)
+    if not finite_branches:
+        return None
+
+    values = finite_branches[0]
+    for branch in finite_branches[1:]:
+        branch_keys = {json_semantic_key(value) for value in branch}
+        values = [
+            value for value in values if json_semantic_key(value) in branch_keys
+        ]
+    return dedupe(values)
+
+
+def _one_of_finite_values(branches: list[list[Any]]) -> list[Any]:
+    counts: dict[str, tuple[Any, int]] = {}
+    for branch in branches:
+        for value in dedupe(branch):
+            key = json_semantic_key(value)
+            representative, count = counts.get(key, (value, 0))
+            counts[key] = (representative, count + 1)
+    return dedupe(
+        [representative for representative, count in counts.values() if count == 1]
+    )
+
+
+def _double_negated_schema(schema: dict[str, Any]) -> Any | None:
+    negated = schema.get("not")
+    if not isinstance(negated, dict):
+        return None
+    inner = negated.get("not")
+    return inner if isinstance(inner, bool | dict) else None
 
 
 def type_shape_for_type_keyword(schema_type: Any) -> TypeShape | None:
