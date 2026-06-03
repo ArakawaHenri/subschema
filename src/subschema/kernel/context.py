@@ -114,6 +114,12 @@ class ProofContext:
         return _DEFAULT_CONSTRUCTIVE_WITNESS_HORIZON
 
     @property
+    def solver_timeout_ms(self) -> int:
+        if self.options.endeavor:
+            return self.options.budgets.timeout_ms
+        return -1
+
+    @property
     def work_is_exhausted(self) -> bool:
         return self.work_meter.exhausted
 

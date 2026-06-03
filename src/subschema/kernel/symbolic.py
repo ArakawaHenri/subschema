@@ -145,7 +145,7 @@ class SymbolicSolver:
         )
         if exhausted is not None:
             return exhausted
-        timeout = self.context.options.budgets.timeout_ms
+        timeout = self.context.solver_timeout_ms
         if timeout >= 0:
             self.solver.set(timeout=timeout)
         result = self.solver.check()

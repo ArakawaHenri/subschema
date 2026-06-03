@@ -356,6 +356,9 @@ class TestProofEngineRouting(unittest.TestCase):
 
     def test_symbolic_solver_timeout_is_resource_exhausted(self):
         class FakeTimeoutSolver:
+            def __init__(self):
+                self.timeout_was_set = False
+
             def set(self, **_kwargs):
                 self.timeout_was_set = True
 
@@ -380,6 +383,29 @@ class TestProofEngineRouting(unittest.TestCase):
 
         self.assertEqual(proof.status, "resource_exhausted")
         self.assertEqual(proof.reason, "object product exceeded timeout")
+
+    def test_default_symbolic_solver_does_not_set_timeout(self):
+        class FakeSatSolver:
+            def __init__(self):
+                self.timeout_was_set = False
+
+            def set(self, **_kwargs):
+                self.timeout_was_set = True
+
+            def check(self):
+                return symbolic_module.z3.sat
+
+        fake_solver = FakeSatSolver()
+        solver = symbolic_module.SymbolicSolver(
+            ProofContext(Dialect.DRAFT7),
+            "object product",
+            "object product exceeded proof work budget",
+            solver=fake_solver,
+        )
+
+        self.assertEqual(solver.context.solver_timeout_ms, -1)
+        self.assertEqual(solver.check(), symbolic_module.z3.sat)
+        self.assertFalse(fake_solver.timeout_was_set)
 
     def test_symbolic_solver_unknown_is_unsupported(self):
         class FakeUnknownSolver:
