@@ -1,7 +1,7 @@
 """
-Concrete validation/evaluation oracle built on ResourceGraph.
+Concrete validation/evaluation oracle for tests.
 
-This is an internal harness for checking that resource and evaluation semantics
+This test harness checks that resource and evaluation semantics
 match JSON Schema behavior on representative instances.  It is intentionally
 small and conservative: unsupported keywords are reported instead of guessed.
 """

@@ -11,7 +11,6 @@ from subschema.kernel.domains.objects import (
 from subschema.kernel.domains.types import type_shape_for_schema
 from subschema.kernel.finite import finite_values_for_schema
 from subschema.kernel.references import ResourceGraph
-from subschema.kernel.semantic import ConcreteEvaluator
 from subschema.kernel.formulas import (
     AndFormula,
     AssertionFormula,
@@ -22,6 +21,7 @@ from subschema.kernel.formulas import (
     ReferenceFormula,
     TopFormula,
 )
+from test.semantic_oracle import ConcreteEvaluator
 from subschema.kernel.sat import EmptinessSolver, difference_rule_specs
 from subschema.kernel.schemas import schema_is_false, schema_is_true, schemas_equal
 from subschema.kernel.values import dedupe, json_values_equal

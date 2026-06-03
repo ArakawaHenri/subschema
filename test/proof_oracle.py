@@ -4,9 +4,9 @@ from typing import Any
 
 from subschema.dialects import Dialect
 from subschema.kernel import ProofEngine
-from subschema.kernel.semantic import ConcreteEvaluator
 from subschema.kernel.validation import validation_backend_for
 from subschema.kernel.values import dedupe
+from test.semantic_oracle import ConcreteEvaluator
 
 
 @dataclass(frozen=True)

@@ -221,7 +221,6 @@ from subschema.kernel.scalars import (
     type_difference_plan,
     type_difference_plan_from_constraints,
 )
-from subschema.kernel.semantic import ConcreteEvaluator
 from subschema.kernel.sat import (
     DifferenceProblem,
     DifferenceRuleSpec,
@@ -241,6 +240,7 @@ from test.proof_oracle import (
     assert_concrete_evaluator_unsupported,
     assert_witness_validates,
 )
+from test.semantic_oracle import ConcreteEvaluator
 
 
 class TestProofEngineRouting(unittest.TestCase):
@@ -1049,7 +1049,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(
             EvaluationTraceExpression.__module__, "subschema.kernel.evaluation"
         )
-        self.assertEqual(ConcreteEvaluator.__module__, "subschema.kernel.semantic")
+        self.assertEqual(ConcreteEvaluator.__module__, "test.semantic_oracle")
         self.assertEqual(
             references_module.ReferenceFrame.__module__, "subschema.kernel.references"
         )
