@@ -27,9 +27,7 @@ def load_json_file(path: str, label: str) -> JSONSchema:
 
 
 def format_unsupported_proof_error(error: UnsupportedProofError) -> str:
-    if error.diagnostics:
-        return error.diagnostics[0].format()
-    return str(error)
+    return error.format()
 
 
 def main() -> None:

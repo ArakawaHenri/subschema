@@ -78,6 +78,7 @@ from subschema.kernel.contracts import (
     CounterexampleCertificate,
     ProofClass,
     ProofResult,
+    UnsupportedDiagnostic,
 )
 from subschema.kernel.difference import (
     ArrayDifferenceModel,
@@ -257,7 +258,7 @@ class EmptinessSolver:
             if proof.status != "unsupported":
                 return proof
             if _should_stop_after_rule_unsupported(rule, proof):
-                return proof
+                return _with_formula_diagnostics(formula, proof)
             unsupported = proof
         return (
             _semantic_unsupported(formula)
@@ -641,6 +642,43 @@ def _formula_is_syntactically_empty(formula: FormulaNode) -> bool:
     if isinstance(formula, NotFormula):
         return isinstance(formula.child, TopFormula)
     return False
+
+
+def _with_formula_diagnostics(
+    formula: DifferenceFormula, proof: ProofResult
+) -> ProofResult:
+    diagnostics = _dedupe_diagnostics(
+        proof.diagnostics + formula.unsupported_diagnostics
+    )
+    if diagnostics == proof.diagnostics:
+        return proof
+    return ProofResult.unsupported(
+        proof.reason or formula.unsupported_reason,
+        proof.error,
+        diagnostics=diagnostics,
+    )
+
+
+def _dedupe_diagnostics(
+    diagnostics: tuple[UnsupportedDiagnostic, ...]
+) -> tuple[UnsupportedDiagnostic, ...]:
+    seen: set[
+        tuple[str, str, str | None, tuple[str, ...], str | None]
+    ] = set()
+    deduped: list[UnsupportedDiagnostic] = []
+    for diagnostic in diagnostics:
+        key = (
+            diagnostic.category,
+            diagnostic.reason,
+            diagnostic.keyword,
+            diagnostic.path,
+            diagnostic.side,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(diagnostic)
+    return tuple(deduped)
 
 
 def _prove_finite_lhs_difference(problem: DifferenceProblem) -> ProofResult:

@@ -43,6 +43,16 @@ class UnsupportedProofError(SubschemaError):
     def __str__(self) -> str:
         return self.reason
 
+    def formatted_diagnostics(self) -> tuple[str, ...]:
+        return tuple(diagnostic.format() for diagnostic in self.diagnostics)
+
+    def format(self) -> str:
+        diagnostics = self.formatted_diagnostics()
+        if not diagnostics:
+            return self.reason
+        diagnostic_lines = "\n".join(f"- {diagnostic}" for diagnostic in diagnostics)
+        return f"{self.reason}\ndiagnostics:\n{diagnostic_lines}"
+
 
 class _UnsupportedCaseError(SubschemaError):
     pass

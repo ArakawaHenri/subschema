@@ -150,6 +150,21 @@ class TestAPI(unittest.TestCase):
             "are unsupported",
         )
 
+    def test_unsupported_proof_error_formats_all_diagnostics(self):
+        with self.assertRaises(UnsupportedProofError) as raised:
+            is_subschema({"$dynamicRef": "#lhs"}, {"$dynamicRef": "#rhs"})
+
+        self.assertEqual(raised.exception.status, "unsupported")
+        self.assertGreaterEqual(len(raised.exception.diagnostics), 2)
+        self.assertIn(
+            "lhs #/$dynamicRef",
+            raised.exception.format(),
+        )
+        self.assertIn(
+            "rhs #/$dynamicRef",
+            raised.exception.format(),
+        )
+
     def test_proof_result_repr_summarizes_large_payloads(self):
         proof = ProofResult.false(["x"] * 1000)
 
@@ -266,6 +281,26 @@ class TestAPI(unittest.TestCase):
 
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("unsupported proof: rhs #/pattern", completed.stderr)
+        self.assertNotIn("Traceback", completed.stderr)
+
+    def test_cli_reports_multiple_unsupported_diagnostic_pointers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lhs = Path(tmp) / "lhs.json"
+            rhs = Path(tmp) / "rhs.json"
+            lhs.write_text(json.dumps({"$dynamicRef": "#lhs"}))
+            rhs.write_text(json.dumps({"$dynamicRef": "#rhs"}))
+
+            completed = subprocess.run(
+                [sys.executable, "-m", "subschema.cli", str(lhs), str(rhs)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("diagnostics:", completed.stderr)
+        self.assertIn("lhs #/$dynamicRef", completed.stderr)
+        self.assertIn("rhs #/$dynamicRef", completed.stderr)
         self.assertNotIn("Traceback", completed.stderr)
 
     def test_cli_rejects_invalid_budget_arguments(self):
