@@ -585,41 +585,6 @@ class TestAIExamples(unittest.TestCase):
             'creditG': False, 'movies': True, 'drugRev': False,
             'adultCat': False, 'adultNum': False, 'covtype': False}}
 
-    # def _test_dataset_op_issubset(self):
-    #     # for name in  TestAIExamples.operator_names +  TestAIExamples.dataset_names:
-    #     #     schema = self.__getattribute__(name + '_schema')
-    #     #     with open("test/lale/"+name+".json", "w") as f:
-    #     #         f.write(json.dumps(schema))
-    #     tp, fp, tn, fn = 0, 0, 0, 0
-    #     for j, op_name in enumerate(TestAIExamples.operator_names):
-    #         for i, ds_name in enumerate(TestAIExamples.dataset_names):
-    #             op_file = "test/lale/"+op_name+".json"
-    #             ds_file = "test/lale/"+ds_name+".json"
-                
-    #             # op_schema = json.load(open(op_file, "r"))
-    #             # ds_schema = json.load(open(ds_file, "r"))
-    #             # result = subschema.is_subschema(ds_schema, op_schema)
-                
-    #             # assert result == expected[op_name][ds_name], f'dataset {ds_name} operator {op_name}'
-    #             with self.subTest(f'dataset {ds_name} operator {op_name}: {i,j}'):
-    #                 result = run_issubset(ds_file, op_file)
-    #                 if result is True:
-    #                     if  result != TestAIExamples.expected[op_name][ds_name]:
-    #                         fp+=1
-    #                     else:
-    #                         tp+=1
-    #                 elif result is False:
-    #                     if result != TestAIExamples.expected[op_name][ds_name]:
-    #                         fn+=1
-    #                     else:
-    #                         tn+= 1
-    #                 self.assertTrue(result == TestAIExamples.expected[op_name][ds_name])
-
-    #     print("False positives", fp)
-    #     print("False negatives", fn)
-    #     print("True positives", tp)
-    #     print("True negatives", tn)
-
 
 def _dataset_operator_cases():
     return [

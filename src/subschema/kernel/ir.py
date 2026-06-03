@@ -65,7 +65,7 @@ from subschema.kernel.references import ResourceGraph
 from subschema.kernel.references import SchemaIR as ResourceSchemaIR
 from subschema.kernel.regex import RegexLanguage
 from subschema.kernel.schemas import (
-    HARD_KEYWORDS,
+    DEDICATED_IR_KEYWORDS,
 )
 from subschema.kernel.tagged_unions import (
     TaggedOneOf,
@@ -635,7 +635,7 @@ class SchemaIRCompiler:
 
         nodes = [
             _unsupported_node(keyword, evaluation, path + (keyword,))
-            for keyword in sorted(HARD_KEYWORDS.intersection(schema))
+            for keyword in sorted(DEDICATED_IR_KEYWORDS.intersection(schema))
         ]
         nodes.extend(_regex_unsupported_nodes(schema, path))
         nodes.extend(self._nested_unsupported(schema, path))

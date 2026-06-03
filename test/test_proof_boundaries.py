@@ -3,26 +3,13 @@ import pytest
 
 from subschema.dialects import Dialect
 from subschema.kernel import ProofBudgets, ProofContext, ProofEngine, ProofOptions
-from subschema.kernel.domains.arrays import (
-    ArrayContainsDomainTactic,
-    ArrayLengthDomainTactic,
-    ArrayUniquenessDomainTactic,
-)
-from subschema.kernel.domains.numbers import NumericDomainTactic
 from subschema.kernel.domains.objects import (
-    ObjectClosedPropertiesDomainTactic,
-    ObjectPresenceDomainTactic,
-    ObjectPropertyCountDomainTactic,
-    ObjectPropertyNamesDomainTactic,
-    ObjectPropertyValuesDomainTactic,
-    ObjectStructureDomainTactic,
+    object_property_count_shape_for_schema,
+    object_property_names_shape_for_schema,
+    object_property_values_shape_for_schema,
 )
-from subschema.kernel.domains.strings import (
-    StringLanguageDomainTactic,
-    StringLengthDomainTactic,
-)
-from subschema.kernel.domains.types import TypeDomainTactic
-from subschema.kernel.finite import FiniteDomainTactic, finite_values_for_schema
+from subschema.kernel.domains.types import type_shape_for_schema
+from subschema.kernel.finite import finite_values_for_schema
 from subschema.kernel.references import ResourceGraph
 from subschema.kernel.semantic import ConcreteEvaluator
 from subschema.kernel.formulas import (
@@ -693,30 +680,19 @@ def test_keyword_modern_unsupported_cases_return_solver_boundary(
 def test_proof_contract_types_live_in_kernel_package():
     assert ProofEngine.__module__ == "subschema.kernel.engine"
     assert ProofContext.__module__ == "subschema.kernel.context"
-    assert ArrayLengthDomainTactic.__module__ == "subschema.kernel.domains.arrays"
-    assert ArrayUniquenessDomainTactic.__module__ == "subschema.kernel.domains.arrays"
-    assert ArrayContainsDomainTactic.__module__ == "subschema.kernel.domains.arrays"
-    assert FiniteDomainTactic.__module__ == "subschema.kernel.finite"
-    assert NumericDomainTactic.__module__ == "subschema.kernel.domains.numbers"
+    assert type_shape_for_schema.__module__ == "subschema.kernel.domains.types"
     assert (
-        ObjectPropertyCountDomainTactic.__module__ == "subschema.kernel.domains.objects"
-    )
-    assert ObjectPresenceDomainTactic.__module__ == "subschema.kernel.domains.objects"
-    assert ObjectStructureDomainTactic.__module__ == "subschema.kernel.domains.objects"
-    assert (
-        ObjectClosedPropertiesDomainTactic.__module__
+        object_property_count_shape_for_schema.__module__
         == "subschema.kernel.domains.objects"
     )
     assert (
-        ObjectPropertyNamesDomainTactic.__module__ == "subschema.kernel.domains.objects"
-    )
-    assert (
-        ObjectPropertyValuesDomainTactic.__module__
+        object_property_names_shape_for_schema.__module__
         == "subschema.kernel.domains.objects"
     )
-    assert TypeDomainTactic.__module__ == "subschema.kernel.domains.types"
-    assert StringLengthDomainTactic.__module__ == "subschema.kernel.domains.strings"
-    assert StringLanguageDomainTactic.__module__ == "subschema.kernel.domains.strings"
+    assert (
+        object_property_values_shape_for_schema.__module__
+        == "subschema.kernel.domains.objects"
+    )
 
 
 def test_kernel_value_and_validation_helpers_live_in_kernel_modules():
@@ -1687,32 +1663,6 @@ def test_object_key_value_reports_resource_exhausted_for_pattern_obligation_budg
     engine = ProofEngine.for_schemas(lhs, rhs, options=options)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
-
-    assert proof.status == "resource_exhausted"
-    assert proof.reason == "object product exceeded proof work budget"
-
-
-def test_object_presence_domain_tactic_reports_resource_exhausted_when_universe_budget_is_exceeded():
-    lhs = {"type": "object", "required": ["a", "b"]}
-    rhs = {"type": "object"}
-    context = ProofContext(
-        Dialect.DRAFT7, ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
-    )
-
-    proof = ObjectPresenceDomainTactic(context).is_subschema(lhs, rhs)
-
-    assert proof.status == "resource_exhausted"
-    assert proof.reason == "object product exceeded proof work budget"
-
-
-def test_object_structure_domain_tactic_reports_resource_exhausted_when_universe_budget_is_exceeded():
-    lhs = {"type": "object", "required": ["a", "b"], "minProperties": 2}
-    rhs = {"type": "object", "minProperties": 1}
-    context = ProofContext(
-        Dialect.DRAFT7, ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
-    )
-
-    proof = ObjectStructureDomainTactic(context).is_subschema(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "object product exceeded proof work budget"

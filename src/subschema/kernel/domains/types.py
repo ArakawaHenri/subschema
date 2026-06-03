@@ -5,9 +5,8 @@ JSON type-set reasoning for exact subschema proofs.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from subschema.kernel.contracts import ProofResult
 from subschema.kernel.finite import finite_values_for_schema
 from subschema.kernel.regex import RegexLanguage
 from subschema.kernel.schemas import (
@@ -15,10 +14,6 @@ from subschema.kernel.schemas import (
     contains_reference_keyword,
     schema_is_true,
 )
-from subschema.kernel.validation import validation_backend_for
-
-if TYPE_CHECKING:
-    from subschema.kernel.context import ProofContext
 
 JSON_TYPE_ATOMS = frozenset(
     {"null", "boolean", "integer", "number", "string", "array", "object"}
@@ -103,7 +98,6 @@ _ATOM_RESTRICTIVE_KEYWORDS = {
 __all__ = [
     "JSON_TYPE_ATOMS",
     "TYPE_SCHEMA_KEYWORDS",
-    "TypeDomainTactic",
     "TypeShape",
     "schema_covers_type_atom",
     "schema_type_overapproximations_are_disjoint",
@@ -113,45 +107,6 @@ __all__ = [
     "type_shape_for_schema",
     "witness_for_type_atom",
 ]
-
-
-class TypeDomainTactic:
-    def __init__(self, context: ProofContext):
-        self.context = context
-        self.dialect = self.context.dialect
-
-    def is_subschema(self, lhs: Any, rhs: Any) -> ProofResult:
-        if contains_reference_keyword(
-            lhs, {"$ref", "$recursiveRef"}
-        ) or contains_reference_keyword(rhs, {"$ref", "$recursiveRef"}):
-            return ProofResult.unsupported(
-                "type proof is deferred for static recursive references"
-            )
-
-        lhs_shape = type_shape_for_schema(lhs)
-        rhs_shape = type_shape_for_schema(rhs)
-        if lhs_shape is None or rhs_shape is None:
-            return ProofResult.unsupported("schema is outside the exact type fragment")
-        if lhs_shape.is_subset_of(rhs_shape):
-            if type_language_complete_for_schema(rhs):
-                return ProofResult.true()
-            return ProofResult.unsupported(
-                "type proof requires language-complete right type shape"
-            )
-
-        witness = lhs_shape.witness_not_in(rhs_shape)
-        if witness is None:
-            return ProofResult.unsupported(
-                "type counterexample could not be constructed"
-            )
-
-        backend = validation_backend_for(self.dialect)
-        if backend.validates_difference(lhs, rhs, witness):
-            return ProofResult.false(witness)
-        return ProofResult.unsupported(
-            "type counterexample was rejected by concrete validation"
-        )
-
 
 @dataclass(frozen=True)
 class TypeShape:

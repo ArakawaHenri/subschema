@@ -1,5 +1,5 @@
 """
-Schema-level predicates and routing heuristics for the proof kernel.
+Schema-level predicates shared by the proof kernel.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from subschema.kernel.normalization import (
 )
 from subschema.kernel.values import stable_key
 
-HARD_KEYWORDS = {
+DEDICATED_IR_KEYWORDS = {
     "$dynamicRef",
     "$recursiveRef",
     "unevaluatedItems",
@@ -97,93 +97,6 @@ def _contains_reference_keyword(schema: Any, keywords: set[str]) -> bool:
             ):
                 return True
     return False
-
-
-def should_use_ir_engine(*schemas: Any) -> bool:
-    return any(schema_needs_ir_engine(schema) for schema in schemas)
-
-
-def should_prefer_ir_tactic(*schemas: Any) -> bool:
-    return any(schema_requires_ir_first(schema) for schema in schemas)
-
-
-def schema_needs_ir_engine(schema: Any) -> bool:
-    if isinstance(schema, bool):
-        return True
-    if isinstance(schema, list):
-        return any(schema_needs_ir_engine(item) for item in schema)
-    if not isinstance(schema, dict):
-        return False
-
-    if HARD_KEYWORDS.intersection(schema):
-        return True
-    if has_complex_finite_value(schema):
-        return True
-    if has_negated_container_schema(schema):
-        return True
-
-    for key, value in schema.items():
-        if key in SCHEMA_VALUE_KEYWORDS and schema_needs_ir_engine(value):
-            return True
-        if key in SCHEMA_ARRAY_KEYWORDS and isinstance(value, list):
-            if any(schema_needs_ir_engine(item) for item in value):
-                return True
-        if key in SCHEMA_MAP_KEYWORDS and isinstance(value, dict):
-            if any(schema_needs_ir_engine(item) for item in value.values()):
-                return True
-    return False
-
-
-def schema_requires_ir_first(schema: Any) -> bool:
-    if isinstance(schema, bool):
-        return False
-    if isinstance(schema, list):
-        return any(schema_requires_ir_first(item) for item in schema)
-    if not isinstance(schema, dict):
-        return False
-
-    if HARD_KEYWORDS.intersection(schema):
-        return True
-    if has_complex_finite_value(schema):
-        return True
-    if has_negated_container_schema(schema):
-        return True
-
-    for key, value in schema.items():
-        if key in SCHEMA_VALUE_KEYWORDS and schema_requires_ir_first(value):
-            return True
-        if key in SCHEMA_ARRAY_KEYWORDS and isinstance(value, list):
-            if any(schema_requires_ir_first(item) for item in value):
-                return True
-        if key in SCHEMA_MAP_KEYWORDS and isinstance(value, dict):
-            if any(schema_requires_ir_first(item) for item in value.values()):
-                return True
-    return False
-
-
-def has_complex_finite_value(schema: dict[str, Any]) -> bool:
-    values = []
-    if "const" in schema:
-        values.append(schema["const"])
-    values.extend(schema.get("enum", []))
-    return any(isinstance(value, list | dict) for value in values)
-
-
-def has_negated_container_schema(schema: dict[str, Any]) -> bool:
-    negated = schema.get("not")
-    if not isinstance(negated, dict):
-        return False
-    schema_type = negated.get("type")
-    return schema_type in {"array", "object"} or any(
-        keyword in negated
-        for keyword in {
-            "items",
-            "prefixItems",
-            "properties",
-            "required",
-            "additionalProperties",
-        }
-    )
 
 
 def is_pure_schema_array_applicator(schema: Any, keyword: str) -> bool:

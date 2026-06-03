@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 import subschema.api as public_api
 import subschema.kernel.applicators as applicators_module
-import subschema.kernel.composition as composition_module
 import subschema.kernel.constraints as constraints_module
 import subschema.kernel.context as context_module
 import subschema.kernel.contracts as contracts_module
@@ -96,13 +95,13 @@ from subschema.kernel.applicators import (
     right_not_witness_plan,
     right_nnf_branch_resolved_rhs_schema,
 )
-from subschema.kernel.certificates import verify_counterexample_certificate
 from subschema.kernel.contracts import (
     CounterexampleCertificate,
     ProofBudgets,
     ProofOptions,
     ProofResult,
     UnsupportedDiagnostic,
+    certificate_is_verifiable,
 )
 from subschema.kernel.constraints import (
     ArrayLengthConstraint,
@@ -3246,10 +3245,6 @@ class TestProofEngineRouting(unittest.TestCase):
             inspect.getsource(sat_module._prove_rhs_not_difference),
         )
         self.assertNotIn("_schema_node_constraint", inspect.getsource(sat_module))
-        self.assertIs(
-            composition_module.schemas_are_disjoint,
-            disjointness_module.schemas_are_disjoint,
-        )
         self.assertEqual(
             disjointness_module.schemas_are_disjoint.__module__,
             "subschema.kernel.disjointness",
@@ -3884,13 +3879,13 @@ class TestProofEngineRouting(unittest.TestCase):
             ),
         )
 
-        self.assertTrue(verify_counterexample_certificate(valid))
+        self.assertTrue(certificate_is_verifiable(valid))
         self.assertEqual(ProofResult.certified_false(valid).status, "proved_false")
-        self.assertFalse(verify_counterexample_certificate(invalid))
+        self.assertFalse(certificate_is_verifiable(invalid))
         rejected = ProofResult.certified_false(invalid)
         self.assertEqual(rejected.status, "unsupported")
         self.assertIn("not verifiable", rejected.reason)
-        self.assertFalse(verify_counterexample_certificate(invalid_child))
+        self.assertFalse(certificate_is_verifiable(invalid_child))
 
     def test_finite_rhs_witnesses_are_constructed_by_witness_builder(self):
         engine = ProofEngine.for_schemas(

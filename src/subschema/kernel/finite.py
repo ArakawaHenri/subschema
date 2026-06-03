@@ -7,14 +7,13 @@ from __future__ import annotations
 from fractions import Fraction
 from functools import lru_cache
 from itertools import product
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from subschema.dialects import (
     Dialect,
     resolve_dialect,
     strip_inactive_keywords_for_dialect,
 )
-from subschema.kernel.contracts import ProofResult
 from subschema.kernel.json_data import strict_json_loads
 from subschema.kernel.references import ResourceGraph
 from subschema.kernel.schemas import (
@@ -25,50 +24,12 @@ from subschema.kernel.schemas import (
 from subschema.kernel.validation import validation_backend_for
 from subschema.kernel.values import dedupe, stable_key
 
-if TYPE_CHECKING:
-    from subschema.kernel.context import ProofContext
-
-
 _MAX_NUMERIC_FINITE_VALUES = 64
 _MAX_STRING_FINITE_VALUES = 64
 _MAX_ARRAY_FINITE_VALUES = 64
 _MAX_ARRAY_FINITE_MATERIALIZED_LENGTH = 64
 _MAX_OBJECT_FINITE_VALUES = 64
 _FINITE_VALUES_CACHE_SIZE = 4096
-
-
-class FiniteDomainTactic:
-    def __init__(self, context: ProofContext):
-        self.context = context
-        self.dialect = self.context.dialect
-
-    def is_subschema(self, lhs: Any, rhs: Any) -> ProofResult:
-        if contains_reference_keyword(
-            lhs, {"$ref", "$recursiveRef"}
-        ) or contains_reference_keyword(rhs, {"$ref", "$recursiveRef"}):
-            return ProofResult.unsupported(
-                "finite-domain proof is deferred for static recursive references"
-            )
-
-        values = finite_values_for_schema(
-            lhs, ResourceGraph.build(lhs, dialect=self.dialect)
-        )
-        if values is None:
-            return ProofResult.unsupported("left schema is not finite")
-
-        backend = validation_backend_for(self.dialect)
-        inhabited_values = [value for value in values if backend.is_valid(lhs, value)]
-
-        for value in inhabited_values:
-            try:
-                if not backend.is_valid(rhs, value):
-                    return ProofResult.false(value)
-            except RecursionError:
-                return ProofResult.unsupported(
-                    "recursive finite-domain validation exceeded the supported depth"
-                )
-
-        return ProofResult.true()
 
 
 def finite_values_for_schema(

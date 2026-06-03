@@ -29,7 +29,7 @@ from subschema.kernel.ir import (
     SchemaNode,
 )
 from subschema.kernel.schemas import (
-    HARD_KEYWORDS,
+    DEDICATED_IR_KEYWORDS,
     IGNORED_SCHEMA_METADATA_KEYS,
     schema_is_false,
     schema_is_true,
@@ -82,87 +82,6 @@ type ApplicatorFormulaMetadata = tuple[FormulaNode, ApplicatorNode]
 type ConditionalFormulaMetadata = tuple[
     FormulaNode, SchemaNode, SchemaNode | None, SchemaNode | None
 ]
-
-__all__ = [
-    "ApplicatorBranchPlan",
-    "ApplicatorBranchProduct",
-    "ApplicatorBaseProduct",
-    "ApplicatorConditionalBranch",
-    "ApplicatorConditionalPlan",
-    "ApplicatorDifferencePlan",
-    "ApplicatorFormulaFragment",
-    "ApplicatorFormulaPolarity",
-    "ApplicatorNnfChild",
-    "ApplicatorNnfBranchProductPlan",
-    "ApplicatorNnfBranchProduct",
-    "ApplicatorNnfFragment",
-    "ApplicatorNnfOperator",
-    "ApplicatorNnfSchemaProduct",
-    "ApplicatorOneOfBranchProduct",
-    "ApplicatorOneOfCardinalityPlan",
-    "ApplicatorOneOfCoveringSelection",
-    "ApplicatorOneOfDisjointnessProduct",
-    "ApplicatorOneOfOverlapProduct",
-    "ApplicatorExpansionBudget",
-    "ApplicatorPlanSet",
-    "ApplicatorPlanSide",
-    "ApplicatorProofChoice",
-    "ApplicatorProofClass",
-    "ApplicatorProofStrategy",
-    "ConditionalBranchKind",
-    "ConditionalFinalProofChoice",
-    "RightNotProofChoice",
-    "ApplicatorConditionalProduct",
-    "ApplicatorBranchProofChoice",
-    "applicator_difference_plans",
-    "applicator_base_product",
-    "applicator_base_pre_branch_choice",
-    "applicator_branch_products",
-    "applicator_branch_expansion_budget",
-    "applicator_formula_fragments",
-    "applicator_plan_set",
-    "applicator_nnf_fragment",
-    "applicator_nnf_branch_products",
-    "applicator_nnf_fragments",
-    "applicator_nnf_schema_product",
-    "conditional_branch_proof_choice",
-    "conditional_branch_products",
-    "conditional_covering_product_proof_choice",
-    "conditional_covering_subproof_choice",
-    "conditional_final_proof_choice",
-    "left_all_of_branch_proof_choice",
-    "left_any_of_branch_proof_choice",
-    "left_branch_resolved_lhs_schema",
-    "left_one_of_branch_proof_choice",
-    "one_of_cardinality_products",
-    "one_of_coverage_expansion_budget",
-    "one_of_coverage_branch_proof_choice",
-    "one_of_covering_selection",
-    "one_of_disjointness_complement_schema",
-    "one_of_disjointness_expansion_budget",
-    "one_of_disjointness_direct_proof_choice",
-    "one_of_disjointness_proof_choice",
-    "one_of_disjointness_products",
-    "one_of_disjointness_resolved_branch_schema",
-    "one_of_branch_resolved_schema",
-    "one_of_overlap_product",
-    "one_of_overlap_witness_plan",
-    "right_not_complement_needs_subproof",
-    "right_not_complement_proof_choice",
-    "right_not_complement_schema",
-    "right_not_intersection_witness_plan",
-    "right_not_resolved_rhs_schema",
-    "right_not_subproof_choice",
-    "right_negative_all_of_branch_product_plan",
-    "right_negative_all_of_branch_proof_choice",
-    "right_negative_any_of_branch_product_plan",
-    "right_negative_any_of_branch_proof_choice",
-    "right_nnf_branch_resolved_rhs_schema",
-    "right_not_witness_plan",
-    "conditional_applicator_plan",
-    "pure_applicator_plan",
-]
-
 
 @dataclass(frozen=True)
 class ApplicatorFormulaFragment:
@@ -1023,7 +942,7 @@ def _supports_sibling_base_applicator(
         base = _schema_without_keyword(occurrence.ir.schema, kind)
         if not isinstance(base, dict):
             return True
-        return not (set(base) - IGNORED_SCHEMA_METADATA_KEYS) & HARD_KEYWORDS
+        return not (set(base) - IGNORED_SCHEMA_METADATA_KEYS) & DEDICATED_IR_KEYWORDS
 
     if (
         occurrence.side != "rhs"
@@ -1034,7 +953,7 @@ def _supports_sibling_base_applicator(
     base = _schema_without_keyword(occurrence.ir.schema, kind)
     if not isinstance(base, dict):
         return True
-    return not (set(base) - IGNORED_SCHEMA_METADATA_KEYS) & HARD_KEYWORDS
+    return not (set(base) - IGNORED_SCHEMA_METADATA_KEYS) & DEDICATED_IR_KEYWORDS
 
 
 def _schema_without_keyword(schema: dict[str, Any], keyword: str) -> Any:
@@ -1051,7 +970,7 @@ def _supports_sibling_base_conditional(occurrence: FormulaOccurrence) -> bool:
     base = _schema_without_keywords(occurrence.ir.schema, {"else", "if", "then"})
     if not isinstance(base, dict):
         return True
-    return not (set(base) - IGNORED_SCHEMA_METADATA_KEYS) & HARD_KEYWORDS
+    return not (set(base) - IGNORED_SCHEMA_METADATA_KEYS) & DEDICATED_IR_KEYWORDS
 
 
 def _branch_plan(fragment: ApplicatorFormulaFragment) -> ApplicatorDifferencePlan:

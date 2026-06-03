@@ -8,18 +8,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 from subschema.dialects import Dialect, KeywordCategory, keyword_category
-from subschema.kernel.contracts import ProofResult
-from subschema.kernel.domains.types import (
-    type_overapproximation_for_schema,
-    type_shape_for_type_keyword,
-    witness_for_type_atom,
-)
+from subschema.kernel.domains.types import type_shape_for_type_keyword
 from subschema.kernel.schemas import (
     IGNORED_SCHEMA_METADATA_KEYS,
     contains_reference_keyword,
     schema_is_true,
 )
-from subschema.kernel.validation import validation_backend_for
 
 if TYPE_CHECKING:
     from subschema.kernel.context import ProofContext
@@ -30,11 +24,8 @@ __all__ = [
     "ARRAY_SCHEMA_KEYWORDS",
     "ARRAY_UNIQUENESS_LHS_SCHEMA_KEYWORDS",
     "ARRAY_UNIQUENESS_RHS_SCHEMA_KEYWORDS",
-    "ArrayContainsDomainTactic",
-    "ArrayLengthDomainTactic",
     "ArrayLengthInterval",
     "ArrayShape",
-    "ArrayUniquenessDomainTactic",
     "ArrayUniquenessShape",
     "array_shape_for_schema",
     "array_uniqueness_shape_for_schema",
@@ -90,176 +81,6 @@ ARRAY_CONTAINS_SCHEMA_KEYWORDS = frozenset(
 ARRAY_CONTAINS_RHS_SCHEMA_KEYWORDS = frozenset(
     {"contains", "maxContains", "minContains", "type"}
 )
-
-
-class ArrayLengthDomainTactic:
-    def __init__(self, context: ProofContext):
-        self.context = context
-        self.dialect = self.context.dialect
-
-    def is_subschema(self, lhs: Any, rhs: Any) -> ProofResult:
-        if contains_reference_keyword(
-            lhs, {"$ref", "$recursiveRef"}
-        ) or contains_reference_keyword(rhs, {"$ref", "$recursiveRef"}):
-            return ProofResult.unsupported(
-                "array proof is deferred for static recursive references"
-            )
-
-        lhs_shape = array_shape_for_schema(
-            lhs, self.dialect, allow_item_value_constraints=True
-        )
-        rhs_shape = array_shape_for_schema(
-            rhs, self.dialect, allow_item_value_constraints=False
-        )
-        if lhs_shape is None or rhs_shape is None:
-            return ProofResult.unsupported(
-                "schema is outside the exact array-length fragment"
-            )
-        if lhs_shape.accepts_non_array:
-            return ProofResult.unsupported("left schema is not array-only")
-        if lhs_shape.is_subset_of(rhs_shape):
-            return ProofResult.true()
-
-        witness = lhs_shape.witness_not_in(rhs_shape)
-        if witness is None:
-            return ProofResult.unsupported(
-                "array counterexample could not be constructed"
-            )
-
-        backend = validation_backend_for(self.dialect)
-        if backend.validates_difference(lhs, rhs, witness):
-            return ProofResult.false(witness)
-        return ProofResult.unsupported(
-            "array counterexample was rejected by concrete validation"
-        )
-
-
-class ArrayUniquenessDomainTactic:
-    def __init__(self, context: ProofContext):
-        self.context = context
-        self.dialect = self.context.dialect
-
-    def is_subschema(self, lhs: Any, rhs: Any) -> ProofResult:
-        if contains_reference_keyword(
-            lhs, {"$ref", "$recursiveRef"}
-        ) or contains_reference_keyword(rhs, {"$ref", "$recursiveRef"}):
-            return ProofResult.unsupported(
-                "array uniqueness proof is deferred for static recursive references"
-            )
-
-        lhs_shape = array_uniqueness_shape_for_schema(
-            lhs,
-            self.dialect,
-            side="lhs",
-        )
-        rhs_shape = array_uniqueness_shape_for_schema(
-            rhs,
-            self.dialect,
-            side="rhs",
-        )
-        if lhs_shape is None or rhs_shape is None:
-            return ProofResult.unsupported(
-                "schema is outside the exact array uniqueness fragment"
-            )
-
-        if lhs_shape.accepts_non_array and not rhs_shape.accepts_non_array:
-            backend = validation_backend_for(self.dialect)
-            for atom in ("null", "boolean", "integer", "number", "string", "object"):
-                witness = witness_for_type_atom(atom)
-                if backend.validates_difference(lhs, rhs, witness):
-                    return ProofResult.false(witness)
-            return ProofResult.unsupported(
-                "array uniqueness non-array counterexample could not be constructed"
-            )
-
-        if not lhs_shape.accepts_array:
-            return ProofResult.true()
-        if not rhs_shape.accepts_array:
-            array_witness: list[Any] = []
-            backend = validation_backend_for(self.dialect)
-            if backend.validates_difference(lhs, rhs, array_witness):
-                return ProofResult.false(array_witness)
-            return ProofResult.unsupported(
-                "array uniqueness array counterexample could not be constructed"
-            )
-        if not rhs_shape.requires_unique_items:
-            return ProofResult.true()
-        if lhs_shape.guarantees_unique_items:
-            return ProofResult.true()
-
-        witness = [None, None]
-        backend = validation_backend_for(self.dialect)
-        if backend.validates_difference(lhs, rhs, witness):
-            return ProofResult.false(witness)
-        return ProofResult.unsupported(
-            "array uniqueness duplicate counterexample could not be constructed"
-        )
-
-
-class ArrayContainsDomainTactic:
-    def __init__(self, context: ProofContext):
-        self.context = context
-        self.dialect = self.context.dialect
-
-    def is_subschema(self, lhs: Any, rhs: Any) -> ProofResult:
-        if contains_reference_keyword(
-            lhs, {"$ref", "$recursiveRef"}
-        ) or contains_reference_keyword(rhs, {"$ref", "$recursiveRef"}):
-            return ProofResult.unsupported(
-                "array contains proof is deferred for static recursive references"
-            )
-        if not _is_array_contains_fragment_schema(lhs, self.dialect, side="lhs"):
-            return ProofResult.unsupported(
-                "left schema is outside the exact array contains fragment"
-            )
-        if not _is_array_contains_fragment_schema(rhs, self.dialect, side="rhs"):
-            return ProofResult.unsupported(
-                "right schema is outside the exact array contains fragment"
-            )
-        if "contains" not in rhs:
-            return ProofResult.unsupported("right schema has no contains constraint")
-
-        if not type_overapproximation_for_schema(
-            lhs
-        ) <= type_overapproximation_for_schema(rhs):
-            return ProofResult.unsupported(
-                "array contains type coverage could not be proven"
-            )
-
-        rhs_counts = _array_contains_counts(rhs)
-        if rhs_counts is None:
-            return ProofResult.unsupported(
-                "right contains counts are outside the exact fragment"
-            )
-        rhs_min, rhs_max = rhs_counts
-
-        min_proved = rhs_min == 0
-        if not min_proved:
-            lhs_min = _minimum_contains_matches_guaranteed(
-                lhs,
-                rhs["contains"],
-                self.dialect,
-                context=self.context,
-            )
-            min_proved = lhs_min is not None and lhs_min >= rhs_min
-
-        max_proved = rhs_max is None
-        if rhs_max is not None:
-            lhs_max = _maximum_contains_matches_possible(
-                lhs,
-                rhs["contains"],
-                self.dialect,
-                context=self.context,
-            )
-            max_proved = lhs_max is not None and lhs_max <= rhs_max
-
-        if min_proved and max_proved:
-            return ProofResult.true()
-        return ProofResult.unsupported(
-            "array contains count bounds could not be proven exactly"
-        )
-
-
 @dataclass(frozen=True)
 class ArrayShape:
     intervals: tuple[ArrayLengthInterval, ...]

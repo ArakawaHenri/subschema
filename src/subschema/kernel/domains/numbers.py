@@ -7,24 +7,18 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, TypeGuard
+from typing import Any, TypeGuard
 
 from subschema.dialects import Dialect
-from subschema.kernel.contracts import ProofResult
 from subschema.kernel.domains.types import type_overapproximation_for_schema
 from subschema.kernel.schemas import (
     IGNORED_SCHEMA_METADATA_KEYS,
     contains_reference_keyword,
 )
-from subschema.kernel.validation import validation_backend_for
-
-if TYPE_CHECKING:
-    from subschema.kernel.context import ProofContext
 
 __all__ = [
     "NUMERIC_SCHEMA_KEYWORDS",
     "NumericAtom",
-    "NumericDomainTactic",
     "NumericShape",
     "numeric_shape_for_schema",
 ]
@@ -42,57 +36,6 @@ NUMERIC_SCHEMA_KEYWORDS = frozenset(
         "type",
     }
 )
-
-
-class NumericDomainTactic:
-    def __init__(self, context: ProofContext):
-        self.context = context
-        self.dialect = self.context.dialect
-
-    def is_subschema(self, lhs: Any, rhs: Any) -> ProofResult:
-        if contains_reference_keyword(
-            lhs, {"$ref", "$recursiveRef"}
-        ) or contains_reference_keyword(rhs, {"$ref", "$recursiveRef"}):
-            return ProofResult.unsupported(
-                "numeric proof is deferred for static recursive references"
-            )
-
-        lhs_shape = numeric_shape_for_schema(lhs, self.dialect)
-        rhs_shape = numeric_shape_for_schema(rhs, self.dialect)
-        if lhs_shape is None or rhs_shape is None:
-            return ProofResult.unsupported(
-                "schema is outside the exact numeric fragment"
-            )
-        if lhs_shape.accepts_non_numeric and not rhs_shape.accepts_non_numeric:
-            non_numeric_witness = ""
-            backend = validation_backend_for(self.dialect)
-            if backend.validates_difference(lhs, rhs, non_numeric_witness):
-                return ProofResult.false(non_numeric_witness)
-            return ProofResult.unsupported(
-                "numeric non-number counterexample was rejected by concrete validation"
-            )
-
-        subset = lhs_shape.numeric_subset_of(rhs_shape)
-        if subset is True:
-            return ProofResult.true()
-        if subset is None:
-            return ProofResult.unsupported(
-                "numeric union coverage could not be proven exactly"
-            )
-
-        numeric_witness = lhs_shape.witness_not_in(rhs_shape)
-        if numeric_witness is None:
-            return ProofResult.unsupported(
-                "numeric counterexample could not be constructed"
-            )
-
-        backend = validation_backend_for(self.dialect)
-        if backend.validates_difference(lhs, rhs, numeric_witness):
-            return ProofResult.false(numeric_witness)
-        return ProofResult.unsupported(
-            "numeric counterexample was rejected by concrete validation"
-        )
-
 
 @dataclass(frozen=True)
 class NumericShape:

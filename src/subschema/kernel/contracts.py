@@ -173,6 +173,10 @@ class ProofResult:
         )
 
 
+def proof_is_inconclusive(result: ProofResult) -> bool:
+    return result.status in {"unsupported", "resource_exhausted"}
+
+
 @dataclass(frozen=True)
 class ProofBudgets:
     max_work: int = 4096

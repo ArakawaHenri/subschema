@@ -15,7 +15,6 @@ from subschema.kernel.regex import RegexLanguage
 from subschema.kernel.schemas import (
     IGNORED_SCHEMA_METADATA_KEYS,
     contains_reference_keyword,
-    is_pure_schema_value_applicator,
 )
 from subschema.kernel.values import stable_key
 
@@ -45,9 +44,7 @@ _SCHEMA_SHAPE_CACHE_SIZE = 4096
 __all__ = [
     "STRING_SCHEMA_KEYWORDS",
     "STRING_LANGUAGE_SCHEMA_KEYWORDS",
-    "StringLengthDomainTactic",
     "StringLengthInterval",
-    "StringLanguageDomainTactic",
     "StringLanguageShape",
     "StringShape",
     "drop_string_pattern_keywords",
@@ -57,113 +54,6 @@ __all__ = [
     "string_language_witness",
     "string_shape_for_schema",
 ]
-
-
-class StringLengthDomainTactic:
-    def __init__(self, context: ProofContext):
-        self.context = context
-        self.dialect = self.context.dialect
-
-    def is_subschema(self, lhs: Any, rhs: Any) -> ProofResult:
-        if contains_reference_keyword(
-            lhs, {"$ref", "$recursiveRef"}
-        ) or contains_reference_keyword(rhs, {"$ref", "$recursiveRef"}):
-            return ProofResult.unsupported(
-                "string proof is deferred for static recursive references"
-            )
-
-        lhs_shape = string_shape_for_schema(lhs)
-        rhs_shape = string_shape_for_schema(rhs)
-        if lhs_shape is None or rhs_shape is None:
-            return ProofResult.unsupported(
-                "schema is outside the exact string-length fragment"
-            )
-        if lhs_shape.accepts_non_string:
-            return ProofResult.unsupported("left schema is not string-only")
-        if lhs_shape.is_subset_of(rhs_shape):
-            return ProofResult.true()
-
-        witness = lhs_shape.witness_not_in(rhs_shape)
-        if witness is None:
-            return ProofResult.unsupported(
-                "string counterexample could not be constructed"
-            )
-        return ProofResult.false(witness)
-
-
-class StringLanguageDomainTactic:
-    def __init__(self, context: ProofContext):
-        self.context = context
-        self.dialect = self.context.dialect
-
-    def is_subschema(self, lhs: Any, rhs: Any) -> ProofResult:
-        if contains_reference_keyword(
-            lhs, {"$ref", "$recursiveRef"}
-        ) or contains_reference_keyword(rhs, {"$ref", "$recursiveRef"}):
-            return ProofResult.unsupported(
-                "string language proof is deferred for static recursive references"
-            )
-
-        if is_pure_schema_value_applicator(rhs, "not"):
-            return self._prove_left_disjoint_from_negated_language(lhs, rhs)
-
-        lhs_shape = string_language_shape_for_schema(lhs)
-        rhs_shape = string_language_shape_for_schema(rhs)
-        if lhs_shape is None or rhs_shape is None:
-            return ProofResult.unsupported(
-                "schema is outside the exact string-language fragment"
-            )
-        if lhs_shape.accepts_non_string:
-            return ProofResult.unsupported("left schema is not string-only")
-        subset = lhs_shape.is_subset_of(rhs_shape, self.context)
-        if isinstance(subset, ProofResult):
-            return subset
-        if subset:
-            return ProofResult.true()
-
-        witness = lhs_shape.witness_not_in(rhs_shape, self.context)
-        if isinstance(witness, ProofResult):
-            return witness
-        if witness is None:
-            return ProofResult.unsupported(
-                "string language counterexample could not be constructed"
-            )
-        return ProofResult.false(witness)
-
-    def _prove_left_disjoint_from_negated_language(
-        self, lhs: Any, rhs: dict[str, Any]
-    ) -> ProofResult:
-        lhs_shape = string_language_shape_for_schema(lhs)
-        negated_shape = string_language_shape_for_schema(rhs["not"])
-        if lhs_shape is None or negated_shape is None:
-            return ProofResult.unsupported(
-                "schema is outside the exact string-language negation fragment"
-            )
-        if lhs_shape.accepts_non_string:
-            return ProofResult.unsupported("left schema is not string-only")
-
-        if string_length_fragments_are_disjoint(lhs, rhs["not"]):
-            return ProofResult.true()
-
-        disjoint = lhs_shape.pattern.is_disjoint_from(
-            negated_shape.pattern, self.context
-        )
-        if isinstance(disjoint, ProofResult):
-            return disjoint
-        if disjoint:
-            return ProofResult.true()
-
-        overlap = lhs_shape.pattern.intersection(negated_shape.pattern)
-        witness = string_language_witness(overlap, self.context)
-        if isinstance(witness, ProofResult):
-            return witness
-        if witness is None:
-            return ProofResult.unsupported(
-                "string language negation counterexample could not be constructed"
-            )
-        return ProofResult.false(witness)
-
-
 @dataclass(frozen=True)
 class StringShape:
     intervals: tuple[StringLengthInterval, ...]
