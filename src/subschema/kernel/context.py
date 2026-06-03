@@ -15,6 +15,7 @@ from subschema.kernel.contracts import (
     ProofResult,
     ProofWorkMeter,
 )
+from subschema.kernel.projection import ProjectionEngine
 from subschema.kernel.values import stable_key
 
 _EXPENSIVE_PROOF_WORK_LABELS: dict[ExpensiveProofKind, str] = {
@@ -124,23 +125,15 @@ class ProofContext:
         return self.work_meter.exhausted
 
     def meet(self, lhs: Any, rhs: Any) -> Any:
-        from subschema.kernel.projection import ProjectionEngine
-
         return ProjectionEngine(self).meet(lhs, rhs)
 
     def join(self, lhs: Any, rhs: Any) -> Any:
-        from subschema.kernel.projection import ProjectionEngine
-
         return ProjectionEngine(self).join(lhs, rhs)
 
     def finite_meet_projection(self, lhs: Any, rhs: Any) -> Any | None:
-        from subschema.kernel.projection import ProjectionEngine
-
         return ProjectionEngine(self).finite_meet_projection(lhs, rhs)
 
     def finite_join_projection(self, lhs: Any, rhs: Any) -> Any | None:
-        from subschema.kernel.projection import ProjectionEngine
-
         return ProjectionEngine(self).finite_join_projection(lhs, rhs)
 
 

@@ -130,7 +130,12 @@ from subschema.kernel.scalars import (
     type_difference_plan_from_constraints,
     typed_scalar_difference_plan_from_constraints,
 )
-from subschema.kernel.schemas import contains_reference_keyword
+from subschema.kernel.schemas import (
+    contains_reference_keyword,
+    schema_is_false,
+    schema_is_true,
+    schemas_equal,
+)
 from subschema.kernel.validation import (
     ValidationUnsupportedError,
     validation_backend_for,
@@ -605,12 +610,6 @@ def _should_stop_after_rule_unsupported(
 
 
 def _prove_trivial_difference(problem: DifferenceProblem) -> ProofResult:
-    from subschema.kernel.schemas import (
-        schema_is_false,
-        schema_is_true,
-        schemas_equal,
-    )
-
     if _formula_is_syntactically_empty(problem.formula.formula):
         return ProofResult.true()
     if (

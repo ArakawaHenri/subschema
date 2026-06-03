@@ -8,6 +8,7 @@ from typing import Any
 
 import subschema.kernel.driver as proof_driver
 from subschema.dialects import Dialect, resolve_dialect
+from subschema.kernel.context import ProofContext
 from subschema.kernel.contracts import ProofOptions, ProofResult, ProofSide
 
 
@@ -16,11 +17,9 @@ class ProofEngine:
         self,
         dialect: Dialect,
         *,
-        context: Any | None = None,
+        context: ProofContext | None = None,
         options: ProofOptions | None = None,
     ):
-        from subschema.kernel.context import ProofContext
-
         self.context = context or ProofContext(
             dialect, ProofOptions() if options is None else options
         )

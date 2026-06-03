@@ -20,6 +20,7 @@ from subschema.kernel.contracts import (
 from subschema.kernel.json_data import ensure_json_value
 from subschema.kernel.normalization import normalize_simple_lhs_unevaluated_for_proof
 from subschema.kernel.references import inline_static_refs_for_proof
+from subschema.kernel.sat import EmptinessSolver
 from subschema.kernel.validation import validate_schema_for_dialect
 
 if TYPE_CHECKING:
@@ -65,8 +66,6 @@ def schema_validation_result(
 
 
 def bounded_ir_proof(context: ProofContext, lhs: Any, rhs: Any) -> ProofResult:
-    from subschema.kernel.sat import EmptinessSolver
-
     return EmptinessSolver(context).prove_difference_empty(lhs, rhs)
 
 

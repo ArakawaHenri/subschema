@@ -6,7 +6,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from subschema.dialects import Dialect
 from subschema.kernel.contracts import ProofResult
+from subschema.kernel.domains.arrays import (
+    ArrayShape,
+    _minimum_contains_matches_guaranteed,
+    array_shape_for_schema,
+)
+from subschema.kernel.domains.numbers import NumericShape, numeric_shape_for_schema
+from subschema.kernel.domains.objects import (
+    ObjectPropertyCountShape,
+    closed_object_properties_shape_for_schema,
+    object_property_count_shape_for_schema,
+)
 from subschema.kernel.domains.strings import (
     string_language_fragments_are_disjoint,
     string_length_fragments_are_disjoint,
@@ -242,8 +254,6 @@ def _numeric_disjointness(
             "numeric disjointness requires numeric-only intersection"
         )
 
-    from subschema.kernel.domains.numbers import NumericShape, numeric_shape_for_schema
-
     lhs_shape = numeric_shape_for_schema(lhs, context.dialect)
     rhs_shape = numeric_shape_for_schema(rhs, context.dialect)
     if lhs_shape is None or rhs_shape is None:
@@ -274,8 +284,6 @@ def _numeric_shape_emptiness(schema: Any, context: ProofContext) -> ProofResult:
             "numeric emptiness requires numeric-only schemas"
         )
 
-    from subschema.kernel.domains.numbers import numeric_shape_for_schema
-
     shape = numeric_shape_for_schema(schema, context.dialect)
     if shape is None:
         return ProofResult.unsupported("numeric emptiness requires exact shape")
@@ -296,11 +304,6 @@ def _object_count_disjointness(
         return ProofResult.unsupported(
             "object count disjointness requires object-only intersection"
         )
-
-    from subschema.kernel.domains.objects import (
-        ObjectPropertyCountShape,
-        object_property_count_shape_for_schema,
-    )
 
     lhs_shape = object_property_count_shape_for_schema(lhs)
     rhs_shape = object_property_count_shape_for_schema(rhs)
@@ -335,8 +338,6 @@ def _object_count_emptiness(schema: Any, context: ProofContext) -> ProofResult:
             "object count emptiness requires object-only schemas"
         )
 
-    from subschema.kernel.domains.objects import object_property_count_shape_for_schema
-
     shape = object_property_count_shape_for_schema(schema)
     if shape is None:
         return ProofResult.unsupported(
@@ -359,8 +360,6 @@ def _array_length_disjointness(
         return ProofResult.unsupported(
             "array length disjointness requires array-only intersection"
         )
-
-    from subschema.kernel.domains.arrays import ArrayShape, array_shape_for_schema
 
     lhs_shape = array_shape_for_schema(
         lhs, context.dialect, allow_item_value_constraints=False
@@ -393,8 +392,6 @@ def _array_length_emptiness(schema: Any, context: ProofContext) -> ProofResult:
         return ProofResult.unsupported(
             "array length emptiness requires array-only schemas"
         )
-
-    from subschema.kernel.domains.arrays import array_shape_for_schema
 
     shape = array_shape_for_schema(
         schema, context.dialect, allow_item_value_constraints=False
@@ -449,8 +446,6 @@ def _first_required_array_item_schema(
     minimum = schema.get("minItems", 0)
     if not isinstance(minimum, int) or isinstance(minimum, bool) or minimum <= 0:
         return None
-
-    from subschema.dialects import Dialect
 
     if context.dialect is Dialect.DRAFT202012:
         prefix = schema.get("prefixItems")
@@ -530,8 +525,6 @@ def _schemas_covering_all_array_items(
     schema: dict[str, Any],
     context: ProofContext,
 ) -> tuple[Any, ...] | None:
-    from subschema.dialects import Dialect
-
     if context.dialect is Dialect.DRAFT202012:
         prefix = schema.get("prefixItems")
         prefix_schemas = tuple(prefix) if isinstance(prefix, list) else ()
@@ -559,8 +552,6 @@ def _guaranteed_contains_matches(
     schema: dict[str, Any],
     context: ProofContext,
 ) -> int | None:
-    from subschema.kernel.domains.arrays import _minimum_contains_matches_guaranteed
-
     return _minimum_contains_matches_guaranteed(
         schema, schema["contains"], context.dialect, context=context
     )
@@ -585,10 +576,6 @@ def _closed_finite_object_disjointness(
         return ProofResult.unsupported(
             "closed object disjointness requires object-only intersection"
         )
-
-    from subschema.kernel.domains.objects import (
-        closed_object_properties_shape_for_schema,
-    )
 
     lhs_shape = closed_object_properties_shape_for_schema(lhs)
     rhs_shape = closed_object_properties_shape_for_schema(rhs)
