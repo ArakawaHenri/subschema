@@ -65,7 +65,26 @@ Available public entrypoints:
 - `canonicalize_schema(schema, *, dialect=None)`
 - `SchemaError`, `SubschemaError`, and `UnsupportedProofError` as stable catch points.
 
-The wheel includes `py.typed` for typed-package consumers.
+## Proof Behavior
+
+`subschema` proves sound results when it can. If a query is outside the current
+proof model, public boolean helpers raise `UnsupportedProofError` instead of
+guessing.
+
+Use `endeavor=True` or `--endeavor` for finite but potentially expensive proof
+products. In endeavor mode, `max_work` limits proof frontier expansion and
+`timeout_ms` limits solver calls. These controls are accepted only when endeavor
+is enabled.
+
+Current intentional boundaries:
+
+- external references are not fetched from the network;
+- recursive `$ref` and recursive dynamic-reference proofs are not modeled;
+- `format` is treated as an annotation unless a future assertion backend is
+  provided;
+- non-regular ECMAScript regex features such as backreferences and lookaround
+  are reported as unsupported;
+- `unsupported` means “not proven by this model,” not “the schema is invalid.”
 
 ## Dialects
 
@@ -81,8 +100,8 @@ Supported dialects:
 - Draft 2019-09
 - Draft 2020-12
 
-The prover is intentionally conservative. Unsupported, unbounded, recursive, or
-exhausted proof fragments are reported instead of being silently approximated.
+Resource exhaustion is reported separately from unsupported proof fragments when
+an endeavor proof exceeds its configured work or timeout limit.
 
 ## Acknowledgement
 
