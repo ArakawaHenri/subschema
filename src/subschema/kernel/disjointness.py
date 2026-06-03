@@ -4,7 +4,7 @@ Shared schema-language disjointness helpers.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any, Protocol, cast
 
 from subschema.dialects import Dialect
 from subschema.kernel.contracts import ProofResult
@@ -31,16 +31,19 @@ from subschema.kernel.schemas import IGNORED_SCHEMA_METADATA_KEYS
 from subschema.kernel.validation import validation_backend_for
 from subschema.kernel.witnesses import build_schema_witness, finite_projection_witness
 
-if TYPE_CHECKING:
-    from subschema.kernel.context import ProofContext
-
 __all__ = [
     "schema_is_empty_exact",
     "schemas_are_disjoint",
 ]
 
 
-def schema_is_empty_exact(schema: Any, context: ProofContext) -> ProofResult:
+class DisjointnessContext(Protocol):
+    dialect: Dialect
+
+    def finite_meet_projection(self, lhs: Any, rhs: Any) -> Any | None: ...
+
+
+def schema_is_empty_exact(schema: Any, context: DisjointnessContext) -> ProofResult:
     if schema is False:
         return ProofResult.true()
     if schema is True:
@@ -62,7 +65,7 @@ def schema_is_empty_exact(schema: Any, context: ProofContext) -> ProofResult:
     if array_empty.status != "unsupported":
         return array_empty
 
-    witness = build_schema_witness(schema, context.dialect, context)
+    witness = build_schema_witness(schema, context.dialect, cast(Any, context))
     if witness.status == "resource_exhausted":
         return ProofResult.resource_exhausted(witness.reason)
     if witness.has_witness:
@@ -76,7 +79,7 @@ def schema_is_empty_exact(schema: Any, context: ProofContext) -> ProofResult:
 def schemas_are_disjoint(
     lhs: Any,
     rhs: Any,
-    context: ProofContext,
+    context: DisjointnessContext,
 ) -> ProofResult:
     return _schemas_are_disjoint(lhs, rhs, context, depth=0)
 
@@ -84,7 +87,7 @@ def schemas_are_disjoint(
 def _schemas_are_disjoint(
     lhs: Any,
     rhs: Any,
-    context: ProofContext,
+    context: DisjointnessContext,
     *,
     depth: int,
 ) -> ProofResult:
@@ -139,7 +142,7 @@ def _schemas_are_disjoint(
     intersection_witness = build_schema_witness(
         {"allOf": [lhs, rhs]},
         context.dialect,
-        context,
+        cast(Any, context),
     )
     if intersection_witness.status == "resource_exhausted":
         return ProofResult.resource_exhausted(intersection_witness.reason)
@@ -156,7 +159,7 @@ def _schemas_are_disjoint(
 def _union_applicator_disjointness(
     lhs: Any,
     rhs: Any,
-    context: ProofContext,
+    context: DisjointnessContext,
     *,
     depth: int,
 ) -> ProofResult:
@@ -181,7 +184,7 @@ def _branches_are_disjoint_from_schema(
     union_schema: Any,
     branches: tuple[Any, ...],
     other_schema: Any,
-    context: ProofContext,
+    context: DisjointnessContext,
     *,
     depth: int,
 ) -> ProofResult:
@@ -244,7 +247,7 @@ def _schema_without_union_keyword(
 def _numeric_disjointness(
     lhs: Any,
     rhs: Any,
-    context: ProofContext,
+    context: DisjointnessContext,
 ) -> ProofResult:
     shared_types = type_overapproximation_for_schema(
         lhs
@@ -278,7 +281,7 @@ def _numeric_disjointness(
     )
 
 
-def _numeric_shape_emptiness(schema: Any, context: ProofContext) -> ProofResult:
+def _numeric_shape_emptiness(schema: Any, context: DisjointnessContext) -> ProofResult:
     if not type_overapproximation_for_schema(schema) <= {"integer", "number"}:
         return ProofResult.unsupported(
             "numeric emptiness requires numeric-only schemas"
@@ -295,7 +298,7 @@ def _numeric_shape_emptiness(schema: Any, context: ProofContext) -> ProofResult:
 def _object_count_disjointness(
     lhs: Any,
     rhs: Any,
-    context: ProofContext,
+    context: DisjointnessContext,
 ) -> ProofResult:
     shared_types = type_overapproximation_for_schema(
         lhs
@@ -332,7 +335,7 @@ def _object_count_disjointness(
     )
 
 
-def _object_count_emptiness(schema: Any, context: ProofContext) -> ProofResult:
+def _object_count_emptiness(schema: Any, context: DisjointnessContext) -> ProofResult:
     if type_overapproximation_for_schema(schema) != {"object"}:
         return ProofResult.unsupported(
             "object count emptiness requires object-only schemas"
@@ -351,7 +354,7 @@ def _object_count_emptiness(schema: Any, context: ProofContext) -> ProofResult:
 def _array_length_disjointness(
     lhs: Any,
     rhs: Any,
-    context: ProofContext,
+    context: DisjointnessContext,
 ) -> ProofResult:
     shared_types = type_overapproximation_for_schema(
         lhs
@@ -387,7 +390,7 @@ def _array_length_disjointness(
     )
 
 
-def _array_length_emptiness(schema: Any, context: ProofContext) -> ProofResult:
+def _array_length_emptiness(schema: Any, context: DisjointnessContext) -> ProofResult:
     if type_overapproximation_for_schema(schema) != {"array"}:
         return ProofResult.unsupported(
             "array length emptiness requires array-only schemas"
@@ -408,7 +411,7 @@ def _array_length_emptiness(schema: Any, context: ProofContext) -> ProofResult:
 def _array_item_disjointness(
     lhs: Any,
     rhs: Any,
-    context: ProofContext,
+    context: DisjointnessContext,
     *,
     depth: int,
 ) -> ProofResult:
@@ -439,7 +442,7 @@ def _array_item_disjointness(
 
 def _first_required_array_item_schema(
     schema: Any,
-    context: ProofContext,
+    context: DisjointnessContext,
 ) -> Any | None:
     if not isinstance(schema, dict):
         return None
@@ -460,7 +463,7 @@ def _first_required_array_item_schema(
     return items if isinstance(items, bool | dict) else None
 
 
-def _array_contains_emptiness(schema: Any, context: ProofContext) -> ProofResult:
+def _array_contains_emptiness(schema: Any, context: DisjointnessContext) -> ProofResult:
     if (
         not isinstance(schema, dict)
         or "contains" not in schema
@@ -506,7 +509,7 @@ def _array_contains_counts(schema: dict[str, Any]) -> tuple[int, int | None] | N
 
 def _all_array_items_are_disjoint_from_contains(
     schema: dict[str, Any],
-    context: ProofContext,
+    context: DisjointnessContext,
 ) -> bool:
     item_schemas = _schemas_covering_all_array_items(schema, context)
     if item_schemas is None:
@@ -523,7 +526,7 @@ def _all_array_items_are_disjoint_from_contains(
 
 def _schemas_covering_all_array_items(
     schema: dict[str, Any],
-    context: ProofContext,
+    context: DisjointnessContext,
 ) -> tuple[Any, ...] | None:
     if context.dialect is Dialect.DRAFT202012:
         prefix = schema.get("prefixItems")
@@ -550,17 +553,20 @@ def _schemas_covering_all_array_items(
 
 def _guaranteed_contains_matches(
     schema: dict[str, Any],
-    context: ProofContext,
+    context: DisjointnessContext,
 ) -> int | None:
     return _minimum_contains_matches_guaranteed(
-        schema, schema["contains"], context.dialect, context=context
+        schema,
+        schema["contains"],
+        context.dialect,
+        context=cast(Any, context),
     )
 
 
 def _closed_finite_object_disjointness(
     lhs: Any,
     rhs: Any,
-    context: ProofContext,
+    context: DisjointnessContext,
     *,
     depth: int,
 ) -> ProofResult:
@@ -627,7 +633,7 @@ def _is_finite_closed_object_shape(shape: Any) -> bool:
 def _object_required_property_conflict(
     lhs: Any,
     rhs: Any,
-    context: ProofContext,
+    context: DisjointnessContext,
     *,
     depth: int,
 ) -> ProofResult:

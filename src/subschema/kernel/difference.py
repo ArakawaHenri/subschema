@@ -36,8 +36,8 @@ from subschema.kernel.domains.types import (
 from subschema.kernel.evaluation import (
     EvaluatedItemSource,
     EvaluationTraceExpression,
-    evaluation_trace_for_source,
 )
+from subschema.kernel.evaluation_traces import evaluation_trace_for_source
 from subschema.kernel.finite import finite_values_for_schema
 from subschema.kernel.ir import IRAssertionKind, LogicalSchemaIR
 from subschema.kernel.references import ResourceGraph

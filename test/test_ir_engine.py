@@ -13,6 +13,7 @@ import subschema.kernel.disjointness as disjointness_module
 import subschema.kernel.driver as driver_module
 import subschema.kernel.engine as engine_module
 import subschema.kernel.evaluation as evaluation_module
+import subschema.kernel.evaluation_traces as evaluation_traces_module
 import subschema.kernel.formulas as formulas_module
 import subschema.kernel.ir as ir_module
 import subschema.kernel.normalization as normalization_module
@@ -140,8 +141,8 @@ from subschema.kernel.evaluation import (
     EvaluationExpressionOrigin,
     EvaluationFrontier,
     EvaluationTraceExpression,
-    evaluation_trace_for_source,
 )
+from subschema.kernel.evaluation_traces import evaluation_trace_for_source
 from subschema.kernel.difference import (
     ArrayContainsConstraint,
     ArrayContainsDifferencePlan,
@@ -9424,7 +9425,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        expression = evaluation_module.evaluation_expression_for_source(
+        expression = evaluation_traces_module.evaluation_expression_for_source(
             formula.rhs.source,
             formula.rhs.graph,
             lhs_schema=lhs,
@@ -9467,14 +9468,14 @@ class TestIREngineHardFeatures(unittest.TestCase):
         with patch.object(
             engine.context, "subproof", wraps=engine.context.subproof
         ) as subproof:
-            first = evaluation_module.evaluation_expression_for_source(
+            first = evaluation_traces_module.evaluation_expression_for_source(
                 formula.rhs.source,
                 formula.rhs.graph,
                 lhs_schema=lhs,
                 context=engine.context,
             )
             first_call_count = subproof.call_count
-            second = evaluation_module.evaluation_expression_for_source(
+            second = evaluation_traces_module.evaluation_expression_for_source(
                 formula.rhs.source,
                 formula.rhs.graph,
                 lhs_schema=lhs,
