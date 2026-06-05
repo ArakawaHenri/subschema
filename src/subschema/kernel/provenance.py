@@ -14,11 +14,22 @@ class SchemaSource:
     pointer: tuple[str, ...] = ()
     resource_pointer: tuple[str, ...] = ()
     document_pointer: tuple[str, ...] = ()
+    document_root: Any | None = None
+    document_dialect: Dialect | None = None
 
     @classmethod
     def root(cls, schema: Any, dialect: Dialect) -> SchemaSource:
-        return cls(schema=schema, dialect=dialect)
+        return cls(
+            schema=schema,
+            dialect=dialect,
+            document_root=schema,
+            document_dialect=dialect,
+        )
 
     @property
     def is_root_schema(self) -> bool:
         return not self.pointer and not self.document_pointer
+
+    @property
+    def has_document_context(self) -> bool:
+        return self.document_root is not None and self.document_dialect is not None

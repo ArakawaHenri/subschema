@@ -350,6 +350,8 @@ class SchemaIR:
     pointer: tuple[str, ...] = ()
     resource_pointer: tuple[str, ...] = ()
     document_pointer: tuple[str, ...] = ()
+    document_root: Any | None = None
+    document_dialect: Dialect | None = None
 
     def to_source(self) -> SchemaSource:
         return SchemaSource(
@@ -359,6 +361,8 @@ class SchemaIR:
             pointer=self.pointer,
             resource_pointer=self.resource_pointer,
             document_pointer=self.document_pointer,
+            document_root=self.document_root,
+            document_dialect=self.document_dialect,
         )
 
 
@@ -510,6 +514,8 @@ class ResourceGraph:
             pointer=pointer,
             resource_pointer=location.resource_pointer,
             document_pointer=pointer,
+            document_root=self.root,
+            document_dialect=self.dialect,
         )
 
     def reference_frame_for_pointer(self, pointer: tuple[str, ...]) -> ReferenceFrame:

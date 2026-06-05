@@ -2560,18 +2560,6 @@ def _prove_object_property_count_difference(problem: DifferenceProblem) -> Proof
     if plan.status == "unsupported":
         return ProofResult.unsupported(plan.reason)
     if plan.status == "proved_true":
-        if _object_property_count_lhs_has_unmodeled_negated_constraints(
-            problem.lhs_schema
-        ):
-            return ProofResult.unsupported(
-                "SAT object property-count true proof requires count-complete "
-                "left complement semantics"
-            )
-        if _object_property_count_rhs_has_unmodeled_constraints(problem.rhs_schema):
-            return ProofResult.unsupported(
-                "SAT object property-count true proof requires count-complete "
-                "right object semantics"
-            )
         return ProofResult.true()
 
     return _validated_false(problem, plan.witness, plan.rejected_reason)
@@ -2589,73 +2577,6 @@ def _rhs_requires_nonempty_object(schema: Any) -> bool:
 def _rhs_has_property_count_constraint(schema: Any) -> bool:
     return isinstance(schema, dict) and (
         "minProperties" in schema or "maxProperties" in schema
-    )
-
-
-def _object_property_count_rhs_has_unmodeled_constraints(
-    schema: Any, depth: int = 0
-) -> bool:
-    if depth > 16:
-        return True
-    if not isinstance(schema, dict):
-        return False
-    if any(
-        keyword in schema
-        for keyword in (
-            "additionalProperties",
-            "dependencies",
-            "dependentRequired",
-            "dependentSchemas",
-            "patternProperties",
-            "properties",
-            "propertyNames",
-            "required",
-            "unevaluatedProperties",
-        )
-    ):
-        return True
-    for keyword in ("allOf", "anyOf", "oneOf"):
-        value = schema.get(keyword)
-        if isinstance(value, list) and any(
-            _object_property_count_rhs_has_unmodeled_constraints(subschema, depth + 1)
-            for subschema in value
-        ):
-            return True
-    return "not" in schema and _object_property_count_rhs_has_unmodeled_constraints(
-        schema["not"], depth + 1
-    )
-
-
-def _object_property_count_lhs_has_unmodeled_negated_constraints(
-    schema: Any,
-    depth: int = 0,
-    *,
-    negated: bool = False,
-) -> bool:
-    if depth > 16:
-        return True
-    if not isinstance(schema, dict):
-        return False
-    if negated and _object_property_count_rhs_has_unmodeled_constraints(schema, depth):
-        return True
-    for keyword in ("allOf", "anyOf", "oneOf"):
-        value = schema.get(keyword)
-        if isinstance(value, list) and any(
-            _object_property_count_lhs_has_unmodeled_negated_constraints(
-                subschema,
-                depth + 1,
-                negated=negated,
-            )
-            for subschema in value
-        ):
-            return True
-    return (
-        "not" in schema
-        and _object_property_count_lhs_has_unmodeled_negated_constraints(
-            schema["not"],
-            depth + 1,
-            negated=not negated,
-        )
     )
 
 

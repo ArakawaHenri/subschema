@@ -5,18 +5,16 @@ Array length, uniqueness, and contains reasoning for exact subschema proofs.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 from subschema.dialects import Dialect, KeywordCategory, keyword_category
 from subschema.kernel.domains.types import type_shape_for_type_keyword
+from subschema.kernel.protocols import SubproofContext
 from subschema.kernel.schemas import (
     IGNORED_SCHEMA_METADATA_KEYS,
     contains_reference_keyword,
     schema_is_true,
 )
-
-if TYPE_CHECKING:
-    from subschema.kernel.context import ProofContext
 
 __all__ = [
     "ARRAY_CONTAINS_RHS_SCHEMA_KEYWORDS",
@@ -86,6 +84,7 @@ ARRAY_CONTAINS_RHS_SCHEMA_KEYWORDS = frozenset(
 class ArrayShape:
     intervals: tuple[ArrayLengthInterval, ...]
     accepts_non_array: bool
+    exact: bool = True
 
     def normalized_intervals(self) -> tuple[ArrayLengthInterval, ...]:
         return _merge_array_intervals(
@@ -126,6 +125,7 @@ class ArrayShape:
                 tuple(interval for interval in intervals if not interval.is_empty())
             ),
             self.accepts_non_array and other.accepts_non_array,
+            self.exact and other.exact,
         )
 
     def union(self, other: ArrayShape) -> ArrayShape:
@@ -134,13 +134,20 @@ class ArrayShape:
                 self.normalized_intervals() + other.normalized_intervals()
             ),
             self.accepts_non_array or other.accepts_non_array,
+            self.exact and other.exact,
         )
 
     def complement(self) -> ArrayShape:
         return ArrayShape(
             _complement_array_intervals(self.normalized_intervals()),
             not self.accepts_non_array,
+            self.exact,
         )
+
+    def exact_complement(self) -> ArrayShape | None:
+        if not self.exact:
+            return None
+        return self.complement()
 
 
 @dataclass(frozen=True)
@@ -225,8 +232,6 @@ def array_shape_for_schema(
         shape = shape.intersect(any_shape)
 
     if "not" in schema:
-        if not _is_exact_array_length_schema(schema["not"], dialect):
-            return None
         negated = array_shape_for_schema(
             schema["not"],
             dialect,
@@ -235,7 +240,10 @@ def array_shape_for_schema(
         )
         if negated is None:
             return None
-        shape = shape.intersect(negated.complement())
+        negated_complement = negated.exact_complement()
+        if negated_complement is None:
+            return None
+        shape = shape.intersect(negated_complement)
 
     return shape
 
@@ -357,7 +365,7 @@ def _is_array_length_fragment_schema(
     return True
 
 
-def _is_exact_array_length_schema(schema: Any, dialect: Dialect) -> bool:
+def _is_exact_local_array_length_schema(schema: Any, dialect: Dialect) -> bool:
     if schema is True or schema is False:
         return True
     if not isinstance(schema, dict):
@@ -371,7 +379,12 @@ def _is_exact_array_length_schema(schema: Any, dialect: Dialect) -> bool:
         "type",
     }
     for key, value in schema.items():
-        if key in IGNORED_SCHEMA_METADATA_KEYS:
+        if (
+            key in IGNORED_SCHEMA_METADATA_KEYS
+            or keyword_category(key) is KeywordCategory.UNKNOWN
+        ):
+            continue
+        if key in {"allOf", "anyOf", "not"}:
             continue
         if key not in exact_keywords:
             return False
@@ -425,7 +438,9 @@ def _local_array_shape(schema: dict[str, Any], dialect: Dialect) -> ArrayShape |
     if tail_upper is not None:
         upper = tail_upper if upper is None else min(upper, tail_upper)
     return ArrayShape(
-        (ArrayLengthInterval(lower, upper),), accepts_non_array=accepts_non_array
+        (ArrayLengthInterval(lower, upper),),
+        accepts_non_array=accepts_non_array,
+        exact=_is_exact_local_array_length_schema(schema, dialect),
     )
 
 
@@ -588,7 +603,7 @@ def _minimum_contains_matches_guaranteed(
     rhs_contains: Any,
     dialect: Dialect,
     *,
-    context: ProofContext | None = None,
+    context: SubproofContext | None = None,
 ) -> int | None:
     if lhs is False:
         return 0
@@ -630,7 +645,7 @@ def _minimum_structural_contains_matches(
     rhs_contains: Any,
     dialect: Dialect,
     *,
-    context: ProofContext | None = None,
+    context: SubproofContext | None = None,
 ) -> int | None:
     minimum_items = lhs.get("minItems", 0)
     if not isinstance(minimum_items, int) or isinstance(minimum_items, bool):
@@ -656,7 +671,7 @@ def _maximum_contains_matches_possible(
     rhs_contains: Any,
     dialect: Dialect,
     *,
-    context: ProofContext | None = None,
+    context: SubproofContext | None = None,
 ) -> int | None:
     if lhs is False:
         return 0
@@ -731,7 +746,7 @@ def _subschema_is_proved(
     rhs: Any,
     dialect: Dialect,
     *,
-    context: ProofContext | None,
+    context: SubproofContext | None,
 ) -> bool:
     if context is None:
         return False

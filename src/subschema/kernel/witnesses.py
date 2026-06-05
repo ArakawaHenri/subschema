@@ -5,7 +5,7 @@ Constructive schema-inhabitant helpers for proof-kernel SAT rules.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 from subschema.dialects import Dialect
 from subschema.kernel.contracts import CounterexampleCertificate, ProofResult
@@ -19,12 +19,10 @@ from subschema.kernel.domains.types import (
     witness_for_type_atom,
 )
 from subschema.kernel.finite import finite_values_for_schema
+from subschema.kernel.protocols import RegexWorkContext
 from subschema.kernel.references import ResourceGraph
 from subschema.kernel.regex import RegexLanguage
 from subschema.kernel.values import json_semantic_key
-
-if TYPE_CHECKING:
-    from subschema.kernel.context import ProofContext
 
 WitnessBuildStatus = Literal[
     "certificate", "resource_exhausted", "unsupported", "witness"
@@ -81,7 +79,7 @@ class WitnessBuildResult:
 @dataclass(frozen=True)
 class WitnessBuilder:
     dialect: Dialect
-    context: ProofContext | None = None
+    context: RegexWorkContext | None = None
 
     def build(self, schema: Any) -> WitnessBuildResult:
         return self._build(schema, depth=0)
@@ -515,7 +513,7 @@ class WitnessBuilder:
 def build_schema_witness(
     schema: Any,
     dialect: Dialect,
-    context: ProofContext | None = None,
+    context: RegexWorkContext | None = None,
 ) -> WitnessBuildResult:
     return WitnessBuilder(dialect, context).build(schema)
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 from subschema.kernel.constraints import (
     FiniteConstraint,
@@ -19,11 +19,9 @@ from subschema.kernel.contracts import ProofResult
 from subschema.kernel.domains.numbers import NumericAtom, NumericShape
 from subschema.kernel.domains.types import JSON_TYPE_ATOMS, witness_for_type_atom
 from subschema.kernel.ir import LogicalSchemaIR
+from subschema.kernel.protocols import RegexWorkContext, SymbolicContext
 from subschema.kernel.symbolic import SAT, UNSAT, SymbolicSolver
 from subschema.kernel.values import json_values_equal
-
-if TYPE_CHECKING:
-    from subschema.kernel.context import ProofContext
 
 ScalarDifferencePlanStatus = Literal["proved_true", "unsupported", "witness"]
 FiniteRhsDifferencePlanStatus = Literal["proved_true", "unsupported", "witnesses"]
@@ -198,7 +196,7 @@ def typed_scalar_difference_plan_from_constraints(
     rhs_numeric: NumericConstraint | None,
     lhs_string: StringLanguageConstraint | None,
     rhs_string: StringLanguageConstraint | None,
-    context: ProofContext | None = None,
+    context: SymbolicContext | None = None,
 ) -> ScalarDifferencePlan | ProofResult:
     if lhs_type is None or rhs_type is None:
         return ScalarDifferencePlan.unsupported(
@@ -302,7 +300,7 @@ def numeric_difference_plan_from_constraints(
     lhs_constraint: NumericConstraint | None,
     rhs_constraint: NumericConstraint | None,
     *,
-    context: ProofContext | None = None,
+    context: SymbolicContext | None = None,
     lhs_type: TypeConstraint | None = None,
     rhs_type: TypeConstraint | None = None,
 ) -> ScalarDifferencePlan | ProofResult:
@@ -358,7 +356,7 @@ def numeric_difference_plan_from_constraints(
 def _symbolic_numeric_difference_plan(
     lhs_shape: Any,
     rhs_shape: Any,
-    context: ProofContext,
+    context: SymbolicContext,
 ) -> ScalarDifferencePlan | ProofResult:
     solver = SymbolicSolver(
         context, "numeric product", "numeric product exceeded proof work budget"
@@ -396,7 +394,7 @@ def _symbolic_numeric_difference_plan(
 def _symbolic_fractional_numeric_witness(
     lhs_shape: Any,
     rhs_shape: Any,
-    context: ProofContext,
+    context: SymbolicContext,
 ) -> Fraction | None:
     negative = _symbolic_fractional_numeric_witness_with_extra(
         lhs_shape,
@@ -417,7 +415,7 @@ def _symbolic_fractional_numeric_witness(
 def _symbolic_fractional_numeric_witness_with_extra(
     lhs_shape: Any,
     rhs_shape: Any,
-    context: ProofContext,
+    context: SymbolicContext,
     *,
     prefer_negative: bool,
 ) -> Fraction | None:
@@ -546,7 +544,7 @@ def string_language_difference_plan_from_constraints(
     lhs_constraint: StringLanguageConstraint | None,
     rhs_constraint: StringLanguageConstraint | None,
     *,
-    context: ProofContext | None = None,
+    context: RegexWorkContext | None = None,
 ) -> ScalarDifferencePlan:
     _ = context
     if lhs_constraint is None or rhs_constraint is None:

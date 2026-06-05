@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from subschema.dialects import Dialect
 from subschema.kernel.contracts import ProofResult
@@ -20,6 +20,7 @@ from subschema.kernel.domains.types import (
     witness_for_type_atom,
 )
 from subschema.kernel.json_data import strict_json_loads
+from subschema.kernel.protocols import SymbolicContext
 from subschema.kernel.regex import RegexLanguage
 from subschema.kernel.schemas import (
     IGNORED_SCHEMA_METADATA_KEYS,
@@ -29,9 +30,6 @@ from subschema.kernel.schemas import (
 from subschema.kernel.symbolic import SAT, UNSAT, SymbolicSolver
 from subschema.kernel.values import stable_key
 from subschema.kernel.witnesses import build_schema_witness
-
-if TYPE_CHECKING:
-    from subschema.kernel.context import ProofContext
 
 _SCHEMA_SHAPE_CACHE_SIZE = 4096
 
@@ -129,6 +127,7 @@ OBJECT_PROPERTY_VALUES_SCHEMA_KEYWORDS = frozenset(
 class ObjectPropertyCountShape:
     intervals: tuple[ObjectPropertyCountInterval, ...]
     accepts_non_object: bool
+    exact: bool = True
 
     def normalized_intervals(self) -> tuple[ObjectPropertyCountInterval, ...]:
         return _merge_object_property_count_intervals(
@@ -165,6 +164,7 @@ class ObjectPropertyCountShape:
                 tuple(interval for interval in intervals if not interval.is_empty())
             ),
             self.accepts_non_object and other.accepts_non_object,
+            self.exact and other.exact,
         )
 
     def union(self, other: ObjectPropertyCountShape) -> ObjectPropertyCountShape:
@@ -173,13 +173,20 @@ class ObjectPropertyCountShape:
                 self.normalized_intervals() + other.normalized_intervals()
             ),
             self.accepts_non_object or other.accepts_non_object,
+            self.exact and other.exact,
         )
 
     def complement(self) -> ObjectPropertyCountShape:
         return ObjectPropertyCountShape(
             _complement_object_property_count_intervals(self.normalized_intervals()),
             not self.accepts_non_object,
+            self.exact,
         )
+
+    def exact_complement(self) -> ObjectPropertyCountShape | None:
+        if not self.exact:
+            return None
+        return self.complement()
 
 
 @dataclass(frozen=True)
@@ -241,12 +248,13 @@ def object_property_count_shape_for_schema(
         shape = shape.intersect(any_shape)
 
     if "not" in schema:
-        if not _is_exact_object_property_count_schema(schema["not"]):
-            return None
         negated = object_property_count_shape_for_schema(schema["not"], depth + 1)
         if negated is None:
             return None
-        shape = shape.intersect(negated.complement())
+        negated_complement = negated.exact_complement()
+        if negated_complement is None:
+            return None
+        shape = shape.intersect(negated_complement)
 
     return shape
 
@@ -280,7 +288,7 @@ def _is_object_property_count_fragment_schema(schema: dict[str, Any]) -> bool:
     return True
 
 
-def _is_exact_object_property_count_schema(schema: Any) -> bool:
+def _is_exact_local_object_property_count_schema(schema: Any) -> bool:
     if schema is True or schema is False:
         return True
     if not isinstance(schema, dict):
@@ -292,6 +300,8 @@ def _is_exact_object_property_count_schema(schema: Any) -> bool:
     }
     for key, value in schema.items():
         if key in IGNORED_SCHEMA_METADATA_KEYS:
+            continue
+        if key in {"allOf", "anyOf", "not"}:
             continue
         if key not in exact_keywords:
             return False
@@ -343,6 +353,7 @@ def _local_object_property_count_shape(
     return ObjectPropertyCountShape(
         (ObjectPropertyCountInterval(lower, upper),),
         accepts_non_object=accepts_non_object,
+        exact=_is_exact_local_object_property_count_schema(schema),
     )
 
 
@@ -520,7 +531,7 @@ def _object_presence_symbolic_difference(
     lhs: Any,
     rhs: Any,
     names: tuple[str, ...],
-    context: ProofContext,
+    context: SymbolicContext,
 ) -> frozenset[str] | bool | ProofResult | None:
     solver = SymbolicSolver(
         context, "object product", "object product exceeded proof work budget"
@@ -873,7 +884,7 @@ def _object_structure_symbolic_difference(
     lhs: Any,
     rhs: Any,
     names: tuple[str, ...],
-    context: ProofContext,
+    context: SymbolicContext,
 ) -> tuple[frozenset[str], int] | bool | ProofResult | None:
     solver = SymbolicSolver(
         context, "object product", "object product exceeded proof work budget"

@@ -14,16 +14,15 @@ from typing import TYPE_CHECKING, Any
 import z3
 
 from subschema.kernel.contracts import ProofResult
+from subschema.kernel.protocols import SymbolicContext
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from subschema.kernel.context import ProofContext
-
 
 @dataclass
 class SymbolicSolver:
-    context: ProofContext
+    context: SymbolicContext
     work_kind: str
     exhausted_reason: str
     solver: Any = field(default_factory=z3.Solver)

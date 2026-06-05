@@ -5,7 +5,7 @@ Specialized overlap plans for bounded applicator witnesses.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 from subschema.dialects import Dialect
 from subschema.kernel.constraints import StringLanguageConstraint
@@ -15,9 +15,7 @@ from subschema.kernel.domains.strings import (
     string_length_fragments_are_disjoint,
 )
 from subschema.kernel.ir import LogicalSchemaIR, SchemaNode
-
-if TYPE_CHECKING:
-    from subschema.kernel.context import ProofContext
+from subschema.kernel.protocols import RegexWorkContext
 
 RightNotStringOverlapPlanStatus = Literal[
     "proved_true", "resource_exhausted", "unsupported", "witness"
@@ -83,7 +81,7 @@ def right_not_string_overlap_plan(
     lhs: LogicalSchemaIR,
     negated_node: SchemaNode,
     dialect: Dialect,
-    context: ProofContext | None = None,
+    context: RegexWorkContext | None = None,
 ) -> RightNotStringOverlapPlan:
     return right_not_string_overlap_plan_from_constraints(
         lhs.string_language_constraint,
@@ -101,7 +99,7 @@ def right_not_string_overlap_plan_from_constraints(
     lhs_schema: Any,
     negated_schema: Any,
     dialect: Dialect,
-    context: ProofContext | None = None,
+    context: RegexWorkContext | None = None,
 ) -> RightNotStringOverlapPlan:
     if lhs_constraint is None or negated_constraint is None:
         return RightNotStringOverlapPlan.unsupported(

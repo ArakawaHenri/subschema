@@ -6,20 +6,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from subschema.kernel.contracts import ProofResult
-from subschema.kernel.domains.types import type_shape_for_type_keyword
+from subschema.kernel.domains.types import JSON_TYPE_ATOMS, type_shape_for_type_keyword
 from subschema.kernel.json_data import strict_json_loads
+from subschema.kernel.protocols import RegexWorkContext
 from subschema.kernel.regex import RegexLanguage
 from subschema.kernel.schemas import (
     IGNORED_SCHEMA_METADATA_KEYS,
     contains_reference_keyword,
 )
 from subschema.kernel.values import stable_key
-
-if TYPE_CHECKING:
-    from subschema.kernel.context import ProofContext
 
 STRING_SCHEMA_KEYWORDS = frozenset(
     {"allOf", "anyOf", "maxLength", "minLength", "not", "type"}
@@ -58,6 +56,7 @@ __all__ = [
 class StringShape:
     intervals: tuple[StringLengthInterval, ...]
     accepts_non_string: bool
+    exact: bool = True
 
     def normalized_intervals(self) -> tuple[StringLengthInterval, ...]:
         return _merge_string_intervals(
@@ -92,6 +91,7 @@ class StringShape:
                 tuple(interval for interval in intervals if not interval.is_empty())
             ),
             self.accepts_non_string and other.accepts_non_string,
+            self.exact and other.exact,
         )
 
     def union(self, other: StringShape) -> StringShape:
@@ -100,13 +100,20 @@ class StringShape:
                 self.normalized_intervals() + other.normalized_intervals()
             ),
             self.accepts_non_string or other.accepts_non_string,
+            self.exact and other.exact,
         )
 
     def complement(self) -> StringShape:
         return StringShape(
             _complement_string_intervals(self.normalized_intervals()),
             not self.accepts_non_string,
+            self.exact,
         )
+
+    def exact_complement(self) -> StringShape | None:
+        if not self.exact:
+            return None
+        return self.complement()
 
 
 @dataclass(frozen=True)
@@ -187,7 +194,10 @@ def _string_shape_for_schema_uncached(
             )
         ):
             return None
-        shape = shape.intersect(negated.complement())
+        negated_complement = negated.exact_complement()
+        if negated_complement is None:
+            return None
+        shape = shape.intersect(negated_complement)
 
     return shape
 
@@ -196,16 +206,17 @@ def _string_shape_for_schema_uncached(
 class StringLanguageShape:
     pattern: RegexLanguage
     accepts_non_string: bool
+    exact: bool = True
 
     def is_subset_of(
-        self, other: StringLanguageShape, context: ProofContext | None = None
+        self, other: StringLanguageShape, context: RegexWorkContext | None = None
     ) -> bool | ProofResult:
         if self.accepts_non_string and not other.accepts_non_string:
             return False
         return self.pattern.is_subset_of(other.pattern, context)
 
     def witness_not_in(
-        self, other: StringLanguageShape, context: ProofContext | None = None
+        self, other: StringLanguageShape, context: RegexWorkContext | None = None
     ) -> str | ProofResult | None:
         difference = self.pattern.difference(other.pattern, context)
         if isinstance(difference, ProofResult):
@@ -216,19 +227,27 @@ class StringLanguageShape:
         return StringLanguageShape(
             _expect_regex_language(self.pattern.intersection(other.pattern)),
             self.accepts_non_string and other.accepts_non_string,
+            self.exact and other.exact,
         )
 
     def union(self, other: StringLanguageShape) -> StringLanguageShape:
         return StringLanguageShape(
             _expect_regex_language(self.pattern.union(other.pattern)),
             self.accepts_non_string or other.accepts_non_string,
+            self.exact and other.exact,
         )
 
     def complement(self) -> StringLanguageShape:
         return StringLanguageShape(
             _expect_regex_language(self.pattern.complement()),
             not self.accepts_non_string,
+            self.exact,
         )
+
+    def exact_complement(self) -> StringLanguageShape | None:
+        if not self.exact:
+            return None
+        return self.complement()
 
 
 def string_language_shape_for_schema(
@@ -296,7 +315,10 @@ def _string_language_shape_for_schema_uncached(
             )
         ):
             return None
-        shape = shape.intersect(negated.complement())
+        negated_complement = negated.exact_complement()
+        if negated_complement is None:
+            return None
+        shape = shape.intersect(negated_complement)
 
     return shape
 
@@ -400,7 +422,7 @@ def drop_string_pattern_keywords(schema: Any) -> Any:
 
 
 def string_language_witness(
-    pattern: Any, context: ProofContext | None = None
+    pattern: Any, context: RegexWorkContext | None = None
 ) -> str | ProofResult | None:
     language = pattern if isinstance(pattern, RegexLanguage) else RegexLanguage(pattern)
     if language.is_empty():
@@ -438,6 +460,22 @@ def _is_string_length_fragment_schema(schema: dict[str, Any]) -> bool:
     return True
 
 
+def _is_exact_local_string_length_schema(schema: dict[str, Any]) -> bool:
+    exact_keywords = {"maxLength", "minLength", "type"}
+    for key, value in schema.items():
+        if key in IGNORED_SCHEMA_METADATA_KEYS:
+            continue
+        if key in {"allOf", "anyOf", "not"}:
+            continue
+        if key not in exact_keywords:
+            return False
+        if key in {"minLength", "maxLength"} and (
+            not isinstance(value, int) or isinstance(value, bool)
+        ):
+            return False
+    return _type_keyword_is_exact_for_string_shape(schema.get("type"))
+
+
 def _is_string_language_fragment_schema(schema: dict[str, Any]) -> bool:
     for key, value in schema.items():
         if key in IGNORED_SCHEMA_METADATA_KEYS:
@@ -460,6 +498,36 @@ def _is_string_language_fragment_schema(schema: dict[str, Any]) -> bool:
     return True
 
 
+def _is_exact_local_string_language_schema(schema: dict[str, Any]) -> bool:
+    exact_keywords = {"const", "enum", "maxLength", "minLength", "pattern", "type"}
+    for key, value in schema.items():
+        if key in IGNORED_SCHEMA_METADATA_KEYS:
+            continue
+        if key in {"allOf", "anyOf", "not"}:
+            continue
+        if key not in exact_keywords:
+            return False
+        if key in {"minLength", "maxLength"} and (
+            not isinstance(value, int) or isinstance(value, bool)
+        ):
+            return False
+        if key == "pattern" and not isinstance(value, str):
+            return False
+        if key == "const" and not isinstance(value, str):
+            return False
+        if key == "enum" and not isinstance(value, list):
+            return False
+    return _type_keyword_is_exact_for_string_shape(schema.get("type"))
+
+
+def _type_keyword_is_exact_for_string_shape(type_keyword: Any) -> bool:
+    type_shape = type_shape_for_type_keyword(type_keyword)
+    if type_shape is None:
+        return False
+    non_string_atoms = type_shape.atoms - {"string"}
+    return not non_string_atoms or non_string_atoms == JSON_TYPE_ATOMS - {"string"}
+
+
 def _local_string_shape(schema: dict[str, Any]) -> StringShape | None:
     schema_type = schema.get("type")
     if isinstance(schema_type, str):
@@ -477,7 +545,11 @@ def _local_string_shape(schema: dict[str, Any]) -> StringShape | None:
         return None
 
     if "string" not in types:
-        return StringShape((), accepts_non_string=accepts_non_string)
+        return StringShape(
+            (),
+            accepts_non_string=accepts_non_string,
+            exact=_is_exact_local_string_length_schema(schema),
+        )
 
     lower = schema.get("minLength", 0)
     upper = schema.get("maxLength")
@@ -486,7 +558,9 @@ def _local_string_shape(schema: dict[str, Any]) -> StringShape | None:
     if upper is not None and (not isinstance(upper, int) or isinstance(upper, bool)):
         return None
     return StringShape(
-        (StringLengthInterval(lower, upper),), accepts_non_string=accepts_non_string
+        (StringLengthInterval(lower, upper),),
+        accepts_non_string=accepts_non_string,
+        exact=_is_exact_local_string_length_schema(schema),
     )
 
 
@@ -501,7 +575,9 @@ def _local_string_language_shape(schema: dict[str, Any]) -> StringLanguageShape 
     accepts_non_string = any(atom != "string" for atom in type_shape.atoms)
     if "string" not in type_shape.atoms:
         return StringLanguageShape(
-            RegexLanguage.empty(), accepts_non_string=accepts_non_string
+            RegexLanguage.empty(),
+            accepts_non_string=accepts_non_string,
+            exact=_is_exact_local_string_language_schema(schema),
         )
 
     lower = schema.get("minLength", 0)
@@ -523,7 +599,11 @@ def _local_string_language_shape(schema: dict[str, Any]) -> StringLanguageShape 
         else:
             pattern = schema_pattern
 
-    return StringLanguageShape(pattern, accepts_non_string=accepts_non_string)
+    return StringLanguageShape(
+        pattern,
+        accepts_non_string=accepts_non_string,
+        exact=_is_exact_local_string_language_schema(schema),
+    )
 
 
 def _finite_string_language_shape(schema: dict[str, Any]) -> StringLanguageShape | None:
@@ -549,7 +629,11 @@ def _finite_string_language_shape(schema: dict[str, Any]) -> StringLanguageShape
         if isinstance(next_pattern, ProofResult):
             return None
         pattern = next_pattern
-    return StringLanguageShape(pattern, accepts_non_string=accepts_non_string)
+    return StringLanguageShape(
+        pattern,
+        accepts_non_string=accepts_non_string,
+        exact=not accepts_non_string,
+    )
 
 
 def _expect_regex_language(value: RegexLanguage | ProofResult) -> RegexLanguage:

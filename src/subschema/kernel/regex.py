@@ -9,14 +9,12 @@ from collections import deque
 from collections.abc import Hashable
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 
 from greenery import parse
 
 from subschema.kernel.contracts import ProofResult, UnsupportedDiagnostic
-
-if TYPE_CHECKING:
-    from subschema.kernel.context import ProofContext
+from subschema.kernel.protocols import RegexWorkContext
 
 
 class GreeneryFsm(Protocol):
@@ -241,7 +239,7 @@ class RegexLanguage:
     def intersection(
         self,
         other: RegexLanguage,
-        context: ProofContext | None = None,
+        context: RegexWorkContext | None = None,
     ) -> RegexLanguage | ProofResult:
         if self._is_all():
             return other
@@ -255,7 +253,7 @@ class RegexLanguage:
         return RegexLanguage(_pattern_intersection(self.pattern, other.pattern))
 
     def union(
-        self, other: RegexLanguage, context: ProofContext | None = None
+        self, other: RegexLanguage, context: RegexWorkContext | None = None
     ) -> RegexLanguage | ProofResult:
         if self._is_all() or other._is_all():
             return RegexLanguage.all()
@@ -269,7 +267,7 @@ class RegexLanguage:
         return RegexLanguage(_pattern_union(self.pattern, other.pattern))
 
     def complement(
-        self, context: ProofContext | None = None
+        self, context: RegexWorkContext | None = None
     ) -> RegexLanguage | ProofResult:
         exhausted = self._spend_states(context, "regex complement")
         if exhausted is not None:
@@ -277,7 +275,7 @@ class RegexLanguage:
         return RegexLanguage(_pattern_complement(self.pattern))
 
     def difference(
-        self, other: RegexLanguage, context: ProofContext | None = None
+        self, other: RegexLanguage, context: RegexWorkContext | None = None
     ) -> RegexLanguage | ProofResult:
         if self._is_empty() or other._is_all():
             return RegexLanguage.empty()
@@ -289,7 +287,7 @@ class RegexLanguage:
         return RegexLanguage(_pattern_difference(self.pattern, other.pattern))
 
     def is_subset_of(
-        self, other: RegexLanguage, context: ProofContext | None = None
+        self, other: RegexLanguage, context: RegexWorkContext | None = None
     ) -> bool | ProofResult:
         exhausted = self._spend_product_states(other, context, "regex subset")
         if exhausted is not None:
@@ -297,7 +295,7 @@ class RegexLanguage:
         return _pattern_is_subset(self.pattern, other.pattern)
 
     def is_disjoint_from(
-        self, other: RegexLanguage, context: ProofContext | None = None
+        self, other: RegexLanguage, context: RegexWorkContext | None = None
     ) -> bool | ProofResult:
         exhausted = self._spend_product_states(other, context, "regex disjointness")
         if exhausted is not None:
@@ -305,14 +303,16 @@ class RegexLanguage:
         return _pattern_is_disjoint(self.pattern, other.pattern)
 
     def equivalent_to(
-        self, other: RegexLanguage, context: ProofContext | None = None
+        self, other: RegexLanguage, context: RegexWorkContext | None = None
     ) -> bool | ProofResult:
         exhausted = self._spend_product_states(other, context, "regex equivalence")
         if exhausted is not None:
             return exhausted
         return _pattern_is_equivalent(self.pattern, other.pattern)
 
-    def witness(self, context: ProofContext | None = None) -> str | ProofResult | None:
+    def witness(
+        self, context: RegexWorkContext | None = None
+    ) -> str | ProofResult | None:
         if self.pattern.empty():
             return None
         fast_witness = self._fast_witness()
@@ -332,7 +332,7 @@ class RegexLanguage:
     def intersection_witness(
         self,
         other: RegexLanguage,
-        context: ProofContext | None = None,
+        context: RegexWorkContext | None = None,
     ) -> str | ProofResult | None:
         witness, visited_states = _pattern_intersection_witness(
             self.pattern, other.pattern
@@ -351,7 +351,7 @@ class RegexLanguage:
         return _pattern_finite_strings(self.pattern, max_values)
 
     def _spend_states(
-        self, context: ProofContext | None, kind: str
+        self, context: RegexWorkContext | None, kind: str
     ) -> ProofResult | None:
         if context is None:
             return None
@@ -362,7 +362,7 @@ class RegexLanguage:
     def _spend_product_states(
         self,
         other: RegexLanguage,
-        context: ProofContext | None,
+        context: RegexWorkContext | None,
         kind: str,
     ) -> ProofResult | None:
         if context is None:

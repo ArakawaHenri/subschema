@@ -1057,6 +1057,10 @@ class ArrayDifferenceModel:
                 "SAT array length true proof requires an array-only left schema"
             )
         if lhs_shape.is_subset_of(rhs_shape):
+            if not rhs_shape.exact:
+                return ArrayLengthDifferencePlan.unsupported(
+                    "SAT array length true proof requires exact right length semantics"
+                )
             if not self._length_true_proof_covers_rhs_uniqueness():
                 return ArrayLengthDifferencePlan.unsupported(
                     "SAT array length true proof cannot prove right uniqueItems"
@@ -1157,6 +1161,11 @@ class ArrayDifferenceModel:
                 ),
             )
         if check == UNSAT:
+            if not rhs_shape.exact:
+                return ArrayLengthDifferencePlan.unsupported(
+                    "SAT array length symbolic true proof requires exact right "
+                    "length semantics"
+                )
             if not self._length_true_proof_covers_rhs_uniqueness():
                 return ArrayLengthDifferencePlan.unsupported(
                     "SAT array length symbolic true proof cannot prove right "
@@ -3104,6 +3113,11 @@ class ObjectDifferenceModel:
             if symbolic.status != "unsupported":
                 return symbolic
         if lhs_shape.is_subset_of(rhs_shape):
+            if not rhs_shape.exact:
+                return ObjectPropertyCountDifferencePlan.unsupported(
+                    "SAT object property-count true proof requires exact right "
+                    "count semantics"
+                )
             return ObjectPropertyCountDifferencePlan.proved_true()
 
         witness = lhs_shape.witness_not_in(rhs_shape)
@@ -3170,6 +3184,11 @@ class ObjectDifferenceModel:
                 ),
             )
         if check == UNSAT:
+            if not rhs_shape.exact:
+                return ObjectPropertyCountDifferencePlan.unsupported(
+                    "SAT object property-count true proof requires exact right "
+                    "count semantics"
+                )
             return ObjectPropertyCountDifferencePlan.proved_true()
         return ObjectPropertyCountDifferencePlan.unsupported(
             "SAT object property-count symbolic solver returned unknown"

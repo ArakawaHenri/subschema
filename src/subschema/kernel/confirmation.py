@@ -49,9 +49,7 @@ def confirm_valid(
         return source_or_result
     source = source_or_result
     if not _is_root_confirmation_source(source):
-        return ConfirmationResult.unsupported(
-            "schema confirmation requires root schema source"
-        )
+        return _unsupported_non_root_source(source, "schema confirmation")
     try:
         valid = validation_backend_for(source.dialect).is_valid(
             source.schema,
@@ -91,8 +89,14 @@ def confirm_difference(
     if not _is_root_confirmation_source(lhs_source) or not _is_root_confirmation_source(
         rhs_source
     ):
-        return ConfirmationResult.unsupported(
-            "schema difference confirmation requires root schema sources"
+        if not _is_root_confirmation_source(lhs_source):
+            return _unsupported_non_root_source(
+                lhs_source,
+                "schema difference confirmation",
+            )
+        return _unsupported_non_root_source(
+            rhs_source,
+            "schema difference confirmation",
         )
     try:
         valid = validation_backend_for(lhs_source.dialect).validates_difference(
@@ -128,3 +132,14 @@ def _source_for(
 
 def _is_root_confirmation_source(source: SchemaSource) -> bool:
     return source.is_root_schema
+
+
+def _unsupported_non_root_source(
+    source: SchemaSource,
+    operation: str,
+) -> ConfirmationResult:
+    if not source.has_document_context:
+        return ConfirmationResult.unsupported(f"{operation} requires source document")
+    return ConfirmationResult.unsupported(
+        f"{operation} requires source validator backend"
+    )
