@@ -1,7 +1,8 @@
 import pytest
 
-from subschema import Dialect, is_disjoint, is_empty, is_subschema
+from subschema import Dialect, covers, is_disjoint, is_empty, is_subschema
 from subschema.exceptions import UnsupportedProofError
+from subschema.kernel.schemas import transparent_schema_target
 
 
 def test_numeric_interval_disjointness_is_default_exact():
@@ -86,6 +87,94 @@ def test_right_side_not_uses_low_cost_disjointness():
     assert is_subschema(
         {"type": "number", "maximum": 1},
         {"not": {"type": "number", "minimum": 2}},
+    )
+
+
+def test_transparent_double_not_recovers_closed_object_counterexample():
+    lhs = {
+        "not": {
+            "not": {
+                "type": "object",
+                "properties": {"a": {"type": "integer"}},
+                "required": [],
+                "additionalProperties": False,
+            }
+        }
+    }
+    rhs = {
+        "type": "object",
+        "properties": {"a": {"type": "integer"}},
+        "required": ["a"],
+        "additionalProperties": True,
+    }
+
+    assert not is_subschema(lhs, rhs)
+
+
+def test_transparent_double_not_recovers_empty_and_disjointness_proofs():
+    assert is_empty({"not": {"not": False}})
+    assert is_disjoint(
+        {"not": {"not": {"type": "number", "maximum": 1}}},
+        {"type": "number", "exclusiveMinimum": 2},
+    )
+    assert covers({"not": {"not": {"type": "integer"}}}, [{"type": "number"}])
+
+
+@pytest.mark.parametrize("wrapper", ["allOf", "anyOf", "oneOf"])
+def test_singleton_applicator_wrappers_preserve_low_cost_shapes(wrapper):
+    def wrapped(schema):
+        return {wrapper: [schema]}
+
+    assert is_subschema(wrapped({"type": "integer"}), {"type": "number"})
+    assert is_subschema(
+        wrapped(
+            {
+                "type": "array",
+                "prefixItems": [{"type": "integer"}],
+                "items": False,
+                "minItems": 1,
+                "maxItems": 1,
+            }
+        ),
+        {
+            "type": "array",
+            "prefixItems": [{"type": "number"}],
+            "items": False,
+            "minItems": 1,
+            "maxItems": 1,
+        },
+    )
+    assert is_subschema(
+        wrapped(
+            {
+                "type": "object",
+                "properties": {"a": {"type": "integer"}},
+                "required": ["a"],
+                "additionalProperties": False,
+            }
+        ),
+        {
+            "type": "object",
+            "properties": {"a": {"type": "number"}},
+            "required": ["a"],
+            "additionalProperties": False,
+        },
+    )
+
+
+def test_transparent_target_is_intentionally_narrow():
+    assert transparent_schema_target({"not": {"type": "integer"}}) is None
+    assert transparent_schema_target(
+        {"anyOf": [{"type": "integer"}, {"type": "string"}]}
+    ) is None
+    assert (
+        transparent_schema_target(
+            {
+                "allOf": [{"$ref": "#/$defs/A"}],
+                "$defs": {"A": {"type": "integer"}},
+            }
+        )
+        is None
     )
 
 

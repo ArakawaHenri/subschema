@@ -16,6 +16,7 @@ from subschema.kernel.regex import RegexLanguage
 from subschema.kernel.schemas import (
     IGNORED_SCHEMA_METADATA_KEYS,
     contains_reference_keyword,
+    transparent_schema_target,
 )
 from subschema.kernel.values import stable_key
 
@@ -160,6 +161,9 @@ def _string_shape_for_schema_uncached(
         return None
     if contains_reference_keyword(schema, {"$ref", "$recursiveRef", "$dynamicRef"}):
         return None
+    transparent_target = transparent_schema_target(schema)
+    if transparent_target is not None:
+        return string_shape_for_schema(transparent_target, depth + 1)
     if not _is_string_length_fragment_schema(schema):
         return None
 
@@ -281,6 +285,9 @@ def _string_language_shape_for_schema_uncached(
         return None
     if contains_reference_keyword(schema, {"$ref", "$recursiveRef", "$dynamicRef"}):
         return None
+    transparent_target = transparent_schema_target(schema)
+    if transparent_target is not None:
+        return string_language_shape_for_schema(transparent_target, depth + 1)
     if not _is_string_language_fragment_schema(schema):
         return None
 

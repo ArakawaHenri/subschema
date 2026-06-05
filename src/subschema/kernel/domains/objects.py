@@ -26,6 +26,7 @@ from subschema.kernel.schemas import (
     IGNORED_SCHEMA_METADATA_KEYS,
     contains_reference_keyword,
     schema_is_true,
+    transparent_schema_target,
 )
 from subschema.kernel.symbolic import SAT, UNSAT, SymbolicSolver
 from subschema.kernel.values import stable_key
@@ -225,6 +226,9 @@ def object_property_count_shape_for_schema(
         return None
     if {"$ref", "$recursiveRef", "$dynamicRef"} & schema.keys():
         return None
+    transparent_target = transparent_schema_target(schema)
+    if transparent_target is not None:
+        return object_property_count_shape_for_schema(transparent_target, depth + 1)
     if not _is_object_property_count_fragment_schema(schema):
         return None
 
@@ -1196,6 +1200,9 @@ def object_property_values_shape_for_schema(
         return None
     if contains_reference_keyword(schema, {"$ref", "$recursiveRef", "$dynamicRef"}):
         return None
+    transparent_target = transparent_schema_target(schema)
+    if transparent_target is not None:
+        return object_property_values_shape_for_schema(transparent_target, depth + 1)
     if not _is_object_property_values_fragment_schema(schema):
         return None
 
@@ -1384,6 +1391,9 @@ def closed_object_properties_shape_for_schema(
         return None
     if {"$ref", "$recursiveRef", "$dynamicRef"} & schema.keys():
         return None
+    transparent_target = transparent_schema_target(schema)
+    if transparent_target is not None:
+        return closed_object_properties_shape_for_schema(transparent_target, depth + 1)
     if _is_closed_object_properties_all_of_wrapper_schema(schema):
         shape = _top_closed_object_properties_shape()
     elif _is_closed_object_properties_fragment_schema(schema):
@@ -1691,6 +1701,9 @@ def _object_property_names_shape_for_schema_uncached(
         return None
     if contains_reference_keyword(schema, {"$ref", "$recursiveRef", "$dynamicRef"}):
         return None
+    transparent_target = transparent_schema_target(schema)
+    if transparent_target is not None:
+        return object_property_names_shape_for_schema(transparent_target, depth + 1)
     if not _is_object_property_names_fragment_schema(schema):
         return None
 

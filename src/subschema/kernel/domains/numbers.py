@@ -14,6 +14,7 @@ from subschema.kernel.domains.types import type_overapproximation_for_schema
 from subschema.kernel.schemas import (
     IGNORED_SCHEMA_METADATA_KEYS,
     contains_reference_keyword,
+    transparent_schema_target,
 )
 
 __all__ = [
@@ -385,6 +386,9 @@ def numeric_shape_for_schema(
         return None
     if contains_reference_keyword(schema, {"$ref", "$recursiveRef", "$dynamicRef"}):
         return None
+    transparent_target = transparent_schema_target(schema)
+    if transparent_target is not None:
+        return numeric_shape_for_schema(transparent_target, dialect, depth + 1)
     if not _is_numeric_fragment_schema(schema):
         return None
     if any(

@@ -14,6 +14,7 @@ from subschema.kernel.schemas import (
     IGNORED_SCHEMA_METADATA_KEYS,
     contains_reference_keyword,
     schema_is_true,
+    transparent_schema_target,
 )
 
 __all__ = [
@@ -195,6 +196,14 @@ def array_shape_for_schema(
         return None
     if contains_reference_keyword(schema, {"$ref", "$recursiveRef", "$dynamicRef"}):
         return None
+    transparent_target = transparent_schema_target(schema)
+    if transparent_target is not None:
+        return array_shape_for_schema(
+            transparent_target,
+            dialect,
+            allow_item_value_constraints=allow_item_value_constraints,
+            depth=depth + 1,
+        )
     if not _is_array_length_fragment_schema(
         schema,
         dialect,
@@ -253,7 +262,10 @@ def array_uniqueness_shape_for_schema(
     dialect: Dialect,
     *,
     side: Literal["lhs", "rhs"],
+    depth: int = 0,
 ) -> ArrayUniquenessShape | None:
+    if depth > 8:
+        return None
     if schema is True:
         return ArrayUniquenessShape(
             accepts_array=True,
@@ -274,6 +286,14 @@ def array_uniqueness_shape_for_schema(
         return None
     if contains_reference_keyword(schema, {"$ref", "$recursiveRef", "$dynamicRef"}):
         return None
+    transparent_target = transparent_schema_target(schema)
+    if transparent_target is not None:
+        return array_uniqueness_shape_for_schema(
+            transparent_target,
+            dialect,
+            side=side,
+            depth=depth + 1,
+        )
     if not _is_array_uniqueness_fragment_schema(schema, dialect, side=side):
         return None
 
@@ -299,7 +319,10 @@ def array_uniqueness_shape_for_schema(
 
 def array_unique_items_requirement_for_schema(
     schema: Any,
+    depth: int = 0,
 ) -> ArrayUniquenessShape | None:
+    if depth > 16:
+        return None
     if schema is False:
         return ArrayUniquenessShape(
             accepts_array=False,
@@ -309,7 +332,17 @@ def array_unique_items_requirement_for_schema(
             complete_uniqueness_fragment=True,
         )
     if not isinstance(schema, dict) or schema.get("uniqueItems") is not True:
-        return None
+        if not isinstance(schema, dict):
+            return None
+        if contains_reference_keyword(schema, {"$ref", "$recursiveRef", "$dynamicRef"}):
+            return None
+        transparent_target = transparent_schema_target(schema)
+        if transparent_target is None:
+            return None
+        return array_unique_items_requirement_for_schema(
+            transparent_target,
+            depth + 1,
+        )
     if contains_reference_keyword(schema, {"$ref", "$recursiveRef", "$dynamicRef"}):
         return None
 
