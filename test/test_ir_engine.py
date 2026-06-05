@@ -9487,7 +9487,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
         self.assertEqual(subproof.call_count, first_call_count)
         self.assertTrue(engine.context.cache)
 
-    def test_evaluation_trace_facade_preserves_expression_sources(self):
+    def test_evaluation_trace_conversion_preserves_expression_sources(self):
         lhs = {
             "type": "object",
             "properties": {"foo": {"type": "string"}},

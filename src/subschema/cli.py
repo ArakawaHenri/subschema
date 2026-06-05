@@ -3,7 +3,6 @@ from typing import TextIO, cast
 
 from subschema.api import is_subschema
 from subschema.exceptions import UnsupportedProofError
-from subschema.kernel import ProofBudgets, ProofOptions
 from subschema.kernel.json_data import strict_json_load
 from subschema.types import JSONSchema
 
@@ -58,25 +57,22 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    if (args.max_work is not None or args.timeout_ms is not None) and not args.endeavor:
-        parser.error("--max-work and --timeout-ms require --endeavor")
     s1_file_path = args.LHS
     s2_file_path = args.RHS
 
     s1 = load_json_file(s1_file_path, "LHS file:")
     s2 = load_json_file(s2_file_path, "RHS file:")
-    proof_options = None
-    if args.endeavor:
-        proof_options = ProofOptions(
-            endeavor=args.endeavor,
-            budgets=ProofBudgets(
-                max_work=4096 if args.max_work is None else args.max_work,
-                timeout_ms=1000 if args.timeout_ms is None else args.timeout_ms,
-            ),
-        )
 
     try:
-        result = is_subschema(s1, s2, proof_options=proof_options)
+        result = is_subschema(
+            s1,
+            s2,
+            endeavor=args.endeavor,
+            max_work=args.max_work,
+            timeout_ms=args.timeout_ms,
+        )
+    except ValueError as err:
+        parser.error(str(err))
     except UnsupportedProofError as err:
         message = format_unsupported_proof_error(err)
         raise SystemExit(f"unsupported proof: {message}") from err

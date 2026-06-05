@@ -261,7 +261,7 @@ def _forbidden_runtime_edge_reason(edge: ImportEdge) -> str | None:
         edge.source == "subschema.kernel.context"
         and edge.target == "subschema.kernel.engine"
     ):
-        return "proof context must call the proof driver, not the engine facade"
+        return "proof context must call the proof driver, not the public engine entrypoint"
 
     if _source_is_domain_math(edge.source) and edge.target == "subschema.kernel.engine":
         return "domain math and difference/evaluation helpers must not construct or import ProofEngine"

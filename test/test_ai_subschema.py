@@ -4,8 +4,6 @@ import unittest
 import pytest
 
 import subschema
-from subschema.kernel import ProofBudgets, ProofOptions
-# from subschema.exp_dircmp import run_issubset
 
 class TestAIExamples(unittest.TestCase):
 
@@ -608,11 +606,12 @@ AI_ENDEAVOR_PARITY_WORK = {
 def test_dataset_operator_pair(op_name, ds_name):
     op_schema = getattr(TestAIExamples, op_name + '_schema')
     ds_schema = getattr(TestAIExamples, ds_name + '_schema')
-    proof_options = None
     max_work = AI_ENDEAVOR_PARITY_WORK.get((op_name, ds_name))
-    if max_work is not None:
-        proof_options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=max_work))
-
-    result = subschema.is_subschema(ds_schema, op_schema, proof_options=proof_options)
+    result = subschema.is_subschema(
+        ds_schema,
+        op_schema,
+        endeavor=max_work is not None,
+        max_work=max_work,
+    )
 
     assert result == TestAIExamples.expected[op_name][ds_name]

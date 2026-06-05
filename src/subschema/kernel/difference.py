@@ -4659,7 +4659,7 @@ def _object_key_value_direct_false_witness_skeleton(
     rhs: ObjectKeyValueShape,
     context: ProofContext | None,
 ) -> ObjectKeyValueWitnessSkeleton | ProofResult | None:
-    if context is None or context.options.endeavor:
+    if context is None or context.endeavor_enabled:
         return None
     for name in _object_key_value_direct_witness_names(lhs, rhs, context):
         if not lhs.allows_key(name):

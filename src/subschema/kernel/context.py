@@ -40,8 +40,7 @@ class ProofContext:
     def __post_init__(self) -> None:
         if not isinstance(self.options, ProofOptions):
             raise TypeError("options must be a ProofOptions instance")
-        limit = self.options.budgets.max_work if self.options.endeavor else -1
-        self.work_meter = ProofWorkMeter(limit)
+        self.work_meter = ProofWorkMeter(self.proof_work_limit)
 
     def subproof(self, lhs: Any, rhs: Any) -> ProofResult:
         key = self._subproof_cache_key(lhs, rhs)
@@ -61,9 +60,7 @@ class ProofContext:
     def _subproof_cache_key(self, lhs: Any, rhs: Any) -> tuple[Any, ...]:
         return (
             self.dialect,
-            self.options.endeavor,
-            self.options.budgets.max_work,
-            self.options.budgets.timeout_ms,
+            *self.proof_policy_identity,
             stable_key(lhs),
             stable_key(rhs),
         )
@@ -87,7 +84,7 @@ class ProofContext:
 
     def allows_expensive_proof(self, kind: ExpensiveProofKind) -> bool:
         self.proof_work_label(kind)
-        return self.options.endeavor
+        return self.endeavor_enabled
 
     def enter_expensive_proof(
         self,
@@ -110,15 +107,33 @@ class ProofContext:
 
     @property
     def default_search_horizon(self) -> int:
-        if self.options.endeavor:
-            return self.options.budgets.max_work
+        if self.endeavor_enabled:
+            return self.proof_work_limit
         return _DEFAULT_CONSTRUCTIVE_WITNESS_HORIZON
 
     @property
     def solver_timeout_ms(self) -> int:
-        if self.options.endeavor:
+        if self.endeavor_enabled:
             return self.options.budgets.timeout_ms
         return -1
+
+    @property
+    def endeavor_enabled(self) -> bool:
+        return self.options.endeavor
+
+    @property
+    def proof_work_limit(self) -> int:
+        if self.options.endeavor:
+            return self.options.budgets.max_work
+        return -1
+
+    @property
+    def proof_policy_identity(self) -> tuple[object, ...]:
+        return (
+            self.endeavor_enabled,
+            self.proof_work_limit,
+            self.solver_timeout_ms,
+        )
 
     @property
     def work_is_exhausted(self) -> bool:

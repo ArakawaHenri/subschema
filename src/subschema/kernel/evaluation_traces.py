@@ -8,7 +8,7 @@ from dataclasses import replace
 from typing import Any, Literal, Protocol
 
 from subschema.dialects import Dialect
-from subschema.kernel.contracts import ProofOptions, ProofResult
+from subschema.kernel.contracts import ProofResult
 from subschema.kernel.disjointness import schemas_are_disjoint
 from subschema.kernel.evaluation import (
     EvaluationExpression,
@@ -29,7 +29,9 @@ from subschema.kernel.values import stable_key
 
 class EvaluationTraceContext(Protocol):
     dialect: Dialect
-    options: ProofOptions
+
+    @property
+    def proof_policy_identity(self) -> tuple[object, ...]: ...
 
     def subproof(self, lhs: Any, rhs: Any) -> ProofResult: ...
     def finite_meet_projection(self, lhs: Any, rhs: Any) -> Any | None: ...
@@ -539,9 +541,7 @@ def _evaluation_expression_cache_key(
         source.document_pointer,
         source.resource_pointer,
         stable_key(lhs_schema),
-        context.options.endeavor,
-        context.options.budgets.max_work,
-        context.options.budgets.timeout_ms,
+        *context.proof_policy_identity,
     )
 
 

@@ -2357,9 +2357,7 @@ def test_applicator_subproofs_share_the_engine_context():
     cache_key = next(iter(engine.context.subproof_cache))
     assert cache_key[:4] == (
         engine.context.dialect,
-        engine.context.options.endeavor,
-        engine.context.options.budgets.max_work,
-        engine.context.options.budgets.timeout_ms,
+        *engine.context.proof_policy_identity,
     )
 
 

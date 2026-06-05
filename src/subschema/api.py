@@ -43,24 +43,13 @@ def _validate_public_schema(schema: Any, dialect: Dialect) -> None:
     validate_raw_schema_for_dialect(stripped, dialect)
 
 
-def _resolve_proof_options(
-    proof_options: ProofOptions | None = None,
-    *,
+def _proof_options_from_public_controls(
     endeavor: bool = False,
     max_work: int | None = None,
     timeout_ms: int | None = None,
-) -> ProofOptions | None:
+) -> ProofOptions:
     if not isinstance(endeavor, bool):
         raise TypeError("endeavor must be a boolean")
-    if proof_options is not None:
-        if not isinstance(proof_options, ProofOptions):
-            raise TypeError("proof_options must be a ProofOptions instance")
-        if endeavor or max_work is not None or timeout_ms is not None:
-            raise ValueError(
-                "proof_options cannot be combined with endeavor, max_work, or "
-                "timeout_ms"
-            )
-        return proof_options
     if (max_work is not None or timeout_ms is not None) and not endeavor:
         raise ValueError("max_work and timeout_ms require endeavor=True")
     if endeavor:
@@ -71,7 +60,38 @@ def _resolve_proof_options(
                 timeout_ms=1000 if timeout_ms is None else timeout_ms,
             ),
         )
-    return None
+    return ProofOptions()
+
+
+def _is_subschema_resolved(
+    lhs: JSONSchema,
+    rhs: JSONSchema,
+    *,
+    dialect: Dialect,
+    options: ProofOptions,
+) -> bool:
+    return ProofEngine.for_schemas(
+        lhs, rhs, dialect=dialect, options=options
+    ).is_subschema_bool(lhs, rhs)
+
+
+def _is_empty_resolved(
+    schema: JSONSchema,
+    *,
+    dialect: Dialect,
+    options: ProofOptions,
+) -> bool:
+    empty_schema = empty_schema_for_dialect(dialect)
+    engine = ProofEngine.for_schemas(
+        schema,
+        empty_schema,
+        dialect=dialect,
+        options=options,
+    )
+    exact_empty = schema_is_empty_exact(schema, engine.context)
+    if exact_empty.status != "unsupported":
+        return exact_empty.as_bool(dialect)
+    return engine.is_subschema_bool(schema, empty_schema)
 
 
 def is_subschema(
@@ -79,7 +99,6 @@ def is_subschema(
     rhs: JSONSchema,
     *,
     dialect: DialectInput = None,
-    proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
     timeout_ms: int | None = None,
@@ -90,15 +109,14 @@ def is_subschema(
     resolved_dialect = resolve_dialect(lhs, rhs, dialect=dialect)
     _validate_public_schema(lhs, resolved_dialect)
     _validate_public_schema(rhs, resolved_dialect)
-    options = _resolve_proof_options(
-        proof_options,
+    options = _proof_options_from_public_controls(
         endeavor=endeavor,
         max_work=max_work,
         timeout_ms=timeout_ms,
     )
-    return ProofEngine.for_schemas(
+    return _is_subschema_resolved(
         lhs, rhs, dialect=resolved_dialect, options=options
-    ).is_subschema_bool(lhs, rhs)
+    )
 
 
 def meet_schemas(
@@ -106,7 +124,6 @@ def meet_schemas(
     rhs: JSONSchema,
     *,
     dialect: DialectInput = None,
-    proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
     timeout_ms: int | None = None,
@@ -117,8 +134,7 @@ def meet_schemas(
     resolved_dialect = resolve_dialect(lhs, rhs, dialect=dialect)
     _validate_public_schema(lhs, resolved_dialect)
     _validate_public_schema(rhs, resolved_dialect)
-    options = _resolve_proof_options(
-        proof_options,
+    options = _proof_options_from_public_controls(
         endeavor=endeavor,
         max_work=max_work,
         timeout_ms=timeout_ms,
@@ -133,7 +149,6 @@ def join_schemas(
     rhs: JSONSchema,
     *,
     dialect: DialectInput = None,
-    proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
     timeout_ms: int | None = None,
@@ -144,8 +159,7 @@ def join_schemas(
     resolved_dialect = resolve_dialect(lhs, rhs, dialect=dialect)
     _validate_public_schema(lhs, resolved_dialect)
     _validate_public_schema(rhs, resolved_dialect)
-    options = _resolve_proof_options(
-        proof_options,
+    options = _proof_options_from_public_controls(
         endeavor=endeavor,
         max_work=max_work,
         timeout_ms=timeout_ms,
@@ -160,25 +174,28 @@ def is_equivalent(
     rhs: JSONSchema,
     *,
     dialect: DialectInput = None,
-    proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
     timeout_ms: int | None = None,
 ) -> bool:
     """Entry point for schema equivalence check operation."""
-    options = _resolve_proof_options(
-        proof_options,
+    ensure_json_value(lhs, label="lhs schema")
+    ensure_json_value(rhs, label="rhs schema")
+    resolved_dialect = resolve_dialect(lhs, rhs, dialect=dialect)
+    _validate_public_schema(lhs, resolved_dialect)
+    _validate_public_schema(rhs, resolved_dialect)
+    options = _proof_options_from_public_controls(
         endeavor=endeavor,
         max_work=max_work,
         timeout_ms=timeout_ms,
     )
-    return is_subschema(
-        lhs, rhs, dialect=dialect, proof_options=options
-    ) and is_subschema(
+    return _is_subschema_resolved(
+        lhs, rhs, dialect=resolved_dialect, options=options
+    ) and _is_subschema_resolved(
         rhs,
         lhs,
-        dialect=dialect,
-        proof_options=options,
+        dialect=resolved_dialect,
+        options=options,
     )
 
 
@@ -186,7 +203,6 @@ def is_empty(
     schema: JSONSchema,
     *,
     dialect: DialectInput = None,
-    proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
     timeout_ms: int | None = None,
@@ -195,23 +211,12 @@ def is_empty(
     ensure_json_value(schema, label="schema")
     resolved_dialect = resolve_dialect(schema, dialect=dialect)
     _validate_public_schema(schema, resolved_dialect)
-    options = _resolve_proof_options(
-        proof_options,
+    options = _proof_options_from_public_controls(
         endeavor=endeavor,
         max_work=max_work,
         timeout_ms=timeout_ms,
     )
-    empty_schema = empty_schema_for_dialect(resolved_dialect)
-    engine = ProofEngine.for_schemas(
-        schema,
-        empty_schema,
-        dialect=resolved_dialect,
-        options=options,
-    )
-    exact_empty = schema_is_empty_exact(schema, engine.context)
-    if exact_empty.status != "unsupported":
-        return exact_empty.as_bool(resolved_dialect)
-    return engine.is_subschema_bool(schema, empty_schema)
+    return _is_empty_resolved(schema, dialect=resolved_dialect, options=options)
 
 
 def is_disjoint(
@@ -219,7 +224,6 @@ def is_disjoint(
     rhs: JSONSchema,
     *,
     dialect: DialectInput = None,
-    proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
     timeout_ms: int | None = None,
@@ -230,8 +234,7 @@ def is_disjoint(
     resolved_dialect = resolve_dialect(lhs, rhs, dialect=dialect)
     _validate_public_schema(lhs, resolved_dialect)
     _validate_public_schema(rhs, resolved_dialect)
-    options = _resolve_proof_options(
-        proof_options,
+    options = _proof_options_from_public_controls(
         endeavor=endeavor,
         max_work=max_work,
         timeout_ms=timeout_ms,
@@ -250,31 +253,28 @@ def covers(
     rhs_alternatives: Iterable[JSONSchema],
     *,
     dialect: DialectInput = None,
-    proof_options: ProofOptions | None = None,
     endeavor: bool = False,
     max_work: int | None = None,
     timeout_ms: int | None = None,
 ) -> bool:
     """Return whether lhs is covered by any of the RHS alternative schemas."""
     rhs_schemas = _materialize_rhs_alternatives(rhs_alternatives)
-    if not rhs_schemas:
-        return is_empty(
-            lhs,
-            dialect=dialect,
-            proof_options=proof_options,
-            endeavor=endeavor,
-            max_work=max_work,
-            timeout_ms=timeout_ms,
-        )
-    rhs: JSONSchema = {"anyOf": cast(JSONValue, rhs_schemas)}
-    return is_subschema(
-        lhs,
-        rhs,
-        dialect=dialect,
-        proof_options=proof_options,
+    ensure_json_value(lhs, label="lhs schema")
+    resolved_dialect = resolve_dialect(lhs, *rhs_schemas, dialect=dialect)
+    _validate_public_schema(lhs, resolved_dialect)
+    for rhs_schema in rhs_schemas:
+        _validate_public_schema(rhs_schema, resolved_dialect)
+    options = _proof_options_from_public_controls(
         endeavor=endeavor,
         max_work=max_work,
         timeout_ms=timeout_ms,
+    )
+    if not rhs_schemas:
+        return _is_empty_resolved(lhs, dialect=resolved_dialect, options=options)
+    rhs: JSONSchema = {"anyOf": cast(JSONValue, rhs_schemas)}
+    _validate_public_schema(rhs, resolved_dialect)
+    return _is_subschema_resolved(
+        lhs, rhs, dialect=resolved_dialect, options=options
     )
 
 

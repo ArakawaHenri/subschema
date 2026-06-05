@@ -21,7 +21,7 @@ from subschema import (
     meet_schemas,
 )
 from subschema.exceptions import UnsupportedKeywordError
-from subschema.kernel import ProofOptions, ProofResult
+from subschema.kernel import ProofResult
 from subschema.kernel.json_data import strict_json_loads
 
 
@@ -353,9 +353,9 @@ class TestAPI(unittest.TestCase):
             )
 
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("--max-work and --timeout-ms require --endeavor", completed.stderr)
+        self.assertIn("max_work and timeout_ms require endeavor=True", completed.stderr)
 
-    def test_public_api_rejects_invalid_proof_options_type(self):
+    def test_public_api_rejects_proof_options_keyword(self):
         with self.assertRaises(TypeError):
             is_subschema({"type": "string"}, {"type": "string"}, proof_options={})
         with self.assertRaises(TypeError):
@@ -364,17 +364,6 @@ class TestAPI(unittest.TestCase):
             join_schemas({"type": "string"}, {"type": "string"}, proof_options=[])
         with self.assertRaises(TypeError):
             is_equivalent({"type": "string"}, {"type": "string"}, proof_options=object())
-
-    def test_public_api_rejects_mixed_proof_option_styles(self):
-        proof_options = ProofOptions()
-
-        with self.assertRaises(ValueError):
-            is_subschema(
-                {"type": "string"},
-                {"type": "string"},
-                proof_options=proof_options,
-                max_work=1,
-            )
 
     def test_public_api_rejects_budget_without_endeavor(self):
         with self.assertRaises(ValueError):
