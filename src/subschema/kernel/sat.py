@@ -110,7 +110,7 @@ from subschema.kernel.formulas import (
     TopFormula,
     occurrence_assertion_formula,
 )
-from subschema.kernel.ir import IRAssertionKind, SchemaNode
+from subschema.kernel.ir import DomainFactInfo, IRAssertionKind, SchemaNode
 from subschema.kernel.overlaps import (
     right_not_string_overlap_plan_from_constraints,
     right_not_string_overlap_proof_choice,
@@ -163,6 +163,27 @@ RIGHT_NOT_LHS_COMPLEMENT_SUBPROOF_EXHAUSTED = (
 RIGHT_NOT_REGEX_EXHAUSTED = "regex proof exceeded proof work budget"
 RIGHT_NOT_SUBPROOF_EXHAUSTED = "SAT right-not subproof exhausted its budget"
 RIGHT_NOT_SUBPROOF_UNSUPPORTED = "SAT right-not subproof is unsupported"
+_SCALAR_FACT_REQUIREMENTS: dict[
+    str, tuple[tuple[Literal["lhs", "rhs"], IRAssertionKind], ...]
+] = {
+    "SAT type fragment requires exact type shapes": (
+        ("lhs", "type"),
+        ("rhs", "type"),
+    ),
+    "SAT type fragment requires language-complete right type shape": (("rhs", "type"),),
+    "SAT numeric fragment requires exact numeric shapes": (
+        ("lhs", "numeric"),
+        ("rhs", "numeric"),
+    ),
+    "SAT string-length fragment requires exact string shapes": (
+        ("lhs", "string-length"),
+        ("rhs", "string-length"),
+    ),
+    "SAT string-language fragment requires exact language shapes": (
+        ("lhs", "string-language"),
+        ("rhs", "string-language"),
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -247,6 +268,38 @@ class DifferenceProblem:
         )
         return None if assertion is None else assertion.value
 
+    def lhs_fact_info(self, kind: IRAssertionKind) -> DomainFactInfo:
+        formula = occurrence_assertion_formula(self.formula.positive_lhs, kind)
+        if formula is None:
+            return self.formula.lhs.facts.fact_info(kind)
+        assertion = formula.assertion
+        return self.formula.lhs.facts.constraint_info(
+            kind, None if assertion is None else assertion.value
+        )
+
+    def rhs_fact_info(self, kind: IRAssertionKind) -> DomainFactInfo:
+        formula = occurrence_assertion_formula(self.formula.negative_rhs, kind)
+        if formula is None:
+            return self.formula.rhs.facts.fact_info(kind)
+        assertion = formula.assertion
+        return self.formula.rhs.facts.constraint_info(
+            kind, None if assertion is None else assertion.value
+        )
+
+    def lhs_require_exact(
+        self, kind: IRAssertionKind, reason: str
+    ) -> ProofResult | None:
+        if self.lhs_fact_info(kind).status == "exact":
+            return None
+        return ProofResult.unsupported(reason)
+
+    def rhs_require_exact(
+        self, kind: IRAssertionKind, reason: str
+    ) -> ProofResult | None:
+        if self.rhs_fact_info(kind).status == "exact":
+            return None
+        return ProofResult.unsupported(reason)
+
     @cached_property
     def array_model(self) -> ArrayDifferenceModel:
         return ArrayDifferenceModel.from_problem(self)
@@ -291,6 +344,21 @@ class ApplicatorProofFlow:
     plan: ApplicatorPlanWithBase
     prove_branch: Callable[[], ProofResult]
     branch_first: bool = False
+
+
+def _scalar_fact_unsupported(
+    problem: DifferenceProblem,
+    reason: str,
+) -> ProofResult | None:
+    for side, kind in _SCALAR_FACT_REQUIREMENTS.get(reason, ()):
+        proof = (
+            problem.lhs_require_exact(kind, reason)
+            if side == "lhs"
+            else problem.rhs_require_exact(kind, reason)
+        )
+        if proof is not None:
+            return proof
+    return None
 
 
 class EmptinessSolver:
@@ -2058,6 +2126,8 @@ def _prove_type_difference(problem: DifferenceProblem) -> ProofResult:
         rhs_constraint,
     )
     if plan.status == "unsupported":
+        if proof := _scalar_fact_unsupported(problem, plan.reason):
+            return proof
         return ProofResult.unsupported(plan.reason)
     if plan.status == "proved_true":
         return ProofResult.true()
@@ -2096,6 +2166,8 @@ def _prove_numeric_difference(problem: DifferenceProblem) -> ProofResult:
     if isinstance(plan, ProofResult):
         return plan
     if plan.status == "unsupported":
+        if proof := _scalar_fact_unsupported(problem, plan.reason):
+            return proof
         return ProofResult.unsupported(plan.reason)
     if plan.status == "proved_true":
         return ProofResult.true()
@@ -2108,6 +2180,8 @@ def _prove_string_length_difference(problem: DifferenceProblem) -> ProofResult:
         _string_length_constraint(problem.rhs_constraint("string-length")),
     )
     if plan.status == "unsupported":
+        if proof := _scalar_fact_unsupported(problem, plan.reason):
+            return proof
         return ProofResult.unsupported(plan.reason)
     if plan.status == "proved_true":
         return ProofResult.true()
@@ -2121,6 +2195,8 @@ def _prove_string_language_difference(problem: DifferenceProblem) -> ProofResult
         context=problem.context,
     )
     if plan.status == "unsupported":
+        if proof := _scalar_fact_unsupported(problem, plan.reason):
+            return proof
         return ProofResult.unsupported(plan.reason)
     if plan.status == "proved_true":
         return ProofResult.true()

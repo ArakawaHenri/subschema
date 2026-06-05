@@ -774,6 +774,26 @@ class ArrayDifferenceModel:
     def _rhs_constraint(self, kind: IRAssertionKind) -> Any | None:
         return None if self.problem is None else self.problem.rhs_constraint(kind)
 
+    def _lhs_exactness_unsupported_reason(
+        self,
+        kind: IRAssertionKind,
+        reason: str,
+    ) -> str | None:
+        if self.problem is None:
+            return None
+        proof = self.problem.lhs_require_exact(kind, reason)
+        return None if proof is None else proof.reason or reason
+
+    def _rhs_exactness_unsupported_reason(
+        self,
+        kind: IRAssertionKind,
+        reason: str,
+    ) -> str | None:
+        if self.problem is None:
+            return None
+        proof = self.problem.rhs_require_exact(kind, reason)
+        return None if proof is None else proof.reason or reason
+
     @cached_property
     def lhs_length(self) -> ArrayShape | None:
         constraint = (
@@ -1041,6 +1061,20 @@ class ArrayDifferenceModel:
         lhs_shape = self.lhs_length
         rhs_shape = self.rhs_length
         if lhs_shape is None or rhs_shape is None:
+            if lhs_shape is None and (
+                reason := self._lhs_exactness_unsupported_reason(
+                    "array-length-lhs",
+                    "SAT array length difference requires exact length shapes",
+                )
+            ):
+                return ArrayLengthDifferencePlan.unsupported(reason)
+            if rhs_shape is None and (
+                reason := self._rhs_exactness_unsupported_reason(
+                    "array-length-rhs",
+                    "SAT array length difference requires exact length shapes",
+                )
+            ):
+                return ArrayLengthDifferencePlan.unsupported(reason)
             return ArrayLengthDifferencePlan.unsupported(
                 "SAT array length difference requires exact length shapes"
             )
@@ -1058,6 +1092,11 @@ class ArrayDifferenceModel:
             )
         if lhs_shape.is_subset_of(rhs_shape):
             if not rhs_shape.exact:
+                if reason := self._rhs_exactness_unsupported_reason(
+                    "array-length-rhs",
+                    "SAT array length true proof requires exact right length semantics",
+                ):
+                    return ArrayLengthDifferencePlan.unsupported(reason)
                 return ArrayLengthDifferencePlan.unsupported(
                     "SAT array length true proof requires exact right length semantics"
                 )
@@ -1162,6 +1201,12 @@ class ArrayDifferenceModel:
             )
         if check == UNSAT:
             if not rhs_shape.exact:
+                if reason := self._rhs_exactness_unsupported_reason(
+                    "array-length-rhs",
+                    "SAT array length symbolic true proof requires exact right "
+                    "length semantics",
+                ):
+                    return ArrayLengthDifferencePlan.unsupported(reason)
                 return ArrayLengthDifferencePlan.unsupported(
                     "SAT array length symbolic true proof requires exact right "
                     "length semantics"
@@ -1541,6 +1586,11 @@ class ArrayDifferenceModel:
         lhs_shape = self.lhs_uniqueness
         rhs_shape = self.rhs_uniqueness
         if rhs_shape is None:
+            if reason := self._rhs_exactness_unsupported_reason(
+                "array-uniqueness-rhs",
+                "SAT array uniqueness difference requires exact uniqueness shapes",
+            ):
+                return ArrayUniquenessDifferencePlan.unsupported(reason)
             return ArrayUniquenessDifferencePlan.unsupported(
                 "SAT array uniqueness difference requires exact uniqueness shapes"
             )
@@ -1563,6 +1613,11 @@ class ArrayDifferenceModel:
                 ),
             )
         if lhs_shape is None:
+            if reason := self._lhs_exactness_unsupported_reason(
+                "array-uniqueness-lhs",
+                "SAT array uniqueness difference requires exact uniqueness shapes",
+            ):
+                return ArrayUniquenessDifferencePlan.unsupported(reason)
             return ArrayUniquenessDifferencePlan.unsupported(
                 "SAT array uniqueness difference requires exact uniqueness shapes"
             )
@@ -1597,6 +1652,12 @@ class ArrayDifferenceModel:
             )
         if not rhs_shape.requires_unique_items or lhs_shape.guarantees_unique_items:
             if not rhs_shape.complete_uniqueness_fragment:
+                if reason := self._rhs_exactness_unsupported_reason(
+                    "array-uniqueness-rhs",
+                    "SAT array uniqueness true proof cannot prove right "
+                    "non-uniqueness constraints",
+                ):
+                    return ArrayUniquenessDifferencePlan.unsupported(reason)
                 return ArrayUniquenessDifferencePlan.unsupported(
                     "SAT array uniqueness true proof cannot prove right "
                     "non-uniqueness constraints"
@@ -3069,6 +3130,26 @@ class ObjectDifferenceModel:
     def _rhs_constraint(self, kind: IRAssertionKind) -> Any | None:
         return None if self.problem is None else self.problem.rhs_constraint(kind)
 
+    def _lhs_exactness_unsupported_reason(
+        self,
+        kind: IRAssertionKind,
+        reason: str,
+    ) -> str | None:
+        if self.problem is None:
+            return None
+        proof = self.problem.lhs_require_exact(kind, reason)
+        return None if proof is None else proof.reason or reason
+
+    def _rhs_exactness_unsupported_reason(
+        self,
+        kind: IRAssertionKind,
+        reason: str,
+    ) -> str | None:
+        if self.problem is None:
+            return None
+        proof = self.problem.rhs_require_exact(kind, reason)
+        return None if proof is None else proof.reason or reason
+
     @cached_property
     def lhs_property_count(self) -> ObjectPropertyCountShape | None:
         constraint = (
@@ -3095,6 +3176,20 @@ class ObjectDifferenceModel:
         lhs_shape = self.lhs_property_count
         rhs_shape = self.rhs_property_count
         if lhs_shape is None or rhs_shape is None:
+            if lhs_shape is None and (
+                reason := self._lhs_exactness_unsupported_reason(
+                    "object-property-count",
+                    "SAT object property-count difference requires exact count shapes",
+                )
+            ):
+                return ObjectPropertyCountDifferencePlan.unsupported(reason)
+            if rhs_shape is None and (
+                reason := self._rhs_exactness_unsupported_reason(
+                    "object-property-count",
+                    "SAT object property-count difference requires exact count shapes",
+                )
+            ):
+                return ObjectPropertyCountDifferencePlan.unsupported(reason)
             return ObjectPropertyCountDifferencePlan.unsupported(
                 "SAT object property-count difference requires exact count shapes"
             )
@@ -3114,6 +3209,12 @@ class ObjectDifferenceModel:
                 return symbolic
         if lhs_shape.is_subset_of(rhs_shape):
             if not rhs_shape.exact:
+                if reason := self._rhs_exactness_unsupported_reason(
+                    "object-property-count",
+                    "SAT object property-count true proof requires exact right "
+                    "count semantics",
+                ):
+                    return ObjectPropertyCountDifferencePlan.unsupported(reason)
                 return ObjectPropertyCountDifferencePlan.unsupported(
                     "SAT object property-count true proof requires exact right "
                     "count semantics"
@@ -3185,6 +3286,12 @@ class ObjectDifferenceModel:
             )
         if check == UNSAT:
             if not rhs_shape.exact:
+                if reason := self._rhs_exactness_unsupported_reason(
+                    "object-property-count",
+                    "SAT object property-count true proof requires exact right "
+                    "count semantics",
+                ):
+                    return ObjectPropertyCountDifferencePlan.unsupported(reason)
                 return ObjectPropertyCountDifferencePlan.unsupported(
                     "SAT object property-count true proof requires exact right "
                     "count semantics"
@@ -3523,6 +3630,22 @@ class ObjectDifferenceModel:
         lhs_shape = self.lhs_closed_properties
         rhs_shape = self.rhs_closed_properties
         if lhs_shape is None or rhs_shape is None:
+            if lhs_shape is None and (
+                reason := self._lhs_exactness_unsupported_reason(
+                    "object-closed-properties",
+                    "SAT closed-object difference requires exact closed-property "
+                    "shapes",
+                )
+            ):
+                return ClosedObjectDifferencePlan.unsupported(reason)
+            if rhs_shape is None and (
+                reason := self._rhs_exactness_unsupported_reason(
+                    "object-closed-properties",
+                    "SAT closed-object difference requires exact closed-property "
+                    "shapes",
+                )
+            ):
+                return ClosedObjectDifferencePlan.unsupported(reason)
             return ClosedObjectDifferencePlan.unsupported(
                 "SAT closed-object difference requires exact closed-property shapes"
             )

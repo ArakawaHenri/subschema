@@ -380,7 +380,13 @@ class DomainFacts:
         return schema_required_singleton_tag(self.schema, tag_name)
 
     def fact_info(self, kind: IRAssertionKind) -> DomainFactInfo:
-        constraint = self._assertion_value(kind)
+        return self.constraint_info(kind, self._assertion_value(kind))
+
+    @staticmethod
+    def constraint_info(
+        kind: IRAssertionKind,
+        constraint: Any | None,
+    ) -> DomainFactInfo:
         if constraint is None:
             return DomainFactInfo("unsupported", f"{kind} fact is unavailable")
         shape = getattr(constraint, "shape", None)

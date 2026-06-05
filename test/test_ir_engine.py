@@ -3257,6 +3257,11 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn("cached_property", domain_facts_source)
         self.assertIn("DomainFactInfo", inspect.getsource(ir_module))
         self.assertIn("def fact_info", domain_facts_source)
+        self.assertIn("rhs_require_exact", inspect.getsource(sat_module))
+        self.assertIn(
+            "_rhs_exactness_unsupported_reason",
+            inspect.getsource(difference_module),
+        )
         self.assertIn("def assertion", domain_facts_source)
         self.assertIn(
             "return self.facts.assertion(kind)",
