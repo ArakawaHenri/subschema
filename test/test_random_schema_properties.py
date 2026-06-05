@@ -16,6 +16,7 @@ from subschema import (
     join_schemas,
     meet_schemas,
 )
+from subschema.kernel.validation import ValidationUnsupportedError
 from subschema.kernel.validation import validation_backend_for
 
 
@@ -246,12 +247,71 @@ def _annotation_schema(draw: st.DrawFn, children: st.SearchStrategy[Any]) -> dic
     return annotated
 
 
+@st.composite
+def random_resource_schema(draw: st.DrawFn) -> dict[str, Any]:
+    target = draw(
+        st.one_of(
+            st.booleans(),
+            _type_schema(),
+            _const_schema(),
+            _enum_schema(),
+            _numeric_schema(),
+            _string_schema(),
+        )
+    )
+    kind = draw(st.sampled_from(("defs-ref", "allof-ref", "nested-defs", "anchor")))
+    if kind == "defs-ref":
+        return {"$defs": {"target": target}, "$ref": "#/$defs/target"}
+    if kind == "allof-ref":
+        return {
+            "$defs": {"target": target},
+            "allOf": [{"$ref": "#/$defs/target"}],
+        }
+    if kind == "nested-defs":
+        return {
+            "$defs": {
+                "outer": {
+                    "$defs": {"inner": target},
+                    "$ref": "#/$defs/outer/$defs/inner",
+                }
+            },
+            "$ref": "#/$defs/outer",
+        }
+    return {
+        "$defs": {"target": _anchored_target(target)},
+        "$ref": "#target",
+    }
+
+
+def _anchored_target(target: Any) -> dict[str, Any]:
+    if isinstance(target, dict):
+        return {"$anchor": "target", **target}
+    return {"$anchor": "target", "allOf": [target]}
+
+
 def _small_instance_counterexample(lhs: Any, rhs: Any) -> Any | None:
     backend = validation_backend_for(Dialect.DRAFT202012)
     for instance in JSON_INSTANCES:
         if backend.is_valid(lhs, instance) and not backend.is_valid(rhs, instance):
             return instance
     return None
+
+
+def _assert_public_helper_has_no_backend_exception(call: Any) -> None:
+    try:
+        call()
+    except UnsupportedProofError:
+        return
+    except ValidationUnsupportedError as err:
+        raise AssertionError("public helper leaked ValidationUnsupportedError") from err
+    except Exception as err:
+        if type(err).__module__.partition(".")[0] in {
+            "jsonschema",
+            "jsonschema_rs",
+            "referencing",
+        }:
+            raise AssertionError("public helper leaked validation backend error") from err
+        raise
 
 
 @given(random_schema())
@@ -275,6 +335,31 @@ def test_random_true_subschema_has_no_small_counterexample(lhs: Any, rhs: Any) -
 
     if result:
         assert _small_instance_counterexample(lhs, rhs) is None
+
+
+def test_count_shape_complement_does_not_ignore_property_names() -> None:
+    lhs = {
+        "not": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "propertyNames": {"type": "string", "minLength": 0, "maxLength": 0},
+        },
+    }
+    rhs = {
+        "not": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "maxProperties": 2,
+        },
+    }
+
+    try:
+        result = is_subschema(lhs, rhs)
+    except UnsupportedProofError:
+        return
+    assert not result
 
 
 @given(random_schema(), random_schema())
@@ -302,3 +387,17 @@ def test_random_meet_join_bounds_when_provable(lhs: Any, rhs: Any) -> None:
         assert is_subschema(rhs, join)
     except UnsupportedProofError:
         assume(False)
+
+
+@given(random_resource_schema())
+@settings(max_examples=80, deadline=None)
+def test_random_resource_schemas_do_not_leak_backend_exceptions(
+    schema: Any,
+) -> None:
+    _assert_public_helper_has_no_backend_exception(lambda: is_subschema(schema, schema))
+    _assert_public_helper_has_no_backend_exception(
+        lambda: is_empty({"allOf": [{"type": "null"}, schema]})
+    )
+    _assert_public_helper_has_no_backend_exception(
+        lambda: is_disjoint({"type": "null"}, schema)
+    )

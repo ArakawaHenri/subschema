@@ -67,6 +67,7 @@ from subschema.kernel.applicators import (
     right_not_subproof_choice,
     right_not_witness_plan,
 )
+from subschema.kernel.confirmation import confirm_difference, confirm_valid
 from subschema.kernel.constraints import (
     FiniteConstraint,
     NumericConstraint,
@@ -135,10 +136,6 @@ from subschema.kernel.schemas import (
     schema_is_false,
     schema_is_true,
     schemas_equal,
-)
-from subschema.kernel.validation import (
-    ValidationUnsupportedError,
-    validation_backend_for,
 )
 from subschema.kernel.values import json_semantic_key, json_values_equal
 from subschema.kernel.witnesses import build_schema_witness
@@ -681,29 +678,24 @@ def _dedupe_diagnostics(
 
 
 def _prove_finite_lhs_difference(problem: DifferenceProblem) -> ProofResult:
-    formula = problem.formula
     finite_constraint = _finite_constraint(problem.lhs_constraint("finite"))
     if finite_constraint is None:
         return ProofResult.unsupported(
             "SAT finite fragment requires finite left language"
         )
 
-    backend = validation_backend_for(problem.dialect)
-
     for value in finite_constraint.values:
-        try:
-            if backend.validates_difference(
-                formula.lhs.schema, formula.rhs.schema, value
-            ):
-                return ProofResult.false(value)
-        except RecursionError:
-            return ProofResult.unsupported(
-                "SAT finite validation exceeded the supported depth"
-            )
-        except ValidationUnsupportedError as err:
-            return ProofResult.unsupported(
-                f"SAT finite validation is unsupported: {err}"
-            )
+        confirmed = confirm_difference(
+            _lhs_confirmation_source(problem),
+            _rhs_confirmation_source(problem),
+            value,
+        )
+        if confirmed.status == "unsupported":
+            if confirmed.proof is None:
+                return ProofResult.unsupported("finite witness confirmation failed")
+            return confirmed.proof
+        if confirmed.status == "confirmed":
+            return ProofResult.false(value)
     return ProofResult.true()
 
 
@@ -2330,9 +2322,16 @@ def _array_contains_rhs_item_value_witness(
             continue
 
         overrides = {slot.index: slot_violation.witness}
-        if validation_backend_for(problem.dialect).is_valid(
-            lhs_contains.schema, slot_violation.witness
-        ):
+        contains_confirmed = confirm_valid(
+            lhs_contains.schema,
+            slot_violation.witness,
+            problem.context,
+        )
+        if contains_confirmed.status == "unsupported":
+            if contains_confirmed.proof is None:
+                return ProofResult.unsupported("contains witness confirmation failed")
+            return contains_confirmed.proof
+        if contains_confirmed.status == "confirmed":
             contains_index = slot.index
         else:
             contains_index = 0 if slot.index != 0 else slot.index + 1
@@ -3222,44 +3221,50 @@ def _certified_false(
 def _validated_false(
     problem: DifferenceProblem, witness: Any, rejected_reason: str
 ) -> ProofResult:
-    backend = validation_backend_for(problem.dialect)
-    try:
-        if backend.validates_difference(
-            problem.lhs_schema, problem.rhs_schema, witness
-        ):
-            return ProofResult.false(witness)
-    except RecursionError:
-        return ProofResult.unsupported(
-            "SAT witness validation exceeded the supported depth"
-        )
-    except ValidationUnsupportedError as err:
-        return ProofResult.unsupported(f"SAT witness validation is unsupported: {err}")
+    confirmed = confirm_difference(
+        _lhs_confirmation_source(problem),
+        _rhs_confirmation_source(problem),
+        witness,
+    )
+    if confirmed.status == "unsupported":
+        if confirmed.proof is None:
+            return ProofResult.unsupported("counterexample confirmation failed")
+        return confirmed.proof
+    if confirmed.status == "confirmed":
+        return ProofResult.false(witness)
     return ProofResult.unsupported(rejected_reason)
 
 
 def _validated_any_false(
     problem: DifferenceProblem, witnesses: tuple[Any, ...], missing_reason: str
 ) -> ProofResult:
-    backend = validation_backend_for(problem.dialect)
+    unsupported: ProofResult | None = None
     for witness in witnesses:
-        try:
-            if backend.validates_difference(
-                problem.lhs_schema, problem.rhs_schema, witness
-            ):
-                return ProofResult.false(witness)
-        except RecursionError:
-            return ProofResult.unsupported(
-                "SAT witness validation exceeded the supported depth"
+        confirmed = confirm_difference(
+            _lhs_confirmation_source(problem),
+            _rhs_confirmation_source(problem),
+            witness,
+        )
+        if confirmed.status == "unsupported":
+            unsupported = confirmed.proof or ProofResult.unsupported(
+                "counterexample confirmation failed"
             )
-        except ValidationUnsupportedError as err:
-            return ProofResult.unsupported(
-                f"SAT witness validation is unsupported: {err}"
-            )
-    return ProofResult.unsupported(missing_reason)
+            continue
+        if confirmed.status == "confirmed":
+            return ProofResult.false(witness)
+    return unsupported or ProofResult.unsupported(missing_reason)
 
 
 def _array_witness_horizon(problem: DifferenceProblem) -> int:
     return problem.context.default_search_horizon
+
+
+def _lhs_confirmation_source(problem: DifferenceProblem) -> Any:
+    return problem.formula.lhs.source.to_source()
+
+
+def _rhs_confirmation_source(problem: DifferenceProblem) -> Any:
+    return problem.formula.rhs.source.to_source()
 
 
 def _all_of_schema(schemas: tuple[Any, ...]) -> Any:

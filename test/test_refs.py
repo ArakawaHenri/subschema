@@ -1,6 +1,6 @@
 import unittest
 
-from subschema import Dialect, is_subschema
+from subschema import Dialect, is_disjoint, is_empty, is_subschema
 from subschema.exceptions import UnsupportedProofError
 
 
@@ -215,6 +215,28 @@ class TestModernRefs(unittest.TestCase):
 
         with self.assertRaises(UnsupportedProofError):
             is_subschema({"const": 1}, schema, dialect=Dialect.DRAFT6)
+
+    def test_nested_ref_confirmation_reports_public_unsupported(self):
+        ref_schema = {
+            "$defs": {
+                "target": {
+                    "$defs": {"target": False},
+                    "$ref": "#/$defs/target",
+                }
+            },
+            "$ref": "#/$defs/target",
+        }
+
+        with self.assertRaises(UnsupportedProofError):
+            is_empty(
+                {"allOf": [{"type": "null"}, ref_schema]},
+                dialect=Dialect.DRAFT202012,
+            )
+
+        try:
+            is_disjoint({"type": "null"}, ref_schema, dialect=Dialect.DRAFT202012)
+        except UnsupportedProofError:
+            pass
 
     def test_dynamic_ref_is_resolved_by_ir_engine(self):
         schema = {

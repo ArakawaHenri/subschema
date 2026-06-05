@@ -14,10 +14,12 @@ from subschema.dialects import (
     resolve_dialect,
     strip_inactive_keywords_for_dialect,
 )
+from subschema.kernel.confirmation import confirm_valid
 from subschema.kernel.domains.numbers import numeric_shape_for_schema
 from subschema.kernel.domains.strings import string_language_shape_for_schema
 from subschema.kernel.json_data import strict_json_loads
 from subschema.kernel.literals import explicit_finite_values_for_schema
+from subschema.kernel.provenance import SchemaSource
 from subschema.kernel.references import ResourceGraph
 from subschema.kernel.regex import RegexLanguage
 from subschema.kernel.schemas import (
@@ -25,7 +27,6 @@ from subschema.kernel.schemas import (
     contains_reference_keyword,
     schema_is_true,
 )
-from subschema.kernel.validation import validation_backend_for
 from subschema.kernel.values import dedupe, stable_key
 
 _MAX_NUMERIC_FINITE_VALUES = 64
@@ -93,7 +94,15 @@ def _finite_values_for_schema_uncached(
     if not isinstance(schema, dict):
         return None
 
-    schema = resolve_schema_reference(schema, graph) or schema
+    resolved = resolve_schema_reference(schema, graph)
+    if resolved is not None:
+        schema = resolved
+    if schema is False:
+        return []
+    if schema is True:
+        return None
+    if not isinstance(schema, dict):
+        return None
 
     double_negated = _double_negated_schema(schema)
     if double_negated is not None:
@@ -166,11 +175,15 @@ def _filter_valid_explicit_finite_values(
     values: list[Any],
 ) -> list[Any] | None:
     dialect = graph.dialect if graph is not None else resolve_dialect(schema)
-    backend = validation_backend_for(dialect)
-    try:
-        return dedupe([value for value in values if backend.is_valid(schema, value)])
-    except Exception:
-        return None
+    source = SchemaSource.root(schema, dialect)
+    confirmed_values = []
+    for value in values:
+        confirmed = confirm_valid(source, value)
+        if confirmed.status == "unsupported":
+            return None
+        if confirmed.status == "confirmed":
+            confirmed_values.append(value)
+    return dedupe(confirmed_values)
 
 
 def _finite_values_for_type_keyword(type_keyword: Any) -> list[Any] | None:
@@ -486,10 +499,13 @@ def _object_property_name_is_rejected(
     if property_names is False:
         return True
     dialect = graph.dialect if graph is not None else resolve_dialect(schema)
-    try:
-        return not validation_backend_for(dialect).is_valid(property_names, name)
-    except Exception:
+    confirmed = confirm_valid(
+        SchemaSource.root(property_names, dialect),
+        name,
+    )
+    if confirmed.status == "unsupported":
         return False
+    return confirmed.status != "confirmed"
 
 
 def _schema_is_known_empty(
@@ -605,8 +621,15 @@ def inhabited_finite_values_for_schema(
     )
     if values is None:
         return None
-    backend = validation_backend_for(dialect)
-    return [value for value in values if backend.is_valid(schema, value)]
+    source = SchemaSource.root(schema, dialect)
+    inhabited = []
+    for value in values:
+        confirmed = confirm_valid(source, value)
+        if confirmed.status == "unsupported":
+            return None
+        if confirmed.status == "confirmed":
+            inhabited.append(value)
+    return inhabited
 
 
 def schema_is_empty_finite(schema: Any, dialect: Dialect) -> bool:

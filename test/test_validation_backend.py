@@ -4,8 +4,10 @@ from math import inf, nan
 from jsonschema.exceptions import SchemaError
 import jsonschema_rs
 
+import subschema.kernel.validation as validation_module
 from subschema.dialects import Dialect
 from subschema.kernel.validation import (
+    ValidationUnsupportedError,
     validate_schema_for_dialect,
     validation_backend_for,
 )
@@ -36,6 +38,42 @@ def test_validation_backend_uses_jsonschema_rs_for_supported_schema():
 
     assert isinstance(validator, jsonschema_rs.Draft202012Validator)
     assert validator is backend.validator_for_schema({"minLength": 2, "type": "string"})
+
+
+def test_validation_backend_wraps_jsonschema_rs_compile_errors(monkeypatch):
+    backend = validation_backend_for(Dialect.DRAFT202012)
+
+    def raise_compile_error(dialect, schema):
+        raise RuntimeError("compile failed")
+
+    monkeypatch.setattr(
+        validation_module,
+        "_compile_jsonschema_rs_validator",
+        raise_compile_error,
+    )
+
+    with pytest.raises(ValidationUnsupportedError):
+        backend.is_valid({"type": "string", "pattern": "^compile-error$"}, "x")
+
+
+def test_validation_backend_wraps_jsonschema_rs_runtime_errors(monkeypatch):
+    backend = validation_backend_for(Dialect.DRAFT202012)
+
+    class BrokenValidator:
+        def is_valid(self, instance):
+            raise RuntimeError("runtime failed")
+
+    def broken_validator(dialect, schema):
+        return BrokenValidator()
+
+    monkeypatch.setattr(
+        validation_module,
+        "_compile_jsonschema_rs_validator",
+        broken_validator,
+    )
+
+    with pytest.raises(ValidationUnsupportedError):
+        backend.is_valid({"type": "string", "pattern": "^runtime-error$"}, "x")
 
 
 def test_validation_backend_strips_annotations_before_rs_validation():

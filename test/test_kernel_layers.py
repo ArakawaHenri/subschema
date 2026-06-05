@@ -153,6 +153,31 @@ def test_runtime_witness_construction_is_constructive():
     )
 
 
+def test_confirmation_and_array_boundaries_are_domain_owned():
+    runtime_sources = {
+        path.relative_to(REPO_ROOT).as_posix(): path.read_text()
+        for path in sorted(KERNEL_ROOT.rglob("*.py"))
+    }
+    forbidden_patterns = (
+        "_is_validation_backend_exception",
+        "_FiniteConfirmationContext",
+        "_rhs_unique_items_fragment_is_complete",
+        "_schema_requires_unique_items",
+    )
+    violations = [
+        f"{path}: {pattern}"
+        for path, source in runtime_sources.items()
+        for pattern in forbidden_patterns
+        if pattern in source
+    ]
+
+    assert not violations, (
+        "proof confirmation and array uniqueness boundaries must stay owned by "
+        "their domain modules:\n"
+        + "\n".join(violations)
+    )
+
+
 def _runtime_import_edges() -> list[ImportEdge]:
     return [edge for edge in _kernel_import_edges() if edge.scope != "type-checking"]
 

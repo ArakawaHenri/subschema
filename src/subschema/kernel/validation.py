@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cache, lru_cache
-from typing import Any, Protocol, cast
+from typing import Any, NoReturn, Protocol, cast
 
 import jsonschema
 import jsonschema_rs
@@ -49,8 +49,13 @@ class ValidationBackend:
             normalized_instance = normalize_instance_for_validation(instance)
         except ValueError:
             return False
-        validator = self.validator_for_schema(schema)
-        return validator.is_valid(normalized_instance)
+        try:
+            validator = self.validator_for_schema(schema)
+            return validator.is_valid(normalized_instance)
+        except ValidationUnsupportedError:
+            raise
+        except Exception as err:
+            _raise_validation_unsupported(err)
 
     def validates_difference(
         self, lhs_schema: Any, rhs_schema: Any, witness: Any
@@ -59,18 +64,26 @@ class ValidationBackend:
             normalized_instance = normalize_instance_for_validation(witness)
         except ValueError:
             return False
-        lhs_validator = self.validator_for_schema(lhs_schema)
-        rhs_validator = self.validator_for_schema(rhs_schema)
-        lhs_valid = lhs_validator.is_valid(normalized_instance)
-        return lhs_valid and not rhs_validator.is_valid(normalized_instance)
+        try:
+            lhs_validator = self.validator_for_schema(lhs_schema)
+            rhs_validator = self.validator_for_schema(rhs_schema)
+            lhs_valid = lhs_validator.is_valid(normalized_instance)
+            return lhs_valid and not rhs_validator.is_valid(normalized_instance)
+        except ValidationUnsupportedError:
+            raise
+        except Exception as err:
+            _raise_validation_unsupported(err)
 
     def validator_for_schema(self, schema: Any) -> InstanceValidator:
         ensure_json_value(schema, label="schema")
         if _has_embedded_dialect_transition(schema, self.dialect):
             key = _json_cache_key(schema)
-            if key is None:
-                return _compile_python_jsonschema_validator(self.dialect, schema)
-            return _compiled_python_jsonschema_validator(self.dialect, key)
+            try:
+                if key is None:
+                    return _compile_python_jsonschema_validator(self.dialect, schema)
+                return _compiled_python_jsonschema_validator(self.dialect, key)
+            except Exception as err:
+                _raise_validation_unsupported(err)
         active_schema = strip_inactive_keywords_for_dialect(schema, self.dialect)
         normalized = normalize_for_validation(active_schema)
         key = _json_cache_key(normalized)
@@ -79,12 +92,16 @@ class ValidationBackend:
                 return _compile_jsonschema_rs_validator(self.dialect, normalized)
             return _compiled_jsonschema_rs_validator(self.dialect, key)
         except Exception as err:
-            raise ValidationUnsupportedError(str(err)) from err
+            _raise_validation_unsupported(err)
 
 
 @cache
 def validation_backend_for(dialect: Dialect) -> ValidationBackend:
     return ValidationBackend(dialect)
+
+
+def _raise_validation_unsupported(err: Exception) -> NoReturn:
+    raise ValidationUnsupportedError(str(err)) from err
 
 
 def validate_schema_for_dialect(schema: Any, dialect: Dialect) -> None:

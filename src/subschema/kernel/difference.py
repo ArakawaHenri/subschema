@@ -18,7 +18,11 @@ from subschema.kernel.constraints import (
     ObjectPropertyValuesConstraint,
 )
 from subschema.kernel.contracts import ProofResult
-from subschema.kernel.domains.arrays import ArrayShape, ArrayUniquenessShape
+from subschema.kernel.domains.arrays import (
+    ArrayShape,
+    ArrayUniquenessShape,
+    array_unique_items_requirement_for_schema,
+)
 from subschema.kernel.domains.numbers import numeric_shape_for_schema
 from subschema.kernel.domains.objects import (
     ClosedObjectPropertiesShape,
@@ -819,7 +823,7 @@ class ArrayDifferenceModel:
         )
         if constraint is not None:
             return constraint.shape
-        return _rhs_unique_items_requirement_shape(self.rhs.schema)
+        return array_unique_items_requirement_for_schema(self.rhs.schema)
 
     @cached_property
     def lhs_slots(self) -> tuple[ArraySlot, ...]:
@@ -1583,6 +1587,11 @@ class ArrayDifferenceModel:
                 ),
             )
         if not rhs_shape.requires_unique_items or lhs_shape.guarantees_unique_items:
+            if not rhs_shape.complete_uniqueness_fragment:
+                return ArrayUniquenessDifferencePlan.unsupported(
+                    "SAT array uniqueness true proof cannot prove right "
+                    "non-uniqueness constraints"
+                )
             return ArrayUniquenessDifferencePlan.proved_true()
 
         duplicate_plan = self.uniqueness_duplicate_witness_plan(budget=budget)
@@ -4958,24 +4967,6 @@ def _object_key_pattern_witness_excluding(
 
 def _subschema_is_proved(lhs: Any, rhs: Any, context: ProofContext) -> bool:
     return context.subproof(lhs, rhs).status == "proved_true"
-
-
-def _rhs_unique_items_requirement_shape(schema: Any) -> ArrayUniquenessShape | None:
-    if not isinstance(schema, dict) or schema.get("uniqueItems") is not True:
-        return None
-    if contains_reference_keyword(schema, {"$ref", "$recursiveRef", "$dynamicRef"}):
-        return None
-    type_shape = type_shape_for_type_keyword(schema.get("type"))
-    if type_shape is None:
-        return None
-    accepts_array = "array" in type_shape.atoms
-    accepts_non_array = any(atom != "array" for atom in type_shape.atoms)
-    return ArrayUniquenessShape(
-        accepts_array=accepts_array,
-        accepts_non_array=accepts_non_array,
-        requires_unique_items=True,
-        guarantees_unique_items=True,
-    )
 
 
 def _rhs_evaluation_trace(

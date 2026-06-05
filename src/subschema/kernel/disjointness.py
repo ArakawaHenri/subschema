@@ -4,9 +4,11 @@ Shared schema-language disjointness helpers.
 
 from __future__ import annotations
 
-from typing import Any, Protocol, cast
+from dataclasses import dataclass
+from typing import Any, Literal, Protocol, cast
 
 from subschema.dialects import Dialect
+from subschema.kernel.confirmation import confirm_valid
 from subschema.kernel.contracts import ProofResult
 from subschema.kernel.domains.arrays import (
     ArrayShape,
@@ -28,7 +30,6 @@ from subschema.kernel.domains.types import (
     type_overapproximation_for_schema,
 )
 from subschema.kernel.schemas import IGNORED_SCHEMA_METADATA_KEYS
-from subschema.kernel.validation import validation_backend_for
 from subschema.kernel.witnesses import build_schema_witness, finite_projection_witness
 
 __all__ = [
@@ -41,6 +42,15 @@ class DisjointnessContext(Protocol):
     dialect: Dialect
 
     def finite_meet_projection(self, lhs: Any, rhs: Any) -> Any | None: ...
+
+
+SharedWitnessStatus = Literal["confirmed_false", "rejected", "unsupported"]
+
+
+@dataclass(frozen=True)
+class SharedWitnessConfirmation:
+    status: SharedWitnessStatus
+    proof: ProofResult | None = None
 
 
 def schema_is_empty_exact(schema: Any, context: DisjointnessContext) -> ProofResult:
@@ -69,8 +79,12 @@ def schema_is_empty_exact(schema: Any, context: DisjointnessContext) -> ProofRes
     if witness.status == "resource_exhausted":
         return ProofResult.resource_exhausted(witness.reason)
     if witness.has_witness:
-        backend = validation_backend_for(context.dialect)
-        if backend.is_valid(schema, witness.witness):
+        confirmed = confirm_valid(schema, witness.witness, context)
+        if confirmed.status == "unsupported":
+            if confirmed.proof is None:
+                return ProofResult.unsupported("schema witness confirmation failed")
+            return confirmed.proof
+        if confirmed.status == "confirmed":
             return ProofResult.false(witness.witness)
 
     return ProofResult.unsupported("schema emptiness could not be proven exactly")
@@ -107,7 +121,11 @@ def _schemas_are_disjoint(
         return ProofResult.true()
     finite_witness = finite_projection_witness(finite_intersection, context.dialect)
     if finite_witness.has_witness:
-        return ProofResult.false(finite_witness.witness)
+        shared = _confirmed_shared_witness(lhs, rhs, finite_witness.witness, context)
+        if shared.status == "confirmed_false" and shared.proof is not None:
+            return shared.proof
+        if shared.status == "unsupported" and shared.proof is not None:
+            return shared.proof
 
     if schema_type_overapproximations_are_disjoint(lhs, rhs):
         return ProofResult.true()
@@ -147,11 +165,12 @@ def _schemas_are_disjoint(
     if intersection_witness.status == "resource_exhausted":
         return ProofResult.resource_exhausted(intersection_witness.reason)
     if intersection_witness.has_witness:
-        backend = validation_backend_for(context.dialect)
-        if backend.is_valid(lhs, intersection_witness.witness) and backend.is_valid(
-            rhs, intersection_witness.witness
-        ):
-            return ProofResult.false(intersection_witness.witness)
+        shared = _confirmed_shared_witness(
+            lhs, rhs, intersection_witness.witness, context
+        )
+        proof = _proof_from_shared_witness(shared)
+        if proof is not None:
+            return proof
 
     return ProofResult.unsupported("schema disjointness could not be proven exactly")
 
@@ -189,7 +208,6 @@ def _branches_are_disjoint_from_schema(
     depth: int,
 ) -> ProofResult:
     unsupported: ProofResult | None = None
-    backend = validation_backend_for(context.dialect)
     for branch in branches:
         branch_disjoint = _schemas_are_disjoint(
             branch, other_schema, context, depth=depth + 1
@@ -200,14 +218,21 @@ def _branches_are_disjoint_from_schema(
             return branch_disjoint
         if branch_disjoint.status == "proved_false":
             witness = branch_disjoint.witness
-            if (
-                witness is not None
-                and backend.is_valid(union_schema, witness)
-                and backend.is_valid(other_schema, witness)
-            ):
-                return ProofResult.false(witness)
-            unsupported = ProofResult.unsupported(
-                "union branch intersection witness was not valid for the full schema"
+            if witness is not None:
+                shared = _confirmed_shared_witness(
+                    union_schema, other_schema, witness, context
+                )
+                if shared.status == "confirmed_false" and shared.proof is not None:
+                    return shared.proof
+                if shared.status == "unsupported":
+                    unsupported = shared.proof
+                    continue
+            unsupported = (
+                unsupported
+                or ProofResult.unsupported(
+                    "union branch intersection witness was not valid for the "
+                    "full schema"
+                )
             )
             continue
         unsupported = branch_disjoint
@@ -272,9 +297,10 @@ def _numeric_disjointness(
         NumericShape((), accepts_non_numeric=False)
     )
     if witness is not None:
-        backend = validation_backend_for(context.dialect)
-        if backend.is_valid(lhs, witness) and backend.is_valid(rhs, witness):
-            return ProofResult.false(witness)
+        shared = _confirmed_shared_witness(lhs, rhs, witness, context)
+        proof = _proof_from_shared_witness(shared)
+        if proof is not None:
+            return proof
 
     return ProofResult.unsupported(
         "numeric disjointness could not be proven exactly"
@@ -326,9 +352,10 @@ def _object_count_disjointness(
         ObjectPropertyCountShape((), accepts_non_object=False)
     )
     if witness is not None:
-        backend = validation_backend_for(context.dialect)
-        if backend.is_valid(lhs, witness) and backend.is_valid(rhs, witness):
-            return ProofResult.false(witness)
+        shared = _confirmed_shared_witness(lhs, rhs, witness, context)
+        proof = _proof_from_shared_witness(shared)
+        if proof is not None:
+            return proof
 
     return ProofResult.unsupported(
         "object count disjointness could not be proven exactly"
@@ -381,9 +408,10 @@ def _array_length_disjointness(
 
     witness = intersection.witness_not_in(ArrayShape((), accepts_non_array=False))
     if witness is not None:
-        backend = validation_backend_for(context.dialect)
-        if backend.is_valid(lhs, witness) and backend.is_valid(rhs, witness):
-            return ProofResult.false(witness)
+        shared = _confirmed_shared_witness(lhs, rhs, witness, context)
+        proof = _proof_from_shared_witness(shared)
+        if proof is not None:
+            return proof
 
     return ProofResult.unsupported(
         "array length disjointness could not be proven exactly"
@@ -613,9 +641,10 @@ def _closed_finite_object_disjointness(
 
     witness = intersection.object_witness(context.dialect)
     if witness is not None:
-        backend = validation_backend_for(context.dialect)
-        if backend.is_valid(lhs, witness) and backend.is_valid(rhs, witness):
-            return ProofResult.false(witness)
+        shared = _confirmed_shared_witness(lhs, rhs, witness, context)
+        proof = _proof_from_shared_witness(shared)
+        if proof is not None:
+            return proof
 
     return ProofResult.unsupported(
         "closed object disjointness could not be proven exactly"
@@ -628,6 +657,37 @@ def _is_finite_closed_object_shape(shape: Any) -> bool:
         and not shape.accepts_non_object
         and not shape.pattern_property_schemas
     )
+
+
+def _confirmed_shared_witness(
+    lhs: Any,
+    rhs: Any,
+    witness: Any,
+    context: DisjointnessContext,
+) -> SharedWitnessConfirmation:
+    lhs_confirmed = confirm_valid(lhs, witness, context)
+    if lhs_confirmed.status == "unsupported":
+        return SharedWitnessConfirmation("unsupported", lhs_confirmed.proof)
+    if lhs_confirmed.status == "rejected":
+        return SharedWitnessConfirmation("rejected")
+    rhs_confirmed = confirm_valid(rhs, witness, context)
+    if rhs_confirmed.status == "unsupported":
+        return SharedWitnessConfirmation("unsupported", rhs_confirmed.proof)
+    if rhs_confirmed.status == "confirmed":
+        return SharedWitnessConfirmation(
+            "confirmed_false", ProofResult.false(witness)
+        )
+    return SharedWitnessConfirmation("rejected")
+
+
+def _proof_from_shared_witness(
+    shared: SharedWitnessConfirmation,
+) -> ProofResult | None:
+    if shared.status == "confirmed_false" and shared.proof is not None:
+        return shared.proof
+    if shared.status == "unsupported" and shared.proof is not None:
+        return shared.proof
+    return None
 
 
 def _object_required_property_conflict(

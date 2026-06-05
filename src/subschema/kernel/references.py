@@ -30,6 +30,7 @@ from subschema.kernel.normalization import (
 from subschema.kernel.normalization import (
     SCHEMA_MAP_KEYWORDS as NORMALIZED_SCHEMA_MAP_KEYWORDS,
 )
+from subschema.kernel.provenance import SchemaSource
 from subschema.kernel.schemas import IGNORED_SCHEMA_METADATA_KEYS
 
 SCHEMA_MAP_KEYWORDS = NORMALIZED_SCHEMA_MAP_KEYWORDS - {"dependencies"}
@@ -349,6 +350,16 @@ class SchemaIR:
     pointer: tuple[str, ...] = ()
     resource_pointer: tuple[str, ...] = ()
     document_pointer: tuple[str, ...] = ()
+
+    def to_source(self) -> SchemaSource:
+        return SchemaSource(
+            schema=self.schema,
+            dialect=self.dialect,
+            resource_uri=self.resource_uri,
+            pointer=self.pointer,
+            resource_pointer=self.resource_pointer,
+            document_pointer=self.document_pointer,
+        )
 
 
 @dataclass

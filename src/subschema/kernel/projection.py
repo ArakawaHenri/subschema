@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from subschema.kernel.confirmation import confirm_valid
 from subschema.kernel.disjointness import schemas_are_disjoint
 from subschema.kernel.finite import (
     finite_values_projection,
@@ -18,7 +19,6 @@ from subschema.kernel.schemas import (
     schema_is_true,
     schemas_equal,
 )
-from subschema.kernel.validation import validation_backend_for
 
 
 class ProjectionEngine:
@@ -90,12 +90,20 @@ class ProjectionEngine:
         candidates = lhs_values if lhs_values is not None else rhs_values
         if candidates is None:
             return None
-        backend = validation_backend_for(self.dialect)
-        values = [
-            value
-            for value in candidates
-            if backend.is_valid(lhs, value) and backend.is_valid(rhs, value)
-        ]
+        values = []
+        for value in candidates:
+            lhs_confirmed = confirm_valid(lhs, value, self.context)
+            rhs_confirmed = confirm_valid(rhs, value, self.context)
+            if (
+                lhs_confirmed.status == "unsupported"
+                or rhs_confirmed.status == "unsupported"
+            ):
+                return None
+            if (
+                lhs_confirmed.status == "confirmed"
+                and rhs_confirmed.status == "confirmed"
+            ):
+                values.append(value)
         return finite_values_projection(values)
 
     def finite_join_projection(self, lhs: Any, rhs: Any) -> Any | None:

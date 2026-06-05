@@ -241,6 +241,8 @@ def object_property_count_shape_for_schema(
         shape = shape.intersect(any_shape)
 
     if "not" in schema:
+        if not _is_exact_object_property_count_schema(schema["not"]):
+            return None
         negated = object_property_count_shape_for_schema(schema["not"], depth + 1)
         if negated is None:
             return None
@@ -275,6 +277,28 @@ def _is_object_property_count_fragment_schema(schema: dict[str, Any]) -> bool:
                 return False
             continue
         return False
+    return True
+
+
+def _is_exact_object_property_count_schema(schema: Any) -> bool:
+    if schema is True or schema is False:
+        return True
+    if not isinstance(schema, dict):
+        return False
+    exact_keywords = {
+        "maxProperties",
+        "minProperties",
+        "type",
+    }
+    for key, value in schema.items():
+        if key in IGNORED_SCHEMA_METADATA_KEYS:
+            continue
+        if key not in exact_keywords:
+            return False
+        if key in {"minProperties", "maxProperties"} and (
+            not isinstance(value, int) or isinstance(value, bool)
+        ):
+            return False
     return True
 
 

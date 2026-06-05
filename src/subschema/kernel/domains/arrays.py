@@ -28,6 +28,7 @@ __all__ = [
     "ArrayShape",
     "ArrayUniquenessShape",
     "array_shape_for_schema",
+    "array_unique_items_requirement_for_schema",
     "array_uniqueness_shape_for_schema",
 ]
 
@@ -148,6 +149,7 @@ class ArrayUniquenessShape:
     accepts_non_array: bool
     requires_unique_items: bool
     guarantees_unique_items: bool
+    complete_uniqueness_fragment: bool = True
 
 
 @dataclass(frozen=True)
@@ -223,6 +225,8 @@ def array_shape_for_schema(
         shape = shape.intersect(any_shape)
 
     if "not" in schema:
+        if not _is_exact_array_length_schema(schema["not"], dialect):
+            return None
         negated = array_shape_for_schema(
             schema["not"],
             dialect,
@@ -248,6 +252,7 @@ def array_uniqueness_shape_for_schema(
             accepts_non_array=True,
             requires_unique_items=False,
             guarantees_unique_items=False,
+            complete_uniqueness_fragment=True,
         )
     if schema is False:
         return ArrayUniquenessShape(
@@ -255,6 +260,7 @@ def array_uniqueness_shape_for_schema(
             accepts_non_array=False,
             requires_unique_items=True,
             guarantees_unique_items=True,
+            complete_uniqueness_fragment=True,
         )
     if not isinstance(schema, dict):
         return None
@@ -279,6 +285,37 @@ def array_uniqueness_shape_for_schema(
         accepts_non_array=accepts_non_array,
         requires_unique_items=requires_unique_items,
         guarantees_unique_items=guarantees_unique_items,
+        complete_uniqueness_fragment=True,
+    )
+
+
+def array_unique_items_requirement_for_schema(
+    schema: Any,
+) -> ArrayUniquenessShape | None:
+    if schema is False:
+        return ArrayUniquenessShape(
+            accepts_array=False,
+            accepts_non_array=False,
+            requires_unique_items=True,
+            guarantees_unique_items=True,
+            complete_uniqueness_fragment=True,
+        )
+    if not isinstance(schema, dict) or schema.get("uniqueItems") is not True:
+        return None
+    if contains_reference_keyword(schema, {"$ref", "$recursiveRef", "$dynamicRef"}):
+        return None
+
+    type_shape = type_shape_for_type_keyword(schema.get("type"))
+    if type_shape is None:
+        return None
+    accepts_array = "array" in type_shape.atoms
+    accepts_non_array = any(atom != "array" for atom in type_shape.atoms)
+    return ArrayUniquenessShape(
+        accepts_array=accepts_array,
+        accepts_non_array=accepts_non_array,
+        requires_unique_items=True,
+        guarantees_unique_items=True,
+        complete_uniqueness_fragment=_is_array_uniqueness_requirement_complete(schema),
     )
 
 
@@ -318,6 +355,37 @@ def _is_array_length_fragment_schema(
     ):
         return False
     return True
+
+
+def _is_exact_array_length_schema(schema: Any, dialect: Dialect) -> bool:
+    if schema is True or schema is False:
+        return True
+    if not isinstance(schema, dict):
+        return False
+    exact_keywords = {
+        "additionalItems",
+        "items",
+        "maxItems",
+        "minItems",
+        "prefixItems",
+        "type",
+    }
+    for key, value in schema.items():
+        if key in IGNORED_SCHEMA_METADATA_KEYS:
+            continue
+        if key not in exact_keywords:
+            return False
+        if key in {"minItems", "maxItems"} and (
+            not isinstance(value, int) or isinstance(value, bool)
+        ):
+            return False
+        if key == "items" and not _array_items_keyword_is_supported(value, dialect):
+            return False
+        if key == "prefixItems" and not isinstance(value, list):
+            return False
+        if key == "additionalItems" and not isinstance(value, bool | dict):
+            return False
+    return not _array_schema_has_item_value_constraints(schema, dialect)
 
 
 def _local_array_shape(schema: dict[str, Any], dialect: Dialect) -> ArrayShape | None:
@@ -437,6 +505,15 @@ def _is_array_uniqueness_fragment_schema(
         if key == "additionalItems" and not isinstance(value, bool | dict):
             return False
     return True
+
+
+def _is_array_uniqueness_requirement_complete(schema: dict[str, Any]) -> bool:
+    return all(
+        key in ARRAY_UNIQUENESS_RHS_SCHEMA_KEYWORDS
+        or key in IGNORED_SCHEMA_METADATA_KEYS
+        or keyword_category(key) is KeywordCategory.UNKNOWN
+        for key in schema
+    )
 
 
 def _array_schema_max_length_is_at_most_one(

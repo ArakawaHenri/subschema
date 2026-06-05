@@ -65,6 +65,20 @@ class TestArray202012(unittest.TestCase):
             )
         )
 
+    def test_unique_items_does_not_cover_prefix_item_constraints(self):
+        lhs = {"type": "array", "uniqueItems": True}
+        rhs = {
+            "not": {
+                "not": {
+                    "type": "array",
+                    "prefixItems": [False],
+                    "uniqueItems": True,
+                }
+            }
+        }
+
+        self.assertFalse(is_subschema(lhs, rhs, dialect=Dialect.DRAFT202012))
+
     def test_items_false_without_prefix_items_allows_only_empty_arrays(self):
         empty_only = {
             "type": "array",
