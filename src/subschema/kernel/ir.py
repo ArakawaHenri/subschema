@@ -5,7 +5,6 @@ Logical schema IR compiled from resource-aware schema inputs.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from functools import cached_property
 from typing import Any, Literal
 
 from subschema.dialects import Dialect
@@ -89,6 +88,7 @@ IRAssertionKind = Literal[
     "type",
 ]
 ApplicatorKind = Literal["allOf", "anyOf", "else", "if", "not", "oneOf", "then"]
+DomainFactStatus = Literal["exact", "overapprox", "unsupported"]
 
 __all__ = [
     "AssertionAtom",
@@ -97,6 +97,8 @@ __all__ = [
     "ArrayLengthConstraint",
     "ArrayUniquenessConstraint",
     "DomainFacts",
+    "DomainFactInfo",
+    "DomainFactStatus",
     "EvaluationFrontier",
     "FiniteConstraint",
     "IRAssertionKind",
@@ -107,6 +109,7 @@ __all__ = [
     "ObjectPropertyNamesConstraint",
     "ObjectPropertyValuesConstraint",
     "SchemaIRCompiler",
+    "SchemaAnalysis",
     "SchemaNode",
     "StringLanguageConstraint",
     "StringLengthConstraint",
@@ -123,171 +126,271 @@ class AssertionAtom:
 
 
 @dataclass(frozen=True)
+class DomainFactInfo:
+    status: DomainFactStatus
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class SchemaAnalysis:
+    finite_constraint: FiniteConstraint | None = None
+    type_constraint: TypeConstraint | None = None
+    numeric_constraint: NumericConstraint | None = None
+    string_length_constraint: StringLengthConstraint | None = None
+    string_language_constraint: StringLanguageConstraint | None = None
+    array_length_lhs_constraint: ArrayLengthConstraint | None = None
+    array_length_rhs_constraint: ArrayLengthConstraint | None = None
+    array_uniqueness_lhs_constraint: ArrayUniquenessConstraint | None = None
+    array_uniqueness_rhs_constraint: ArrayUniquenessConstraint | None = None
+    object_property_count_constraint: ObjectPropertyCountConstraint | None = None
+    object_property_values_constraint: ObjectPropertyValuesConstraint | None = None
+    object_closed_properties_constraint: ObjectClosedPropertiesConstraint | None = None
+    object_property_names_constraint: ObjectPropertyNamesConstraint | None = None
+    tagged_one_of: TaggedOneOf | None = None
+
+    @classmethod
+    def from_schema(
+        cls,
+        schema: Any,
+        graph: ResourceGraph,
+        dialect: Dialect,
+    ) -> SchemaAnalysis:
+        finite_values = finite_values_for_schema(schema, graph)
+        type_shape = type_shape_for_schema(schema)
+        numeric_shape = numeric_shape_for_schema(schema, dialect)
+        string_length_shape = string_shape_for_schema(schema)
+        string_language_shape = string_language_shape_for_schema(schema)
+        array_length_lhs_shape = array_shape_for_schema(
+            schema,
+            dialect,
+            allow_item_value_constraints=True,
+        )
+        array_length_rhs_shape = array_shape_for_schema(
+            schema,
+            dialect,
+            allow_item_value_constraints=False,
+        )
+        array_uniqueness_lhs_shape = array_uniqueness_shape_for_schema(
+            schema,
+            dialect,
+            side="lhs",
+        )
+        array_uniqueness_rhs_shape = array_uniqueness_shape_for_schema(
+            schema,
+            dialect,
+            side="rhs",
+        )
+        object_property_count_shape = object_property_count_shape_for_schema(schema)
+        object_property_values_shape = object_property_values_shape_for_schema(schema)
+        object_closed_properties_shape = closed_object_properties_shape_for_schema(
+            schema
+        )
+        object_property_names_shape = object_property_names_shape_for_schema(schema)
+        return cls(
+            finite_constraint=None
+            if finite_values is None
+            else FiniteConstraint(tuple(finite_values)),
+            type_constraint=None
+            if type_shape is None
+            else TypeConstraint(type_shape, type_language_complete_for_schema(schema)),
+            numeric_constraint=None
+            if numeric_shape is None
+            else NumericConstraint(numeric_shape),
+            string_length_constraint=None
+            if string_length_shape is None
+            else StringLengthConstraint(string_length_shape),
+            string_language_constraint=None
+            if string_language_shape is None
+            else StringLanguageConstraint(string_language_shape),
+            array_length_lhs_constraint=None
+            if array_length_lhs_shape is None
+            else ArrayLengthConstraint(array_length_lhs_shape),
+            array_length_rhs_constraint=None
+            if array_length_rhs_shape is None
+            else ArrayLengthConstraint(array_length_rhs_shape),
+            array_uniqueness_lhs_constraint=None
+            if array_uniqueness_lhs_shape is None
+            else ArrayUniquenessConstraint(array_uniqueness_lhs_shape),
+            array_uniqueness_rhs_constraint=None
+            if array_uniqueness_rhs_shape is None
+            else ArrayUniquenessConstraint(array_uniqueness_rhs_shape),
+            object_property_count_constraint=None
+            if object_property_count_shape is None
+            else ObjectPropertyCountConstraint(object_property_count_shape),
+            object_property_values_constraint=None
+            if object_property_values_shape is None
+            else ObjectPropertyValuesConstraint(object_property_values_shape),
+            object_closed_properties_constraint=None
+            if object_closed_properties_shape is None
+            else ObjectClosedPropertiesConstraint(object_closed_properties_shape),
+            object_property_names_constraint=None
+            if object_property_names_shape is None
+            else ObjectPropertyNamesConstraint(object_property_names_shape),
+            tagged_one_of=tagged_one_of(schema),
+        )
+
+
+@dataclass(frozen=True)
 class DomainFacts:
     schema: Any
     graph: ResourceGraph
     dialect: Dialect
+    analysis: SchemaAnalysis
 
-    @cached_property
+    @classmethod
+    def from_schema(
+        cls,
+        schema: Any,
+        graph: ResourceGraph,
+        dialect: Dialect,
+    ) -> DomainFacts:
+        return cls(
+            schema,
+            graph,
+            dialect,
+            SchemaAnalysis.from_schema(schema, graph, dialect),
+        )
+
+    @property
     def finite_constraint(self) -> FiniteConstraint | None:
-        values = finite_values_for_schema(self.schema, self.graph)
-        return None if values is None else FiniteConstraint(tuple(values))
+        return self.analysis.finite_constraint
 
     @property
     def finite_values(self) -> tuple[Any, ...] | None:
         constraint = self.finite_constraint
         return None if constraint is None else constraint.values
 
-    @cached_property
+    @property
     def type_constraint(self) -> TypeConstraint | None:
-        shape = type_shape_for_schema(self.schema)
-        return (
-            None
-            if shape is None
-            else TypeConstraint(shape, type_language_complete_for_schema(self.schema))
-        )
+        return self.analysis.type_constraint
 
     @property
     def type_shape(self) -> TypeShape | None:
         constraint = self.type_constraint
         return None if constraint is None else constraint.shape
 
-    @cached_property
+    @property
     def numeric_constraint(self) -> NumericConstraint | None:
-        shape = numeric_shape_for_schema(self.schema, self.dialect)
-        return None if shape is None else NumericConstraint(shape)
+        return self.analysis.numeric_constraint
 
     @property
     def numeric_shape(self) -> NumericShape | None:
         constraint = self.numeric_constraint
         return None if constraint is None else constraint.shape
 
-    @cached_property
+    @property
     def string_length_constraint(self) -> StringLengthConstraint | None:
-        shape = string_shape_for_schema(self.schema)
-        return None if shape is None else StringLengthConstraint(shape)
+        return self.analysis.string_length_constraint
 
     @property
     def string_length_shape(self) -> StringShape | None:
         constraint = self.string_length_constraint
         return None if constraint is None else constraint.shape
 
-    @cached_property
+    @property
     def string_language_constraint(self) -> StringLanguageConstraint | None:
-        shape = string_language_shape_for_schema(self.schema)
-        return None if shape is None else StringLanguageConstraint(shape)
+        return self.analysis.string_language_constraint
 
     @property
     def string_language_shape(self) -> StringLanguageShape | None:
         constraint = self.string_language_constraint
         return None if constraint is None else constraint.shape
 
-    @cached_property
+    @property
     def array_length_lhs_constraint(self) -> ArrayLengthConstraint | None:
-        shape = array_shape_for_schema(
-            self.schema,
-            self.dialect,
-            allow_item_value_constraints=True,
-        )
-        return None if shape is None else ArrayLengthConstraint(shape)
+        return self.analysis.array_length_lhs_constraint
 
     @property
     def array_length_lhs_shape(self) -> ArrayShape | None:
         constraint = self.array_length_lhs_constraint
         return None if constraint is None else constraint.shape
 
-    @cached_property
+    @property
     def array_length_rhs_constraint(self) -> ArrayLengthConstraint | None:
-        shape = array_shape_for_schema(
-            self.schema,
-            self.dialect,
-            allow_item_value_constraints=False,
-        )
-        return None if shape is None else ArrayLengthConstraint(shape)
+        return self.analysis.array_length_rhs_constraint
 
     @property
     def array_length_rhs_shape(self) -> ArrayShape | None:
         constraint = self.array_length_rhs_constraint
         return None if constraint is None else constraint.shape
 
-    @cached_property
+    @property
     def array_uniqueness_lhs_constraint(self) -> ArrayUniquenessConstraint | None:
-        shape = array_uniqueness_shape_for_schema(
-            self.schema,
-            self.dialect,
-            side="lhs",
-        )
-        return None if shape is None else ArrayUniquenessConstraint(shape)
+        return self.analysis.array_uniqueness_lhs_constraint
 
     @property
     def array_uniqueness_lhs_shape(self) -> ArrayUniquenessShape | None:
         constraint = self.array_uniqueness_lhs_constraint
         return None if constraint is None else constraint.shape
 
-    @cached_property
+    @property
     def array_uniqueness_rhs_constraint(self) -> ArrayUniquenessConstraint | None:
-        shape = array_uniqueness_shape_for_schema(
-            self.schema,
-            self.dialect,
-            side="rhs",
-        )
-        return None if shape is None else ArrayUniquenessConstraint(shape)
+        return self.analysis.array_uniqueness_rhs_constraint
 
     @property
     def array_uniqueness_rhs_shape(self) -> ArrayUniquenessShape | None:
         constraint = self.array_uniqueness_rhs_constraint
         return None if constraint is None else constraint.shape
 
-    @cached_property
+    @property
     def object_property_count_constraint(self) -> ObjectPropertyCountConstraint | None:
-        shape = object_property_count_shape_for_schema(self.schema)
-        return None if shape is None else ObjectPropertyCountConstraint(shape)
+        return self.analysis.object_property_count_constraint
 
     @property
     def object_property_count_shape(self) -> ObjectPropertyCountShape | None:
         constraint = self.object_property_count_constraint
         return None if constraint is None else constraint.shape
 
-    @cached_property
+    @property
     def object_property_values_constraint(
         self,
     ) -> ObjectPropertyValuesConstraint | None:
-        shape = object_property_values_shape_for_schema(self.schema)
-        return None if shape is None else ObjectPropertyValuesConstraint(shape)
+        return self.analysis.object_property_values_constraint
 
     @property
     def object_property_values_shape(self) -> ObjectPropertyValuesShape | None:
         constraint = self.object_property_values_constraint
         return None if constraint is None else constraint.shape
 
-    @cached_property
+    @property
     def object_closed_properties_constraint(
         self,
     ) -> ObjectClosedPropertiesConstraint | None:
-        shape = closed_object_properties_shape_for_schema(self.schema)
-        return None if shape is None else ObjectClosedPropertiesConstraint(shape)
+        return self.analysis.object_closed_properties_constraint
 
     @property
     def object_closed_properties_shape(self) -> ClosedObjectPropertiesShape | None:
         constraint = self.object_closed_properties_constraint
         return None if constraint is None else constraint.shape
 
-    @cached_property
+    @property
     def object_property_names_constraint(self) -> ObjectPropertyNamesConstraint | None:
-        shape = object_property_names_shape_for_schema(self.schema)
-        return None if shape is None else ObjectPropertyNamesConstraint(shape)
+        return self.analysis.object_property_names_constraint
 
     @property
     def object_property_names_shape(self) -> ObjectPropertyNamesShape | None:
         constraint = self.object_property_names_constraint
         return None if constraint is None else constraint.shape
 
-    @cached_property
+    @property
     def tagged_one_of(self) -> TaggedOneOf | None:
-        return tagged_one_of(self.schema)
+        return self.analysis.tagged_one_of
 
     def required_singleton_tag(self, tag_name: str) -> Any | None:
         return schema_required_singleton_tag(self.schema, tag_name)
+
+    def fact_info(self, kind: IRAssertionKind) -> DomainFactInfo:
+        constraint = self._assertion_value(kind)
+        if constraint is None:
+            return DomainFactInfo("unsupported", f"{kind} fact is unavailable")
+        shape = getattr(constraint, "shape", None)
+        if isinstance(constraint, TypeConstraint) and not constraint.language_complete:
+            return DomainFactInfo("overapprox")
+        if not bool(getattr(shape, "exact", True)):
+            return DomainFactInfo("overapprox")
+        if not bool(getattr(shape, "complete_uniqueness_fragment", True)):
+            return DomainFactInfo("overapprox")
+        return DomainFactInfo("exact")
 
     def assertions(self) -> tuple[AssertionAtom, ...]:
         assertion_values: tuple[tuple[IRAssertionKind, Any | None], ...] = (
@@ -546,7 +649,7 @@ class SchemaIRCompiler:
     def _compile_facts(
         self, source: ResourceSchemaIR, graph: ResourceGraph
     ) -> DomainFacts:
-        return DomainFacts(source.schema, graph, source.dialect)
+        return DomainFacts.from_schema(source.schema, graph, source.dialect)
 
     def _compile_evaluation(
         self, schema: Any, dialect: Dialect | None = None

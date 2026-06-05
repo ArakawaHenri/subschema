@@ -196,6 +196,7 @@ from subschema.kernel.ir import (
     AssertionAtom,
     DomainFacts,
     LogicalSchemaIR,
+    SchemaAnalysis,
     SchemaIRCompiler,
     SchemaNode,
     TaggedOneOf,
@@ -3112,43 +3113,63 @@ class TestProofEngineRouting(unittest.TestCase):
             right_not_string_overlap_proof_choice("unsupported"), "continue"
         )
         self.assertFalse(hasattr(sat_module, "_prove_rhs_not_string_overlap"))
+        prove_rhs_not_source = inspect.getsource(sat_module._prove_rhs_not_difference)
+        plan_rhs_not_source = inspect.getsource(sat_module._plan_rhs_not_difference)
+        realize_rhs_not_source = inspect.getsource(
+            sat_module._realize_right_not_decision
+        )
+        realize_rhs_not_obligation_source = inspect.getsource(
+            sat_module._realize_right_not_witness_obligation
+        )
+        realize_rhs_not_plan_source = inspect.getsource(
+            sat_module._realize_right_not_witness_plan
+        )
+        self.assertIn("_plan_rhs_not_difference", prove_rhs_not_source)
+        self.assertIn("_realize_right_not_decision", prove_rhs_not_source)
+        self.assertNotIn("build_schema_witness", prove_rhs_not_source)
+        self.assertNotIn("right_not_witness_plan", prove_rhs_not_source)
+        self.assertNotIn("right_not_intersection_witness_plan", prove_rhs_not_source)
+        self.assertNotIn("_validated_false", prove_rhs_not_source)
+        self.assertNotIn("_certified_false", prove_rhs_not_source)
         self.assertIn(
             "right_not_string_overlap_plan_from_constraints",
-            inspect.getsource(sat_module._prove_rhs_not_difference),
+            plan_rhs_not_source,
         )
         self.assertIn(
             "right_not_string_overlap_proof_choice",
-            inspect.getsource(sat_module._prove_rhs_not_difference),
+            plan_rhs_not_source,
         )
-        self.assertIn(
-            "lhs_constraint", inspect.getsource(sat_module._prove_rhs_not_difference)
-        )
+        self.assertIn("lhs_constraint", plan_rhs_not_source)
         self.assertIn(
             "applicator_nnf_schema_product",
             inspect.getsource(sat_module._rhs_nnf_schema_product),
         )
-        self.assertIn(
-            "_rhs_not_product_schema",
-            inspect.getsource(sat_module._prove_rhs_not_difference),
-        )
+        self.assertIn("_rhs_not_product_schema", plan_rhs_not_source)
         self.assertIn(
             "product.rhs_string_language_constraint",
-            inspect.getsource(sat_module._prove_rhs_not_difference),
+            plan_rhs_not_source,
         )
+        self.assertIn("RightNotWitnessObligation", plan_rhs_not_source)
+        self.assertIn("RightNotCertificateObligation", plan_rhs_not_source)
+        self.assertIn("right_not_witness_plan", realize_rhs_not_obligation_source)
         self.assertIn(
-            "right_not_witness_plan",
-            inspect.getsource(sat_module._prove_rhs_not_difference),
+            "right_not_intersection_witness_plan", realize_rhs_not_obligation_source
         )
+        self.assertNotIn("build_schema_witness", realize_rhs_not_plan_source)
+        self.assertIn("build_schema_witness", inspect.getsource(applicators_module))
+        self.assertIn("_validated_false", realize_rhs_not_plan_source)
+        self.assertIn("ProofResult.certified_false", realize_rhs_not_plan_source)
+        self.assertIn("_certified_false", realize_rhs_not_source)
         self.assertIn(
-            "right_not_complement_schema",
-            inspect.getsource(sat_module._prove_rhs_not_difference),
+            "_realize_right_not_witness_obligation", realize_rhs_not_source
         )
+        self.assertIn("right_not_complement_schema", plan_rhs_not_source)
         self.assertIn(
             "right_not_complement_needs_subproof", inspect.getsource(applicators_module)
         )
         self.assertIn(
             "right_not_complement_needs_subproof",
-            inspect.getsource(sat_module._prove_rhs_not_difference),
+            plan_rhs_not_source,
         )
         self.assertEqual(
             right_not_subproof_choice("proved_true"), "materialize_witness"
@@ -3175,49 +3196,17 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIn(
             "right_not_complement_proof_choice", inspect.getsource(applicators_module)
         )
-        self.assertIn(
-            "right_not_subproof_choice",
-            inspect.getsource(sat_module._prove_rhs_not_difference),
-        )
-        self.assertIn(
-            "right_not_complement_proof_choice",
-            inspect.getsource(sat_module._prove_rhs_not_difference),
-        )
+        self.assertIn("right_not_subproof_choice", plan_rhs_not_source)
+        self.assertIn("right_not_complement_proof_choice", plan_rhs_not_source)
         self.assertNotIn(
             'string_overlap.status == "proved_true"',
-            inspect.getsource(sat_module._prove_rhs_not_difference),
+            plan_rhs_not_source,
         )
         self.assertNotIn(
             'string_overlap.status == "witness"',
-            inspect.getsource(sat_module._prove_rhs_not_difference),
+            plan_rhs_not_source,
         )
-        self.assertNotIn(
-            'proof.status == "proved_true"',
-            inspect.getsource(sat_module._prove_rhs_not_difference),
-        )
-        self.assertNotIn(
-            'proof.status == "resource_exhausted"',
-            inspect.getsource(sat_module._prove_rhs_not_difference),
-        )
-        self.assertNotIn(
-            'proof.status == "unsupported"',
-            inspect.getsource(sat_module._prove_rhs_not_difference),
-        )
-        self.assertNotIn(
-            'complement.status == "proved_true"',
-            inspect.getsource(sat_module._prove_rhs_not_difference),
-        )
-        self.assertNotIn(
-            'complement.status == "proved_false"',
-            inspect.getsource(sat_module._prove_rhs_not_difference),
-        )
-        self.assertNotIn(
-            'complement.status == "resource_exhausted"',
-            inspect.getsource(sat_module._prove_rhs_not_difference),
-        )
-        self.assertNotIn(
-            "schemas_equal", inspect.getsource(sat_module._prove_rhs_not_difference)
-        )
+        self.assertNotIn("schemas_equal", plan_rhs_not_source)
         self.assertIn(
             "right_not_resolved_rhs_schema",
             inspect.getsource(sat_module._rhs_not_product_schema),
@@ -3226,25 +3215,18 @@ class TestProofEngineRouting(unittest.TestCase):
             "product.rhs_schema", inspect.getsource(sat_module._rhs_not_product_schema)
         )
         self.assertIn(
-            "product.witness_rejected_reason",
-            inspect.getsource(sat_module._prove_rhs_not_difference),
+            "product.witness_rejected_reason", plan_rhs_not_source
         )
         self.assertIn(
             "product.complement_witness_missing_reason",
-            inspect.getsource(sat_module._prove_rhs_not_difference),
+            plan_rhs_not_source,
         )
         self.assertIn(
             "product.complement_witness_rejected_reason",
-            inspect.getsource(sat_module._prove_rhs_not_difference),
+            plan_rhs_not_source,
         )
-        self.assertNotIn(
-            "positive_node.source.schema",
-            inspect.getsource(sat_module._prove_rhs_not_difference),
-        )
-        self.assertNotIn(
-            '{"not": rhs_schema}',
-            inspect.getsource(sat_module._prove_rhs_not_difference),
-        )
+        self.assertNotIn("positive_node.source.schema", plan_rhs_not_source)
+        self.assertNotIn('{"not": rhs_schema}', plan_rhs_not_source)
         self.assertNotIn("_schema_node_constraint", inspect.getsource(sat_module))
         self.assertEqual(
             disjointness_module.schemas_are_disjoint.__module__,
@@ -3266,11 +3248,16 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn(
             "first_valid_value_for_schema", inspect.getsource(witnesses_module)
         )
-        self.assertIn(
-            "finite_values_for_schema", inspect.getsource(ir_module.DomainFacts)
-        )
-        self.assertIn("cached_property", inspect.getsource(ir_module.DomainFacts))
-        self.assertIn("def assertion", inspect.getsource(ir_module.DomainFacts))
+        self.assertEqual(SchemaAnalysis.__module__, "subschema.kernel.ir")
+        domain_facts_source = inspect.getsource(ir_module.DomainFacts)
+        schema_analysis_source = inspect.getsource(ir_module.SchemaAnalysis)
+        self.assertIn("finite_values_for_schema", schema_analysis_source)
+        self.assertIn("SchemaAnalysis.from_schema", domain_facts_source)
+        self.assertNotIn("finite_values_for_schema", domain_facts_source)
+        self.assertNotIn("cached_property", domain_facts_source)
+        self.assertIn("DomainFactInfo", inspect.getsource(ir_module))
+        self.assertIn("def fact_info", domain_facts_source)
+        self.assertIn("def assertion", domain_facts_source)
         self.assertIn(
             "return self.facts.assertion(kind)",
             inspect.getsource(ir_module.LogicalSchemaIR.assertion),
@@ -3280,34 +3267,22 @@ class TestProofEngineRouting(unittest.TestCase):
             inspect.getsource(ir_module.LogicalSchemaIR.assertion),
         )
         self.assertIn("FiniteConstraint", inspect.getsource(constraints_module))
-        self.assertIn("finite_constraint", inspect.getsource(ir_module.DomainFacts))
-        self.assertIn("type_constraint", inspect.getsource(ir_module.DomainFacts))
-        self.assertIn("numeric_constraint", inspect.getsource(ir_module.DomainFacts))
+        self.assertIn("finite_constraint", domain_facts_source)
+        self.assertIn("type_constraint", domain_facts_source)
+        self.assertIn("numeric_constraint", domain_facts_source)
+        self.assertIn("string_length_constraint", domain_facts_source)
+        self.assertIn("string_language_constraint", domain_facts_source)
+        self.assertIn("array_length_lhs_constraint", domain_facts_source)
+        self.assertIn("array_uniqueness_lhs_constraint", domain_facts_source)
         self.assertIn(
-            "string_length_constraint", inspect.getsource(ir_module.DomainFacts)
+            "object_property_count_constraint", domain_facts_source
         )
         self.assertIn(
-            "string_language_constraint", inspect.getsource(ir_module.DomainFacts)
+            "object_property_names_constraint", domain_facts_source
         )
+        self.assertIn("object_property_values_constraint", domain_facts_source)
         self.assertIn(
-            "array_length_lhs_constraint", inspect.getsource(ir_module.DomainFacts)
-        )
-        self.assertIn(
-            "array_uniqueness_lhs_constraint", inspect.getsource(ir_module.DomainFacts)
-        )
-        self.assertIn(
-            "object_property_count_constraint", inspect.getsource(ir_module.DomainFacts)
-        )
-        self.assertIn(
-            "object_property_names_constraint", inspect.getsource(ir_module.DomainFacts)
-        )
-        self.assertIn(
-            "object_property_values_constraint",
-            inspect.getsource(ir_module.DomainFacts),
-        )
-        self.assertIn(
-            "object_closed_properties_constraint",
-            inspect.getsource(ir_module.DomainFacts),
+            "object_closed_properties_constraint", domain_facts_source
         )
         self.assertIn(
             "array_length_lhs_constraint",

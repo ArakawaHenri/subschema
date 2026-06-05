@@ -138,7 +138,7 @@ from subschema.kernel.schemas import (
     schemas_equal,
 )
 from subschema.kernel.values import json_semantic_key, json_values_equal
-from subschema.kernel.witnesses import build_schema_witness
+from subschema.kernel.witnesses import WitnessBuildResult, build_schema_witness
 
 if TYPE_CHECKING:
     from subschema.kernel.context import ProofContext
@@ -149,6 +149,20 @@ RuleWitnessMode = Literal["none", "validated"]
 type ApplicatorPlanWithBase = (
     ApplicatorBranchPlan | ApplicatorConditionalPlan | ApplicatorOneOfCardinalityPlan
 )
+RightNotWitnessKind = Literal["concrete", "intersection", "product"]
+
+RIGHT_NOT_COMPLEMENT_SUBPROOF_EXHAUSTED = (
+    "SAT right-not complement subproof exhausted its budget"
+)
+RIGHT_NOT_DIFFERENCE_UNPROVEN = (
+    "SAT right-not difference could not prove left implies negated schema"
+)
+RIGHT_NOT_LHS_COMPLEMENT_SUBPROOF_EXHAUSTED = (
+    "SAT right-not lhs complement subproof exhausted its budget"
+)
+RIGHT_NOT_REGEX_EXHAUSTED = "regex proof exceeded proof work budget"
+RIGHT_NOT_SUBPROOF_EXHAUSTED = "SAT right-not subproof exhausted its budget"
+RIGHT_NOT_SUBPROOF_UNSUPPORTED = "SAT right-not subproof is unsupported"
 
 
 @dataclass(frozen=True)
@@ -159,6 +173,47 @@ class DifferenceRuleSpec:
     witness_mode: RuleWitnessMode
     proof_class: ProofClass
     budget_use: RuleBudgetUse = "none"
+
+
+@dataclass(frozen=True)
+class RightNotCertificateObligation:
+    reason: str
+    child: ProofResult
+
+
+@dataclass(frozen=True)
+class RightNotWitnessObligation:
+    kind: RightNotWitnessKind
+    product: ApplicatorNnfSchemaProduct
+    rejected_reason: str
+    missing_reason: str
+    witness: Any = None
+    rhs_schema: Any = None
+
+
+@dataclass(frozen=True)
+class RightNotDecision:
+    proof: ProofResult | None = None
+    witness_obligation: RightNotWitnessObligation | None = None
+    certificate_obligation: RightNotCertificateObligation | None = None
+
+    @classmethod
+    def from_proof(cls, proof: ProofResult) -> RightNotDecision:
+        return cls(proof=proof)
+
+    @classmethod
+    def from_witness(
+        cls,
+        obligation: RightNotWitnessObligation,
+    ) -> RightNotDecision:
+        return cls(witness_obligation=obligation)
+
+    @classmethod
+    def from_certificate(
+        cls,
+        obligation: RightNotCertificateObligation,
+    ) -> RightNotDecision:
+        return cls(certificate_obligation=obligation)
 
 
 @dataclass(frozen=True)
@@ -1716,14 +1771,22 @@ def _rhs_schema_for_node_static_reference(
 def _prove_rhs_not_difference(
     problem: DifferenceProblem, nnf: ApplicatorNnfFragment
 ) -> ProofResult:
+    return _realize_right_not_decision(problem, _plan_rhs_not_difference(problem, nnf))
+
+
+def _plan_rhs_not_difference(
+    problem: DifferenceProblem, nnf: ApplicatorNnfFragment
+) -> RightNotDecision:
     product = _rhs_nnf_schema_product(problem, nnf)
     if product is None:
-        return ProofResult.unsupported(nnf.reason)
+        return RightNotDecision.from_proof(ProofResult.unsupported(nnf.reason))
 
     rhs_schema = _rhs_not_product_schema(problem, product)
     if isinstance(rhs_schema, StaticReferenceUnsupported):
-        return ProofResult.unsupported(
-            rhs_schema.reason, diagnostics=rhs_schema.diagnostic()
+        return RightNotDecision.from_proof(
+            ProofResult.unsupported(
+                rhs_schema.reason, diagnostics=rhs_schema.diagnostic()
+            )
         )
 
     lhs_negated = _pure_not_subschema(product.lhs_schema)
@@ -1731,53 +1794,77 @@ def _prove_rhs_not_difference(
         proof = problem.context.subproof(rhs_schema, lhs_negated)
         choice = right_not_complement_proof_choice(proof.status)
         if choice == "proved_true":
-            return ProofResult.true()
+            return RightNotDecision.from_proof(ProofResult.true())
         if choice == "return_resource_exhausted":
-            return ProofResult.resource_exhausted(
-                proof.reason
-                or "SAT right-not lhs complement subproof exhausted its budget"
+            return RightNotDecision.from_proof(
+                ProofResult.resource_exhausted(
+                    proof.reason or RIGHT_NOT_LHS_COMPLEMENT_SUBPROOF_EXHAUSTED
+                )
             )
         if choice == "validate_witness":
             if proof.certificate is not None:
-                return _certified_false(
-                    "applicator-right-not",
-                    "left and right pure-not product has a certified counterexample",
-                    child=proof,
+                return RightNotDecision.from_certificate(
+                    RightNotCertificateObligation(
+                        "left and right pure-not product has a certified "
+                        "counterexample",
+                        proof,
+                    )
                 )
             if proof.witness is None:
-                return ProofResult.unsupported(
-                    product.complement_witness_missing_reason
+                return RightNotDecision.from_proof(
+                    ProofResult.unsupported(product.complement_witness_missing_reason)
                 )
-            return _validated_false(
-                problem, proof.witness, product.complement_witness_rejected_reason
+            return RightNotDecision.from_witness(
+                RightNotWitnessObligation(
+                    "concrete",
+                    product,
+                    product.complement_witness_rejected_reason,
+                    product.complement_witness_missing_reason,
+                    witness=proof.witness,
+                )
             )
 
     double_negated_rhs = _pure_not_subschema(rhs_schema)
     if double_negated_rhs is not None:
         proof = problem.context.subproof(product.lhs_schema, double_negated_rhs)
         if proof.status in {"proved_true", "resource_exhausted", "unsupported"}:
-            return proof
+            return RightNotDecision.from_proof(proof)
         if proof.certificate is not None:
-            return _certified_false(
-                "applicator-right-not",
-                "double negated right-not product has a certified counterexample",
-                child=proof,
+            return RightNotDecision.from_certificate(
+                RightNotCertificateObligation(
+                    "double negated right-not product has a certified counterexample",
+                    proof,
+                )
             )
         if proof.witness is None:
-            return ProofResult.unsupported(product.complement_witness_missing_reason)
-        return _validated_false(
-            problem, proof.witness, product.complement_witness_rejected_reason
+            return RightNotDecision.from_proof(
+                ProofResult.unsupported(product.complement_witness_missing_reason)
+            )
+        return RightNotDecision.from_witness(
+            RightNotWitnessObligation(
+                "concrete",
+                product,
+                product.complement_witness_rejected_reason,
+                product.complement_witness_missing_reason,
+                witness=proof.witness,
+            )
         )
 
     disjoint = schemas_are_disjoint(product.lhs_schema, rhs_schema, problem.context)
     if disjoint.status == "proved_true":
-        return ProofResult.true()
+        return RightNotDecision.from_proof(ProofResult.true())
     if disjoint.status == "proved_false" and disjoint.witness is not None:
-        return _validated_false(
-            problem, disjoint.witness, product.witness_rejected_reason
+        return RightNotDecision.from_witness(
+            RightNotWitnessObligation(
+                "concrete",
+                product,
+                product.witness_rejected_reason,
+                product.witness_missing_reason,
+                witness=disjoint.witness,
+            )
         )
     if disjoint.status == "resource_exhausted":
-        return disjoint
+        return RightNotDecision.from_proof(disjoint)
 
     string_overlap = right_not_string_overlap_plan_from_constraints(
         _string_language_constraint(problem.lhs_constraint("string-language")),
@@ -1789,39 +1876,42 @@ def _prove_rhs_not_difference(
     )
     choice = right_not_string_overlap_proof_choice(string_overlap.status)
     if choice == "proved_true":
-        return ProofResult.true()
+        return RightNotDecision.from_proof(ProofResult.true())
     if choice == "validate_witness":
-        return _validated_false(
-            problem, string_overlap.witness, string_overlap.rejected_reason
+        return RightNotDecision.from_witness(
+            RightNotWitnessObligation(
+                "concrete",
+                product,
+                string_overlap.rejected_reason,
+                product.witness_missing_reason,
+                witness=string_overlap.witness,
+            )
         )
     if choice == "return_resource_exhausted":
-        return ProofResult.resource_exhausted(
-            string_overlap.reason or "regex proof exceeded proof work budget"
+        return RightNotDecision.from_proof(
+            ProofResult.resource_exhausted(
+                string_overlap.reason or RIGHT_NOT_REGEX_EXHAUSTED
+            )
         )
 
     proof = problem.context.subproof(product.lhs_schema, rhs_schema)
     choice = right_not_subproof_choice(proof.status)
     if choice == "materialize_witness":
-        witness_plan = right_not_witness_plan(product, problem.dialect)
-        if witness_plan.status == "resource_exhausted":
-            return ProofResult.resource_exhausted(witness_plan.reason)
-        if (
-            witness_plan.status == "certificate"
-            and witness_plan.certificate is not None
-        ):
-            return ProofResult.certified_false(witness_plan.certificate)
-        if not witness_plan.has_witness:
-            return ProofResult.unsupported(witness_plan.reason)
-        return _validated_false(
-            problem, witness_plan.witness, product.witness_rejected_reason
+        return RightNotDecision.from_witness(
+            RightNotWitnessObligation(
+                "product",
+                product,
+                product.witness_rejected_reason,
+                product.witness_missing_reason,
+            )
         )
     if choice == "return_resource_exhausted":
-        return ProofResult.resource_exhausted(
-            proof.reason or "SAT right-not subproof exhausted its budget"
+        return RightNotDecision.from_proof(
+            ProofResult.resource_exhausted(proof.reason or RIGHT_NOT_SUBPROOF_EXHAUSTED)
         )
     if choice == "return_unsupported":
-        return ProofResult.unsupported(
-            proof.reason or "SAT right-not subproof is unsupported"
+        return RightNotDecision.from_proof(
+            ProofResult.unsupported(proof.reason or RIGHT_NOT_SUBPROOF_UNSUPPORTED)
         )
 
     complement_schema = right_not_complement_schema(product, rhs_schema)
@@ -1834,39 +1924,97 @@ def _prove_rhs_not_difference(
         complement = problem.context.subproof(product.lhs_schema, complement_schema)
         choice = right_not_complement_proof_choice(complement.status)
         if choice == "proved_true":
-            return ProofResult.true()
+            return RightNotDecision.from_proof(ProofResult.true())
         if choice == "validate_witness":
             if complement.witness is None:
-                return ProofResult.unsupported(
-                    product.complement_witness_missing_reason
+                return RightNotDecision.from_proof(
+                    ProofResult.unsupported(product.complement_witness_missing_reason)
                 )
-            return _validated_false(
-                problem, complement.witness, product.complement_witness_rejected_reason
+            return RightNotDecision.from_witness(
+                RightNotWitnessObligation(
+                    "concrete",
+                    product,
+                    product.complement_witness_rejected_reason,
+                    product.complement_witness_missing_reason,
+                    witness=complement.witness,
+                )
             )
         if choice == "return_resource_exhausted":
-            return ProofResult.resource_exhausted(
-                complement.reason
-                or "SAT right-not complement subproof exhausted its budget"
+            return RightNotDecision.from_proof(
+                ProofResult.resource_exhausted(
+                    complement.reason or RIGHT_NOT_COMPLEMENT_SUBPROOF_EXHAUSTED
+                )
             )
-    intersection_witness = right_not_intersection_witness_plan(
-        product, rhs_schema, problem.dialect
-    )
-    if intersection_witness.status == "resource_exhausted":
-        return ProofResult.resource_exhausted(intersection_witness.reason)
-    if (
-        intersection_witness.status == "certificate"
-        and intersection_witness.certificate is not None
-    ):
-        return ProofResult.certified_false(intersection_witness.certificate)
-    if intersection_witness.has_witness:
-        return _validated_false(
-            problem,
-            intersection_witness.witness,
+    return RightNotDecision.from_witness(
+        RightNotWitnessObligation(
+            "intersection",
+            product,
             product.complement_witness_rejected_reason,
+            product.complement_witness_missing_reason,
+            rhs_schema=rhs_schema,
         )
-    return ProofResult.unsupported(
-        "SAT right-not difference could not prove left implies negated schema"
     )
+
+
+def _realize_right_not_decision(
+    problem: DifferenceProblem,
+    decision: RightNotDecision,
+) -> ProofResult:
+    if decision.proof is not None:
+        return decision.proof
+    if decision.certificate_obligation is not None:
+        return _certified_false(
+            "applicator-right-not",
+            decision.certificate_obligation.reason,
+            child=decision.certificate_obligation.child,
+        )
+    if decision.witness_obligation is None:
+        return ProofResult.unsupported(RIGHT_NOT_DIFFERENCE_UNPROVEN)
+    return _realize_right_not_witness_obligation(
+        problem,
+        decision.witness_obligation,
+    )
+
+
+def _realize_right_not_witness_obligation(
+    problem: DifferenceProblem,
+    obligation: RightNotWitnessObligation,
+) -> ProofResult:
+    if obligation.kind == "concrete":
+        if obligation.witness is None:
+            return ProofResult.unsupported(obligation.missing_reason)
+        return _validated_false(problem, obligation.witness, obligation.rejected_reason)
+    if obligation.kind == "product":
+        return _realize_right_not_witness_plan(
+            problem,
+            right_not_witness_plan(obligation.product, problem.dialect),
+            obligation.rejected_reason,
+        )
+    if obligation.rhs_schema is None:
+        return ProofResult.unsupported(obligation.missing_reason)
+    return _realize_right_not_witness_plan(
+        problem,
+        right_not_intersection_witness_plan(
+            obligation.product,
+            obligation.rhs_schema,
+            problem.dialect,
+        ),
+        obligation.rejected_reason,
+    )
+
+
+def _realize_right_not_witness_plan(
+    problem: DifferenceProblem,
+    witness_plan: WitnessBuildResult,
+    rejected_reason: str,
+) -> ProofResult:
+    if witness_plan.status == "resource_exhausted":
+        return ProofResult.resource_exhausted(witness_plan.reason)
+    if witness_plan.status == "certificate" and witness_plan.certificate is not None:
+        return ProofResult.certified_false(witness_plan.certificate)
+    if witness_plan.has_witness:
+        return _validated_false(problem, witness_plan.witness, rejected_reason)
+    return ProofResult.unsupported(witness_plan.reason or RIGHT_NOT_DIFFERENCE_UNPROVEN)
 
 
 def _pure_not_subschema(schema: Any) -> Any | None:
