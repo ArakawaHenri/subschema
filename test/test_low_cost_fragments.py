@@ -83,6 +83,61 @@ def test_simple_contains_emptiness_is_default_exact():
     )
 
 
+def test_unique_items_with_finite_items_can_be_empty_by_cardinality():
+    boolean_items = {
+        "type": "array",
+        "minItems": 3,
+        "uniqueItems": True,
+        "items": {"type": "boolean"},
+    }
+    enum_items = {
+        "type": "array",
+        "minItems": 3,
+        "uniqueItems": True,
+        "items": {"enum": [1, 2]},
+    }
+
+    assert is_empty(boolean_items)
+    assert is_empty(enum_items)
+    assert is_subschema(
+        boolean_items,
+        {"type": "array", "minItems": 2, "uniqueItems": True},
+    )
+    assert not is_empty(
+        {
+            "type": "array",
+            "minItems": 2,
+            "uniqueItems": True,
+            "items": {"type": "boolean"},
+        }
+    )
+
+
+def test_unique_items_cardinality_handles_finite_tuple_items():
+    assert is_empty(
+        {
+            "type": "array",
+            "minItems": 3,
+            "uniqueItems": True,
+            "prefixItems": [{"const": 1}, {"const": 2}],
+            "items": False,
+        }
+    )
+
+
+def test_array_only_unsupported_diagnostic_is_not_closed_object_reason():
+    schema = {
+        "type": "array",
+        "minItems": 1,
+        "items": {"type": "string", "pattern": "(?=a)"},
+    }
+
+    with pytest.raises(UnsupportedProofError) as exc_info:
+        is_subschema(schema, False)
+
+    assert "closed-object" not in exc_info.value.reason
+
+
 def test_right_side_not_uses_low_cost_disjointness():
     assert is_subschema(
         {"type": "number", "maximum": 1},

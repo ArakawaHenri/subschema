@@ -376,6 +376,7 @@ class EmptinessSolver:
 
     def prove_formula_difference_empty(self, formula: DifferenceFormula) -> ProofResult:
         problem = DifferenceProblem(formula, self.context)
+        unsupported_rule: DifferenceRule | None = None
         unsupported: ProofResult | None = None
         for rule in self.rules:
             proof = rule.prove(problem)
@@ -384,7 +385,13 @@ class EmptinessSolver:
                 return proof
             if _should_stop_after_rule_unsupported(rule, proof):
                 return _with_formula_diagnostics(formula, proof)
-            unsupported = proof
+            unsupported_rule, unsupported = _preferred_unsupported_result(
+                problem,
+                unsupported_rule,
+                unsupported,
+                rule,
+                proof,
+            )
         return (
             _semantic_unsupported(formula)
             or unsupported
@@ -392,6 +399,28 @@ class EmptinessSolver:
                 "SAT emptiness solver does not support this schema pair"
             )
         )
+
+
+def _preferred_unsupported_result(
+    problem: DifferenceProblem,
+    current_rule: DifferenceRule | None,
+    current: ProofResult | None,
+    candidate_rule: DifferenceRule,
+    candidate: ProofResult,
+) -> tuple[DifferenceRule, ProofResult]:
+    if current is None or current_rule is None:
+        return candidate_rule, candidate
+
+    if type_overapproximation_for_schema(problem.lhs_schema) == {"array"}:
+        current_is_array = current_rule.name.startswith("array-")
+        candidate_is_array = candidate_rule.name.startswith("array-")
+        candidate_is_object = candidate_rule.name.startswith("object-")
+        if candidate_is_array and not current_is_array:
+            return candidate_rule, candidate
+        if current_is_array and candidate_is_object:
+            return current_rule, current
+
+    return candidate_rule, candidate
 
 
 def _proof_after_rule_class_guard(
@@ -738,12 +767,12 @@ def _prove_trivial_difference(problem: DifferenceProblem) -> ProofResult:
         or schemas_equal(problem.lhs_schema, problem.rhs_schema)
     ):
         return ProofResult.true()
+    lhs_empty = schema_is_empty_exact(problem.lhs_schema, problem.context)
+    if lhs_empty.status == "proved_true":
+        return lhs_empty
     if schema_is_false(problem.rhs_schema):
-        empty = schema_is_empty_exact(problem.lhs_schema, problem.context)
-        if empty.status == "proved_true":
-            return empty
-        if empty.status == "resource_exhausted":
-            return empty
+        if lhs_empty.status == "resource_exhausted":
+            return lhs_empty
     return ProofResult.unsupported(
         "schemas are outside the trivial difference fragment"
     )

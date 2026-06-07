@@ -11,6 +11,7 @@ from subschema.dialects import Dialect
 from subschema.kernel.confirmation import confirm_valid
 from subschema.kernel.contracts import ProofResult
 from subschema.kernel.domains.arrays import (
+    ArrayLengthInterval,
     ArrayShape,
     _minimum_contains_matches_guaranteed,
     array_shape_for_schema,
@@ -29,7 +30,13 @@ from subschema.kernel.domains.types import (
     schema_type_overapproximations_are_disjoint,
     type_overapproximation_for_schema,
 )
-from subschema.kernel.schemas import IGNORED_SCHEMA_METADATA_KEYS
+from subschema.kernel.finite import finite_values_for_schema
+from subschema.kernel.references import ResourceGraph
+from subschema.kernel.schemas import (
+    IGNORED_SCHEMA_METADATA_KEYS,
+    contains_reference_keyword,
+)
+from subschema.kernel.values import json_semantic_key
 from subschema.kernel.witnesses import build_schema_witness, finite_projection_witness
 
 __all__ = [
@@ -72,6 +79,10 @@ def schema_is_empty_exact(schema: Any, context: DisjointnessContext) -> ProofRes
         return object_empty
 
     array_empty = _array_length_emptiness(schema, context)
+    if array_empty.status != "unsupported":
+        return array_empty
+
+    array_empty = _array_unique_items_cardinality_emptiness(schema, context)
     if array_empty.status != "unsupported":
         return array_empty
 
@@ -434,6 +445,188 @@ def _array_length_emptiness(schema: Any, context: DisjointnessContext) -> ProofR
     if not shape.normalized_intervals() and not shape.accepts_non_array:
         return ProofResult.true()
     return ProofResult.unsupported("array schema is not empty by length")
+
+
+def _array_unique_items_cardinality_emptiness(
+    schema: Any, context: DisjointnessContext
+) -> ProofResult:
+    if type_overapproximation_for_schema(schema) != {"array"}:
+        return ProofResult.unsupported(
+            "array uniqueItems cardinality emptiness requires array-only schemas"
+        )
+    if not isinstance(schema, dict) or schema.get("uniqueItems") is not True:
+        return ProofResult.unsupported(
+            "array uniqueItems cardinality emptiness requires uniqueItems"
+        )
+
+    shape = array_shape_for_schema(
+        schema, context.dialect, allow_item_value_constraints=False
+    )
+    if shape is None:
+        shape = _local_array_cardinality_length_shape(schema, context.dialect)
+    if shape is None:
+        return ProofResult.unsupported(
+            "array uniqueItems cardinality emptiness requires exact length shape"
+        )
+    intervals = shape.normalized_intervals()
+    if not intervals and not shape.accepts_non_array:
+        return ProofResult.true()
+
+    lower_bound = min((interval.lower for interval in intervals), default=0)
+    value_bound = _array_unique_items_value_bound(schema, shape, context)
+    if value_bound is None:
+        return ProofResult.unsupported(
+            "array uniqueItems cardinality emptiness requires finite item values"
+        )
+    if lower_bound > value_bound:
+        return ProofResult.true()
+    return ProofResult.unsupported(
+        "array schema is not empty by uniqueItems cardinality"
+    )
+
+
+def _local_array_cardinality_length_shape(
+    schema: Any,
+    dialect: Dialect,
+) -> ArrayShape | None:
+    if not isinstance(schema, dict):
+        return None
+    if contains_reference_keyword(schema, {"$ref", "$dynamicRef", "$recursiveRef"}):
+        return None
+    allowed_keywords = {
+        "additionalItems",
+        "contains",
+        "items",
+        "maxContains",
+        "maxItems",
+        "minContains",
+        "minItems",
+        "prefixItems",
+        "type",
+        "uniqueItems",
+    }
+    if any(
+        key not in allowed_keywords and key not in IGNORED_SCHEMA_METADATA_KEYS
+        for key in schema
+    ):
+        return None
+
+    lower = schema.get("minItems", 0)
+    upper = schema.get("maxItems")
+    if not isinstance(lower, int) or isinstance(lower, bool):
+        return None
+    if upper is not None and (not isinstance(upper, int) or isinstance(upper, bool)):
+        return None
+    contains_counts = _array_contains_counts(schema)
+    if contains_counts is None:
+        return None
+    if "contains" in schema:
+        minimum_contains, maximum_contains = contains_counts
+        lower = max(lower, minimum_contains)
+        if schema["contains"] is True and maximum_contains is not None:
+            upper = maximum_contains if upper is None else min(upper, maximum_contains)
+
+    tail_upper = _local_array_tail_upper_bound(schema, dialect)
+    if tail_upper is not None:
+        upper = tail_upper if upper is None else min(upper, tail_upper)
+    return ArrayShape((ArrayLengthInterval(lower, upper),), accepts_non_array=False)
+
+
+def _local_array_tail_upper_bound(
+    schema: dict[str, Any],
+    dialect: Dialect,
+) -> int | None:
+    if dialect is Dialect.DRAFT202012:
+        prefix_items = schema.get("prefixItems")
+        prefix_count = len(prefix_items) if isinstance(prefix_items, list) else 0
+        return prefix_count if schema.get("items") is False else None
+
+    if schema.get("items") is False:
+        return 0
+    items = schema.get("items")
+    if isinstance(items, list) and schema.get("additionalItems") is False:
+        return len(items)
+    return None
+
+
+def _array_unique_items_value_bound(
+    schema: dict[str, Any],
+    shape: ArrayShape,
+    context: DisjointnessContext,
+) -> int | None:
+    item_schemas = _reachable_array_item_schemas(schema, shape, context.dialect)
+    if item_schemas is None:
+        return None
+
+    value_keys: set[str] = set()
+    for item_schema in item_schemas:
+        values = _finite_values_for_reachable_item_schema(item_schema, context)
+        if values is None:
+            return None
+        value_keys.update(json_semantic_key(value) for value in values)
+    return len(value_keys)
+
+
+def _reachable_array_item_schemas(
+    schema: dict[str, Any],
+    shape: ArrayShape,
+    dialect: Dialect,
+) -> tuple[Any, ...] | None:
+    item_schemas: list[Any] = []
+    if dialect is Dialect.DRAFT202012:
+        prefix_items = schema.get("prefixItems")
+        prefix_schemas = prefix_items if isinstance(prefix_items, list) else []
+        for index, item_schema in enumerate(prefix_schemas):
+            if _array_length_can_reach_index(shape, index):
+                item_schemas.append(item_schema)
+        if _array_length_can_reach_index(shape, len(prefix_schemas)):
+            items = schema.get("items", True)
+            if items is False:
+                return tuple(item_schemas)
+            if isinstance(items, bool | dict):
+                item_schemas.append(items)
+                return tuple(item_schemas)
+            return None
+        return tuple(item_schemas)
+
+    items = schema.get("items", True)
+    if isinstance(items, list):
+        for index, item_schema in enumerate(items):
+            if _array_length_can_reach_index(shape, index):
+                item_schemas.append(item_schema)
+        if _array_length_can_reach_index(shape, len(items)):
+            additional_items = schema.get("additionalItems", True)
+            if additional_items is False:
+                return tuple(item_schemas)
+            if isinstance(additional_items, bool | dict):
+                item_schemas.append(additional_items)
+                return tuple(item_schemas)
+            return None
+        return tuple(item_schemas)
+
+    if isinstance(items, bool | dict):
+        if _array_length_can_reach_index(shape, 0):
+            return (items,)
+        return ()
+    return None
+
+
+def _array_length_can_reach_index(shape: ArrayShape, index: int) -> bool:
+    required_length = index + 1
+    return any(
+        interval.upper is None or required_length <= interval.upper
+        for interval in shape.normalized_intervals()
+    )
+
+
+def _finite_values_for_reachable_item_schema(
+    schema: Any,
+    context: DisjointnessContext,
+) -> list[Any] | None:
+    if contains_reference_keyword(schema, {"$ref", "$dynamicRef", "$recursiveRef"}):
+        return None
+    graph = ResourceGraph.build(schema, dialect=context.dialect)
+    return finite_values_for_schema(schema, graph)
 
 
 def _array_item_disjointness(
