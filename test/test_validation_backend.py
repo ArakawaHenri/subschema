@@ -6,6 +6,8 @@ import jsonschema_rs
 
 import subschema.kernel.validation as validation_module
 from subschema.dialects import Dialect
+from subschema.kernel.confirmation import confirm_difference, confirm_valid
+from subschema.kernel.provenance import SchemaSource
 from subschema.kernel.validation import (
     ValidationUnsupportedError,
     validate_schema_for_dialect,
@@ -35,7 +37,13 @@ def test_validation_backend_preserves_annotation_only_semantics(keyword):
 def test_validation_backend_uses_jsonschema_rs_for_supported_schema():
     backend = validation_backend_for(Dialect.DRAFT202012)
     validator = backend.validator_for_schema({"type": "string", "minLength": 2})
+    plan = validation_module._build_instance_plan(
+        SchemaSource.root({"type": "string", "minLength": 2}, Dialect.DRAFT202012),
+    )
 
+    assert isinstance(plan, validation_module.InstanceValidationPlan)
+    assert plan.schema.backend_kind == "jsonschema_rs"
+    assert plan.schema.backend_schema_key is not None
     assert isinstance(validator, jsonschema_rs.Draft202012Validator)
     assert validator is backend.validator_for_schema({"minLength": 2, "type": "string"})
 
@@ -54,6 +62,68 @@ def test_validation_backend_wraps_jsonschema_rs_compile_errors(monkeypatch):
 
     with pytest.raises(ValidationUnsupportedError):
         backend.is_valid({"type": "string", "pattern": "^compile-error$"}, "x")
+
+
+def test_validation_state_machine_reports_backend_compile_unsupported(monkeypatch):
+    def raise_compile_error(dialect, schema):
+        raise RuntimeError("compile failed")
+
+    monkeypatch.setattr(
+        validation_module,
+        "_compile_jsonschema_rs_validator",
+        raise_compile_error,
+    )
+
+    outcome = validation_module.validate_source_instance(
+        SchemaSource.root(
+            {"type": "string", "pattern": "^compile-error$"},
+            Dialect.DRAFT202012,
+        ),
+        "x",
+    )
+
+    assert outcome.status == "unsupported"
+    assert "compile failed" in outcome.reason
+
+
+def test_validation_state_machine_prefers_unsupported_source_over_invalid_instance():
+    source = SchemaSource(
+        schema={"type": "integer"},
+        dialect=Dialect.DRAFT202012,
+        pointer=("$defs", "value"),
+        document_root={"$defs": {"value": {"type": "integer"}}},
+        document_dialect=Dialect.DRAFT202012,
+    )
+
+    outcome = validation_module.validate_source_instance(source, float("nan"))
+
+    assert outcome.status == "unsupported"
+    assert outcome.reason == "validation requires root schema source"
+
+
+def test_confirmation_uses_validation_outcomes_for_root_sources():
+    integer = SchemaSource.root({"type": "integer"}, Dialect.DRAFT202012)
+    number = SchemaSource.root({"type": "number"}, Dialect.DRAFT202012)
+
+    assert confirm_valid(integer, 1).status == "confirmed"
+    assert confirm_valid(integer, "x").status == "rejected"
+    assert confirm_difference(integer, number, "x").status == "rejected"
+
+
+def test_confirmation_rejects_non_root_source_without_source_backend():
+    source = SchemaSource(
+        schema={"type": "integer"},
+        dialect=Dialect.DRAFT202012,
+        pointer=("$defs", "value"),
+        document_root={"$defs": {"value": {"type": "integer"}}},
+        document_dialect=Dialect.DRAFT202012,
+    )
+
+    result = confirm_valid(source, 1)
+
+    assert result.status == "unsupported"
+    assert result.proof is not None
+    assert result.proof.reason == "schema confirmation requires source validator backend"
 
 
 def test_validation_backend_wraps_jsonschema_rs_runtime_errors(monkeypatch):
@@ -118,11 +188,73 @@ def test_validation_backend_preserves_embedded_resource_dialect_transition():
         },
         "$ref": "#/$defs/modern",
     }
+    draft4_plan = validation_module._build_instance_plan(
+        SchemaSource.root(draft4_target, Dialect.DRAFT202012),
+    )
 
+    assert isinstance(draft4_plan, validation_module.InstanceValidationPlan)
+    assert draft4_plan.schema.backend_kind == "python_jsonschema"
     assert backend.is_valid(draft4_target, 1)
     assert backend.is_valid(draft4_target, 2)
     assert backend.is_valid(draft7_target, 1)
     assert not backend.is_valid(draft7_target, 2)
+
+
+def test_validation_difference_plan_allows_mixed_backends():
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$defs": {
+            "target": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "const": 1,
+            },
+        },
+        "$ref": "#/$defs/target",
+    }
+
+    plan = validation_module._build_difference_plan(
+        SchemaSource.root(True, Dialect.DRAFT202012),
+        SchemaSource.root(rhs, Dialect.DRAFT202012),
+    )
+    outcome = validation_module.validate_source_difference(
+        SchemaSource.root(True, Dialect.DRAFT202012),
+        SchemaSource.root(rhs, Dialect.DRAFT202012),
+        2,
+    )
+
+    assert isinstance(plan, validation_module.DifferenceConfirmationPlan)
+    assert plan.lhs.backend_kind == "jsonschema_rs"
+    assert plan.rhs.backend_kind == "python_jsonschema"
+    assert outcome.status == "valid"
+
+
+def test_validation_difference_prefers_unsupported_rhs_over_invalid_witness():
+    rhs_source = SchemaSource(
+        schema={"type": "integer"},
+        dialect=Dialect.DRAFT202012,
+        pointer=("$defs", "value"),
+        document_root={"$defs": {"value": {"type": "integer"}}},
+        document_dialect=Dialect.DRAFT202012,
+    )
+
+    outcome = validation_module.validate_source_difference(
+        SchemaSource.root(True, Dialect.DRAFT202012),
+        rhs_source,
+        float("nan"),
+    )
+
+    assert outcome.status == "unsupported"
+    assert outcome.reason == "validation requires root schema source"
+
+
+def test_validation_difference_plan_reports_dialect_mismatch():
+    plan = validation_module._build_difference_plan(
+        SchemaSource.root(True, Dialect.DRAFT202012),
+        SchemaSource.root(True, Dialect.DRAFT7),
+    )
+
+    assert isinstance(plan, validation_module.UnsupportedValidationPlan)
+    assert plan.reason == "validation requires matching dialects"
 
 
 def test_schema_validation_checks_embedded_resources_under_their_own_dialect():

@@ -440,12 +440,23 @@ def _finite_exhausted_type_shape(schema: Any) -> TypeShape | None:
     if values is None:
         return None
     removed_atoms = set()
+    boolean_values: set[bool] = set()
+    has_non_exhaustive_atom_exclusion = False
     if any(value is None for value in values):
         removed_atoms.add("null")
-    if any(value is False for value in values) and any(
-        value is True for value in values
-    ):
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            boolean_values.add(value)
+            continue
+        has_non_exhaustive_atom_exclusion = True
+    if boolean_values == {False, True}:
         removed_atoms.add("boolean")
+    elif boolean_values:
+        has_non_exhaustive_atom_exclusion = True
+    if has_non_exhaustive_atom_exclusion:
+        return None
     return TypeShape(frozenset(removed_atoms))
 
 

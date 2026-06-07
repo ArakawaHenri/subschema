@@ -7,8 +7,9 @@ from subschema.dialects import Dialect
 from subschema.kernel.contracts import ProofResult
 from subschema.kernel.provenance import SchemaSource
 from subschema.kernel.validation import (
-    ValidationUnsupportedError,
-    validation_backend_for,
+    ValidationOutcome,
+    validate_source_difference,
+    validate_source_instance,
 )
 
 ConfirmationStatus = Literal["confirmed", "rejected", "unsupported"]
@@ -50,22 +51,9 @@ def confirm_valid(
     source = source_or_result
     if not _is_root_confirmation_source(source):
         return _unsupported_non_root_source(source, "schema confirmation")
-    try:
-        valid = validation_backend_for(source.dialect).is_valid(
-            source.schema,
-            instance,
-        )
-    except RecursionError:
-        return ConfirmationResult.unsupported(
-            "schema validation exceeded the supported depth"
-        )
-    except ValidationUnsupportedError as err:
-        return ConfirmationResult.unsupported(
-            f"schema validation is unsupported: {err}"
-        )
-    if valid:
-        return ConfirmationResult.confirmed()
-    return ConfirmationResult.rejected()
+    return _confirmation_from_validation_outcome(
+        validate_source_instance(source, instance)
+    )
 
 
 def confirm_difference(
@@ -98,23 +86,21 @@ def confirm_difference(
             rhs_source,
             "schema difference confirmation",
         )
-    try:
-        valid = validation_backend_for(lhs_source.dialect).validates_difference(
-            lhs_source.schema,
-            rhs_source.schema,
-            witness,
-        )
-    except RecursionError:
-        return ConfirmationResult.unsupported(
-            "schema validation exceeded the supported depth"
-        )
-    except ValidationUnsupportedError as err:
-        return ConfirmationResult.unsupported(
-            f"schema validation is unsupported: {err}"
-        )
-    if valid:
+    return _confirmation_from_validation_outcome(
+        validate_source_difference(lhs_source, rhs_source, witness)
+    )
+
+
+def _confirmation_from_validation_outcome(
+    outcome: ValidationOutcome,
+) -> ConfirmationResult:
+    if outcome.status == "valid":
         return ConfirmationResult.confirmed()
-    return ConfirmationResult.rejected()
+    if outcome.status == "invalid":
+        return ConfirmationResult.rejected()
+    return ConfirmationResult.unsupported(
+        f"schema validation is unsupported: {outcome.reason}"
+    )
 
 
 def _source_for(

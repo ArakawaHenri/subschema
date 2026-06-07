@@ -175,6 +175,24 @@ def test_transparent_double_not_recovers_empty_and_disjointness_proofs():
     assert covers({"not": {"not": {"type": "integer"}}}, [{"type": "number"}])
 
 
+def test_partial_finite_boolean_complement_is_not_type_exact():
+    lhs = {
+        "not": {
+            "allOf": [
+                {
+                    "not": {
+                        "enum": [None, True],
+                        "title": "Generated",
+                        "description": "schema",
+                    }
+                }
+            ]
+        }
+    }
+
+    assert not is_subschema(lhs, {"type": "null"})
+
+
 @pytest.mark.parametrize("wrapper", ["allOf", "anyOf", "oneOf"])
 def test_singleton_applicator_wrappers_preserve_low_cost_shapes(wrapper):
     def wrapped(schema):
