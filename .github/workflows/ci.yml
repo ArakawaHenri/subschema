@@ -37,11 +37,38 @@ jobs:
       - name: Type check
         run: uv run mypy --strict src/subschema
 
+      - name: Run architecture audits
+        run: >
+          uv run python scripts/semantic_boundary_inventory.py
+          --summary
+          --fail-on runtime-proof-raw-read
+          --fail-on runtime-proof-extractor-call
+          --fail-on shape-compat
+          --fail-on prover-compiler-import
+          --fail-on ir-runtime-import
+          --fail-on validator-runtime-import
+          --fail-on compiler-prover-import
+          --fail-on compiler-validator-import
+          --fail-on raw-child-schema-field
+          --fail-on raw-subproof-api
+          --fail-on scheduler-reason-control
+
       - name: Run tests
+        env:
+          HYPOTHESIS_PROFILE: subschema-ci
         run: uv run pytest -q
+
+      - name: Check whitespace in diff
+        run: git diff --check
 
       - name: Build distributions
         run: uv build
+
+      - name: Check distribution metadata
+        run: uvx twine check dist/*
+
+      - name: Verify distributions
+        run: uv run python scripts/release_smoke.py
 
   performance-smoke:
     runs-on: ubuntu-latest

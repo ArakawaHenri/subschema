@@ -28,6 +28,14 @@ subschema lhs.json rhs.json
 
 The command prints whether `lhs.json <: rhs.json`.
 
+External resources can be supplied explicitly. Resource keys are absolute
+document URIs without fragments; schemas are loaded from local files and are
+never fetched from the network:
+
+```bash
+subschema --resource https://example.com/external external.json lhs.json rhs.json
+```
+
 Finite expensive proof products can be enabled explicitly:
 
 ```bash
@@ -44,24 +52,30 @@ from subschema import Dialect, SchemaError, UnsupportedProofError, is_subschema
 
 lhs = {"type": "integer"}
 rhs = {"type": "number"}
+resources = {
+    "https://example.com/common": {
+        "$defs": {"positive": {"type": "integer", "minimum": 0}}
+    }
+}
 
 try:
-    print(is_subschema(lhs, rhs, dialect=Dialect.DRAFT202012))
+    print(is_subschema(lhs, rhs, dialect=Dialect.DRAFT202012, resources=resources))
 except SchemaError as error:
     print(error)
 except UnsupportedProofError as error:
     print(error)
 ```
 
-Available public entrypoints:
+Available public entrypoints accept `dialect=None`, `endeavor=False`,
+`max_work=None`, `timeout_ms=None`, and `resources=None` unless noted otherwise:
 
-- `is_subschema(lhs, rhs, *, dialect=None, endeavor=False, max_work=None, timeout_ms=None)`
-- `is_equivalent(lhs, rhs, *, dialect=None, endeavor=False, max_work=None, timeout_ms=None)`
-- `is_empty(schema, *, dialect=None, endeavor=False, max_work=None, timeout_ms=None)`
-- `is_disjoint(lhs, rhs, *, dialect=None, endeavor=False, max_work=None, timeout_ms=None)`
-- `covers(lhs, rhs_alternatives, *, dialect=None, endeavor=False, max_work=None, timeout_ms=None)`
-- `meet_schemas(lhs, rhs, *, dialect=None, endeavor=False, max_work=None, timeout_ms=None)`
-- `join_schemas(lhs, rhs, *, dialect=None, endeavor=False, max_work=None, timeout_ms=None)`
+- `is_subschema(lhs, rhs, ...)`
+- `is_equivalent(lhs, rhs, ...)`
+- `is_empty(schema, ...)`
+- `is_disjoint(lhs, rhs, ...)`
+- `covers(lhs, rhs_alternatives, ...)`
+- `meet_schemas(lhs, rhs, ...)`
+- `join_schemas(lhs, rhs, ...)`
 - `canonicalize_schema(schema, *, dialect=None)`
 - `SchemaError`, `SubschemaError`, and `UnsupportedProofError` as stable catch points.
 
@@ -76,12 +90,18 @@ products. In endeavor mode, `max_work` limits proof frontier expansion and
 `timeout_ms` limits solver calls. These controls are accepted only when endeavor
 is enabled.
 
+`unsupported` is a proof-capability boundary. `resource_exhausted` is a budget
+or timeout boundary. Neither means the input schema is invalid.
+
 Current intentional boundaries:
 
-- external references are not fetched from the network;
-- recursive `$ref` and recursive dynamic-reference proofs are not modeled;
-- `format` is treated as an annotation unless a future assertion backend is
-  provided;
+- external references are resolved only from explicit `resources`; they are not
+  fetched from the network;
+- recursive and dynamic-reference proofs are supported only for narrow,
+  explicitly modeled fragments; other recursive or dynamic cases raise
+  `UnsupportedProofError`;
+- `format` and content keywords are treated as annotations unless a future
+  assertion or decoding backend is provided;
 - non-regular ECMAScript regex features such as backreferences and lookaround
   are reported as unsupported;
 - `unsupported` means “not proven by this model,” not “the schema is invalid.”
