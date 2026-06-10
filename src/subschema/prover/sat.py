@@ -138,7 +138,9 @@ class DifferenceProblem:
         if formula is None and self.formula.lhs_term is not None:
             return None
         assertion = (
-            self.formula.lhs.assertion(kind) if formula is None else formula.assertion
+            self.formula.lhs.semantics.assertion(kind)
+            if formula is None
+            else formula.assertion
         )
         return None if assertion is None else assertion.value
 
@@ -147,7 +149,9 @@ class DifferenceProblem:
         if formula is None and self.formula.rhs_term is not None:
             return None
         assertion = (
-            self.formula.rhs.assertion(kind) if formula is None else formula.assertion
+            self.formula.rhs.semantics.assertion(kind)
+            if formula is None
+            else formula.assertion
         )
         return None if assertion is None else assertion.value
 
@@ -571,7 +575,7 @@ def _effective_unsupported_priority(
 
 
 def _lhs_is_exact_array_schema(problem: DifferenceProblem) -> bool:
-    constraint = problem.formula.lhs.type_constraint
+    constraint = problem.formula.lhs.semantics.scalar.type_constraint
     return (
         constraint is not None
         and constraint.language_complete
@@ -1061,7 +1065,7 @@ def _ir_accepts_everything(ir: LogicalSchemaIR) -> bool:
     root = ir.root
     if root.boolean_value is not None:
         return root.boolean_value is True
-    if root.unsupported:
+    if root.all_unsupported:
         return False
     reference = root.semantics.reference
     if (

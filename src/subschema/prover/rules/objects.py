@@ -140,12 +140,16 @@ def _prove_object_property_count_difference(
 
 
 def _rhs_rejects_empty_object(problem: DifferenceProblemProtocol) -> bool:
-    rhs_bounds = problem.formula.rhs.semantics.object_property_count_bounds_constraint
+    rhs_bounds = (
+        problem.formula.rhs.semantics.object.object_property_count_bounds_constraint
+    )
     return rhs_bounds is not None and rhs_bounds.minimum > 0
 
 
 def _rhs_has_property_count_constraint(problem: DifferenceProblemProtocol) -> bool:
-    rhs_bounds = problem.formula.rhs.semantics.object_property_count_bounds_constraint
+    rhs_bounds = (
+        problem.formula.rhs.semantics.object.object_property_count_bounds_constraint
+    )
     return rhs_bounds is not None and rhs_bounds.has_explicit_bound
 
 
@@ -154,8 +158,12 @@ def _rhs_property_count_is_directly_satisfied(
 ) -> bool:
     lhs_bounds: ObjectPropertyCountBoundsConstraint | None
     rhs_bounds: ObjectPropertyCountBoundsConstraint | None
-    lhs_bounds = problem.formula.lhs.semantics.object_property_count_bounds_constraint
-    rhs_bounds = problem.formula.rhs.semantics.object_property_count_bounds_constraint
+    lhs_bounds = (
+        problem.formula.lhs.semantics.object.object_property_count_bounds_constraint
+    )
+    rhs_bounds = (
+        problem.formula.rhs.semantics.object.object_property_count_bounds_constraint
+    )
     if lhs_bounds is None or rhs_bounds is None:
         return False
 
@@ -239,8 +247,7 @@ def _rhs_dependent_schema_property_value_witness(
     if model.lhs_key_values is None:
         return None
     constraint = (
-        problem.formula.rhs.semantics
-        .object_dependent_schema_properties_constraint
+        problem.formula.rhs.semantics.object.object_dependent_schema_properties_constraint
     )
     if constraint is None:
         return None

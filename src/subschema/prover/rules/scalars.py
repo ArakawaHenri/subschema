@@ -226,7 +226,7 @@ def _prove_numeric_difference(problem: DifferenceProblemProtocol) -> ProofResult
         and lhs_numeric.accepts_non_numeric
         and rhs_type is not None
         and not rhs_type.language_complete
-        and problem.formula.rhs.semantics.has_non_numeric_assertions
+        and problem.formula.rhs.semantics.has_non_numeric_assertions()
     ):
         return ProofResult.unsupported(
             "SAT numeric fragment cannot prove unmodeled non-numeric right semantics"
@@ -286,8 +286,8 @@ def _prove_typed_scalar_difference(problem: DifferenceProblemProtocol) -> ProofR
             "SAT typed-scalar fragment is deferred for static references"
         )
     if (
-        problem.formula.lhs.semantics.has_object_or_array_assertions
-        or problem.formula.rhs.semantics.has_object_or_array_assertions
+        problem.formula.lhs.semantics.object.has_object_or_array_assertions
+        or problem.formula.rhs.semantics.object.has_object_or_array_assertions
     ):
         return ProofResult.unsupported(
             "SAT typed-scalar fragment excludes object and array assertions"
@@ -298,12 +298,12 @@ def _prove_typed_scalar_difference(problem: DifferenceProblemProtocol) -> ProofR
     lhs_numeric = _numeric_constraint_for_typed_scalar(
         lhs_type,
         _numeric_constraint(problem.lhs_constraint("numeric")),
-        has_numeric_assertions=problem.formula.lhs.semantics.has_numeric_assertions,
+        has_numeric_assertions=problem.formula.lhs.semantics.scalar.has_numeric_assertions,
     )
     rhs_numeric = _numeric_constraint_for_typed_scalar(
         rhs_type,
         _numeric_constraint(problem.rhs_constraint("numeric")),
-        has_numeric_assertions=problem.formula.rhs.semantics.has_numeric_assertions,
+        has_numeric_assertions=problem.formula.rhs.semantics.scalar.has_numeric_assertions,
     )
     lhs_string = _string_language_constraint(problem.lhs_constraint("string-language"))
     rhs_string = _string_language_constraint(problem.rhs_constraint("string-language"))
@@ -353,7 +353,7 @@ def _typed_scalar_rhs_atom_is_modeled(
     lhs_string: StringLanguageConstraint | None,
     rhs_string: StringLanguageConstraint | None,
 ) -> bool:
-    if problem.formula.rhs.covers_type_atom(atom):
+    if problem.formula.rhs.semantics.covers_type_atom(atom):
         return True
     if atom in {"integer", "number"}:
         return lhs_numeric is not None and rhs_numeric is not None

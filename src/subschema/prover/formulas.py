@@ -175,7 +175,7 @@ class FormulaOccurrence:
                 side=self.side,
                 disposition=_unsupported_node_disposition(node),
             )
-            for node in self.ir.unsupported
+            for node in self.ir.root.all_unsupported
         )
 
 
@@ -386,7 +386,7 @@ def occurrence_assertion_formula(
     ):
         return None
 
-    assertion = occurrence.ir.assertion(kind)
+    assertion = occurrence.ir.semantics.assertion(kind)
     if assertion is None:
         return None
     return AssertionFormula(occurrence.root, assertion)
@@ -437,7 +437,7 @@ def _positive_formula_for_node(node: SchemaNode, side: FormulaSide) -> FormulaNo
         parts.append(EvaluationEffectFormula(node, node.evaluation))
 
     parts.extend(
-        _unsupported_formula(side, unsupported) for unsupported in node.unsupported
+        _unsupported_formula(side, unsupported) for unsupported in node.all_unsupported
     )
 
     return _and(tuple(parts))

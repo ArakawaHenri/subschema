@@ -128,7 +128,7 @@ def _build_ir_witness_uncached(
     if conditional.status in {"certificate", "resource_exhausted", "witness"}:
         return conditional
 
-    numeric = ir.numeric_constraint
+    numeric = ir.semantics.scalar.numeric_constraint
     if numeric is not None:
         numeric_atoms = numeric.normalized_atoms()
         for atom in numeric_atoms:
@@ -138,7 +138,7 @@ def _build_ir_witness_uncached(
         if numeric_atoms:
             return WitnessBuildResult.unsupported("numeric IR fact is uninhabited")
 
-    string = ir.string_language_constraint
+    string = ir.semantics.scalar.string_language_constraint
     if string is not None and not string.accepts_non_string:
         witness = string.pattern.witness(context)
         if isinstance(witness, ProofResult):
@@ -161,7 +161,7 @@ def _build_ir_witness_uncached(
     if object_witness.status in {"certificate", "resource_exhausted", "witness"}:
         return object_witness
 
-    type_constraint = ir.type_constraint
+    type_constraint = ir.semantics.scalar.type_constraint
     if type_constraint is not None and type_constraint.atoms:
         return WitnessBuildResult.concrete(
             type_constraint.witness_not_in(type_constraint.complement())
@@ -250,26 +250,26 @@ def _object_witness(
     object_irs = (ir,) + _all_of_child_irs(ir)
     property_names = None
     for object_ir in object_irs:
-        values = object_ir.object_property_values_constraint
+        values = object_ir.semantics.object.object_property_values_constraint
         if values is not None:
             names.update(values.required)
             for name in values.property_names:
                 _add_value_term(value_terms, name, values.property_term_for(name))
 
-        closed = object_ir.object_closed_properties_constraint
+        closed = object_ir.semantics.object.object_closed_properties_constraint
         if closed is not None:
             names.update(closed.required)
             for name in closed.property_terms:
                 _add_value_term(value_terms, name, closed.property_term_for(name))
 
-        key_value = object_ir.object_key_value_constraint
+        key_value = object_ir.semantics.object.object_key_value_constraint
         if key_value is not None:
             names.update(key_value.required)
             for name in key_value.properties:
                 _add_value_term(value_terms, name, key_value.value_term_for(name))
 
-        if object_ir.object_property_names_constraint is not None:
-            property_names = object_ir.object_property_names_constraint
+        if object_ir.semantics.object.object_property_names_constraint is not None:
+            property_names = object_ir.semantics.object.object_property_names_constraint
             names.update(property_names.required)
 
     target_count = max(
@@ -520,9 +520,9 @@ def _numeric_finite_complement_all_of_witness(
     if not excluded:
         return None
     numeric_constraints = tuple(
-        child_ir.numeric_constraint
+        child_ir.semantics.scalar.numeric_constraint
         for child_ir in child_irs
-        if child_ir.numeric_constraint is not None
+        if child_ir.semantics.scalar.numeric_constraint is not None
     )
     if not numeric_constraints:
         return None
@@ -578,7 +578,7 @@ def _boolean_conditional_witness(
     condition = next(
         (
             applicator.children[0]
-            for applicator in ir.applicators
+            for applicator in ir.root.applicators
             if applicator.kind == "if" and applicator.children
         ),
         None,
@@ -591,7 +591,7 @@ def _boolean_conditional_witness(
     target = next(
         (
             applicator.children[0]
-            for applicator in ir.applicators
+            for applicator in ir.root.applicators
             if applicator.kind == target_kind and applicator.children
         ),
         None,
@@ -627,9 +627,9 @@ def _add_value_term(
 
 def _array_min_length(ir: LogicalSchemaIR) -> int:
     candidates = (
-        ir.array_length_lhs_constraint,
-        ir.array_length_rhs_constraint,
-        ir.array_cardinality_length_constraint,
+        ir.semantics.array.array_length_lhs_constraint,
+        ir.semantics.array.array_length_rhs_constraint,
+        ir.semantics.array.array_cardinality_length_constraint,
     )
     lower = 0
     for constraint in candidates:
@@ -642,9 +642,9 @@ def _array_min_length(ir: LogicalSchemaIR) -> int:
 
 
 def _object_min_properties(ir: LogicalSchemaIR) -> int:
-    bounds = ir.object_property_count_bounds_constraint
+    bounds = ir.semantics.object.object_property_count_bounds_constraint
     lower = bounds.minimum if bounds is not None else 0
-    constraint = ir.object_property_count_constraint
+    constraint = ir.semantics.object.object_property_count_constraint
     if constraint is not None:
         intervals = constraint.normalized_intervals()
         if intervals:
@@ -670,14 +670,14 @@ def _object_extra_name(
 
 
 def _type_allows(ir: LogicalSchemaIR, atom: str) -> bool:
-    constraint = ir.type_constraint
+    constraint = ir.semantics.scalar.type_constraint
     return constraint is not None and constraint.atoms == frozenset({atom})
 
 
 def _all_of_child_irs(ir: LogicalSchemaIR) -> tuple[LogicalSchemaIR, ...]:
     return tuple(
         ir.with_root(child)
-        for applicator in ir.applicators
+        for applicator in ir.root.applicators
         if applicator.kind == "allOf"
         for child in applicator.children
     )
@@ -690,7 +690,7 @@ def _preferred_contains_term(
     entries = tuple(
         (constraint.term, item)
         for item in irs
-        for constraint in (item.array_contains_constraint,)
+        for constraint in (item.semantics.array.array_contains_constraint,)
         if constraint is not None and constraint.term is not None
     )
     if context is not None:
@@ -715,15 +715,15 @@ def _contains_minimum(irs: tuple[LogicalSchemaIR, ...]) -> int | None:
     minimums = tuple(
         constraint.minimum
         for item in irs
-        for constraint in (item.array_contains_constraint,)
+        for constraint in (item.semantics.array.array_contains_constraint,)
         if constraint is not None
     )
     if minimums:
         return max(minimums)
     counts = tuple(
-        item.array_contains_counts[0]
+        item.semantics.array.array_contains_counts[0]
         for item in irs
-        if item.array_contains_counts is not None
+        if item.semantics.array.array_contains_counts is not None
     )
     return max(counts) if counts else None
 
@@ -737,12 +737,14 @@ def _first_constrained_item_model(
 ) -> tuple[ArrayItemModelConstraint, LogicalSchemaIR] | None:
     return next(
         (
-            (item.array_item_model_constraint, item)
+            (item.semantics.array.array_item_model_constraint, item)
             for item in irs
-            if item.array_item_model_constraint is not None
+            if item.semantics.array.array_item_model_constraint is not None
             and (
-                item.array_item_model_constraint.prefix_terms
-                or not _term_is_true(item.array_item_model_constraint.tail_term)
+                item.semantics.array.array_item_model_constraint.prefix_terms
+                or not _term_is_true(
+                    item.semantics.array.array_item_model_constraint.tail_term
+                )
             )
         ),
         None,

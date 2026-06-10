@@ -484,7 +484,7 @@ def _ir_rooted_at_term(term: SchemaTerm | None, ir: LogicalSchemaIR) -> LogicalS
     if term is None or term.kind != "node" or term.ref is None:
         return ir
     node = ir.node_for_ref(term.ref)
-    if node is None or not node.semantics.has_static_reference_boundary:
+    if node is None or not node.semantics.reference.has_static_reference_boundary:
         return ir
     return ir.with_root(node)
 
@@ -707,7 +707,7 @@ class ObjectDifferenceModel:
             or _object_property_count_constraint(
                 self._lhs_constraint("object-property-count")
             )
-            or self.lhs.semantics.object_property_count_constraint
+            or self.lhs.semantics.object.object_property_count_constraint
         )
 
     @cached_property
@@ -717,7 +717,7 @@ class ObjectDifferenceModel:
             or _object_property_count_constraint(
                 self._rhs_constraint("object-property-count")
             )
-            or self.rhs.semantics.object_property_count_constraint
+            or self.rhs.semantics.object.object_property_count_constraint
         )
 
     def property_count_difference_plan(self) -> ObjectPropertyCountDifferencePlan:
@@ -886,7 +886,7 @@ class ObjectDifferenceModel:
             or _object_property_values_constraint(
                 self._lhs_constraint("object-property-values")
             )
-            or self.lhs.semantics.object_property_values_constraint
+            or self.lhs.semantics.object.object_property_values_constraint
         )
 
     @cached_property
@@ -896,7 +896,7 @@ class ObjectDifferenceModel:
             or _object_property_values_constraint(
                 self._rhs_constraint("object-property-values")
             )
-            or self.rhs.semantics.object_property_values_constraint
+            or self.rhs.semantics.object.object_property_values_constraint
         )
 
     @cached_property
@@ -906,7 +906,7 @@ class ObjectDifferenceModel:
             or _object_closed_properties_constraint(
                 self._lhs_constraint("object-closed-properties")
             )
-            or self.lhs.semantics.object_closed_properties_constraint
+            or self.lhs.semantics.object.object_closed_properties_constraint
         )
 
     @cached_property
@@ -916,7 +916,7 @@ class ObjectDifferenceModel:
             or _object_closed_properties_constraint(
                 self._rhs_constraint("object-closed-properties")
             )
-            or self.rhs.semantics.object_closed_properties_constraint
+            or self.rhs.semantics.object.object_closed_properties_constraint
         )
 
     @cached_property
@@ -926,7 +926,7 @@ class ObjectDifferenceModel:
             or _object_property_names_constraint(
                 self._lhs_constraint("object-property-names")
             )
-            or self.lhs.semantics.object_property_names_constraint
+            or self.lhs.semantics.object.object_property_names_constraint
         )
 
     @cached_property
@@ -936,16 +936,16 @@ class ObjectDifferenceModel:
             or _object_property_names_constraint(
                 self._rhs_constraint("object-property-names")
             )
-            or self.rhs.semantics.object_property_names_constraint
+            or self.rhs.semantics.object.object_property_names_constraint
         )
 
     @cached_property
     def lhs_key_values(self) -> ObjectKeyValueConstraint | None:
-        return self.lhs.object_key_value_constraint
+        return self.lhs.semantics.object.object_key_value_constraint
 
     @cached_property
     def rhs_key_values(self) -> ObjectKeyValueConstraint | None:
-        return self.rhs.object_key_value_constraint
+        return self.rhs.semantics.object.object_key_value_constraint
 
     @cached_property
     def universe(self) -> ObjectKeyUniverse:
@@ -959,7 +959,7 @@ class ObjectDifferenceModel:
     def unevaluated_properties_difference_plan(
         self,
     ) -> ObjectUnevaluatedPropertiesDifferencePlan:
-        constraint = self.rhs.evaluation.unevaluated_properties
+        constraint = self.rhs.root.evaluation.unevaluated_properties
         if constraint is None:
             return ObjectUnevaluatedPropertiesDifferencePlan.unsupported(
                 "SAT unevaluatedProperties difference requires unevaluatedProperties"
@@ -1074,7 +1074,8 @@ class ObjectDifferenceModel:
                 "SAT unevaluatedProperties true proof requires a finite "
                 "closed left keyspace"
             )
-        if not self.rhs.object_unevaluated_properties_true_fragment_supported:
+        rhs_object = self.rhs.semantics.object
+        if not rhs_object.object_unevaluated_properties_true_fragment_supported:
             return ObjectUnevaluatedPropertiesDifferencePlan.unsupported(
                 "SAT unevaluatedProperties true proof defers non-frontier "
                 "right assertions"
@@ -1145,7 +1146,8 @@ class ObjectDifferenceModel:
                 "SAT unevaluatedProperties conditioned proof requires an "
                 "unevaluated term"
             )
-        if not self.rhs.object_unevaluated_properties_true_fragment_supported:
+        rhs_object = self.rhs.semantics.object
+        if not rhs_object.object_unevaluated_properties_true_fragment_supported:
             return ObjectUnevaluatedPropertiesDifferencePlan.unsupported(
                 "SAT unevaluatedProperties conditioned proof defers non-frontier "
                 "right assertions"
@@ -1407,16 +1409,16 @@ class ObjectDifferenceModel:
 
     @property
     def lhs_presence_product(self) -> ObjectPresenceProductConstraint | None:
-        return self.lhs.object_presence_product_constraint
+        return self.lhs.semantics.object.object_presence_product_constraint
 
     @property
     def rhs_presence_product(self) -> ObjectPresenceProductConstraint | None:
-        return self.rhs.object_presence_product_constraint
+        return self.rhs.semantics.object.object_presence_product_constraint
 
     def presence_accepts(
         self, ir: LogicalSchemaIR, atom: str, present: frozenset[str]
     ) -> bool | None:
-        presence = ir.object_presence_product_constraint
+        presence = ir.semantics.object.object_presence_product_constraint
         return None if presence is None else presence.accepts(atom, present)
 
     def presence_product_can_prove_true(self) -> bool:
@@ -1563,7 +1565,7 @@ class ObjectDifferenceModel:
         return ObjectPropertyNamesRepairSkeleton(tuple(slots), self.lhs)
 
     def property_names_difference_plan(self) -> ObjectPropertyNamesDifferencePlan:
-        if self.rhs.object_property_names_has_value_constraints:
+        if self.rhs.semantics.object.object_property_names_has_value_constraints:
             return ObjectPropertyNamesDifferencePlan.unsupported(
                 "SAT object propertyNames difference cannot ignore right "
                 "property values"
@@ -1656,7 +1658,9 @@ class ObjectDifferenceModel:
                     ObjectPresenceWitnessPlan("finite-keyspace", None, present)
                 )
 
-        rhs_dependent_required = self.rhs.semantics.object_dependent_required_constraint
+        rhs_dependent_required = (
+            self.rhs.semantics.object.object_dependent_required_constraint
+        )
         for entry in (
             () if rhs_dependent_required is None else rhs_dependent_required.entries
         ):
@@ -2724,7 +2728,7 @@ def _conditioned_property_paths_cover_lhs(
 ) -> bool:
     if unevaluated_term is None:
         return False
-    for candidate in model.lhs.semantics.object_selector_candidates:
+    for candidate in model.lhs.semantics.object.selector_candidates:
         lhs_values = inhabited_finite_values_for_term(
             candidate.term,
             model.lhs,
@@ -2750,7 +2754,7 @@ def _conditioned_property_product_work_units(
     paths: tuple[EvaluationTracePath, ...],
     lhs_shape: ObjectKeyValueConstraint,
 ) -> int:
-    candidates = len(model.lhs.semantics.object_selector_candidates)
+    candidates = len(model.lhs.semantics.object.selector_candidates)
     keys = sum(1 for name in lhs_shape.properties if lhs_shape.allows_key(name))
     return max(1, candidates) * max(1, len(paths)) * max(1, keys)
 
@@ -2858,7 +2862,7 @@ def _conditioned_object_path_uses_supported_branch_shape(
         )
     if not _object_condition_shape_is_supported(node):
         return False
-    condition_shape = node.semantics.object_key_value_constraint
+    condition_shape = node.semantics.object.object_key_value_constraint
     if condition_shape is None:
         return False
     source_names = set(_property_source_names(path.property_sources))
@@ -2881,7 +2885,7 @@ def _negated_condition_excludes_object_selector_values(
     node = _condition_node(condition.children[0], ir)
     if node is None or not _object_condition_shape_is_supported(node):
         return False
-    condition_shape = node.semantics.object_key_value_constraint
+    condition_shape = node.semantics.object.object_key_value_constraint
     if condition_shape is None or condition_shape.patterns:
         return False
     if selector_name not in lhs_shape.required:
@@ -3067,7 +3071,7 @@ def _object_key_universe(
 
 def _object_key_classes(ir: LogicalSchemaIR) -> set[ObjectKeyClass]:
     key_classes: set[ObjectKeyClass] = set()
-    for source in ir.evaluation.property_sources:
+    for source in ir.root.evaluation.property_sources:
         if source.kind == "properties" and source.key is not None:
             key_classes.add(ObjectKeyClass("explicit", "properties", source.key))
         elif source.kind == "patternProperties" and source.key is not None:
@@ -3078,8 +3082,8 @@ def _object_key_classes(ir: LogicalSchemaIR) -> set[ObjectKeyClass]:
         ):
             key_classes.add(ObjectKeyClass("explicit", source.kind, source.key))
 
-    if ir.object_key_value_constraint is not None:
-        for required in ir.object_key_value_constraint.required:
+    if ir.semantics.object.object_key_value_constraint is not None:
+        for required in ir.semantics.object.object_key_value_constraint.required:
             key_classes.add(ObjectKeyClass("explicit", "required", required))
     return key_classes
 
@@ -3109,7 +3113,7 @@ def _term_has_static_reference_boundary(
             return (
                 None
                 if node is None
-                else node.semantics.has_static_reference_boundary
+                else node.semantics.reference.has_static_reference_boundary
             )
         case "not":
             if len(term.children) != 1:
@@ -3127,7 +3131,7 @@ def _term_has_static_reference_boundary(
 
 def _object_dependency_interesting_names(ir: LogicalSchemaIR) -> tuple[str, ...]:
     names = set()
-    dependent_required = ir.semantics.object_dependent_required_constraint
+    dependent_required = ir.semantics.object.object_dependent_required_constraint
     if dependent_required is not None:
         for entry in dependent_required.entries:
             names.add(entry.trigger)
@@ -3141,7 +3145,7 @@ def _object_dependency_interesting_names(ir: LogicalSchemaIR) -> tuple[str, ...]
 def _object_dependent_schema_required_entries(
     ir: LogicalSchemaIR,
 ) -> tuple[tuple[str, frozenset[str]], ...]:
-    constraint = ir.semantics.object_dependent_schema_required_constraint
+    constraint = ir.semantics.object.object_dependent_schema_required_constraint
     if constraint is None:
         return ()
     return tuple(

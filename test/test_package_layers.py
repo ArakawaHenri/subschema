@@ -1,5 +1,6 @@
 import ast
 import importlib
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -331,6 +332,116 @@ def test_ir_package_is_pure_typed_ir_data():
     assert "source: SchemaSource" in source
     assert "graph:" not in source
     assert "def graph(" not in source
+
+
+def test_ir_package_init_is_reexport_only():
+    tree = _module_ast(IR_ROOT / "__init__.py")
+    implementation_nodes = (
+        ast.AsyncFunctionDef,
+        ast.ClassDef,
+        ast.FunctionDef,
+    )
+    violations = [
+        f"{type(node).__name__} at line {node.lineno}"
+        for node in tree.body
+        if isinstance(node, implementation_nodes)
+    ]
+
+    assert not violations, (
+        "subschema.ir.__init__ must stay a re-export layer:\n"
+        + "\n".join(violations)
+    )
+
+
+def test_ir_semantics_keep_grouped_fact_surface():
+    ir_module = importlib.import_module("subschema.ir")
+    fields = tuple(ir_module.SchemaSemantics.__dataclass_fields__)
+
+    assert fields == (
+        "scalar",
+        "array",
+        "object",
+        "applicator",
+        "reference",
+        "evaluation",
+        "vocabulary",
+    )
+
+
+def test_prover_uses_grouped_ir_fact_access():
+    flat_fact_names = (
+        "array_any_of_item_schemas_constraint",
+        "array_cardinality_length_constraint",
+        "array_contains_constraint",
+        "array_contains_counts",
+        "array_contains_fragment_constraint",
+        "array_item_model_constraint",
+        "array_item_values_fragment_constraint",
+        "array_length_lhs_constraint",
+        "array_length_rhs_constraint",
+        "array_tuple_anyof_distribution_constraint",
+        "array_unevaluated_items_true_fragment_supported",
+        "array_uniqueness_lhs_constraint",
+        "array_uniqueness_rhs_constraint",
+        "finite_constraint",
+        "has_dynamic_reference",
+        "has_recursive_reference",
+        "has_static_reference_boundary",
+        "numeric_constraint",
+        "object_closed_properties_constraint",
+        "object_dependent_required_constraint",
+        "object_dependent_schema_properties_constraint",
+        "object_dependent_schema_required_constraint",
+        "object_key_value_constraint",
+        "object_presence_product_constraint",
+        "object_property_count_bounds_constraint",
+        "object_property_count_constraint",
+        "object_property_names_constraint",
+        "object_property_names_has_value_constraints",
+        "object_property_values_constraint",
+        "object_unevaluated_properties_true_fragment_supported",
+        "string_language_constraint",
+        "string_length_constraint",
+        "tagged_one_of",
+        "type_constraint",
+    )
+    flat_alias_names = (
+        "array_length_lhs_shape",
+        "array_length_rhs_shape",
+        "array_uniqueness_lhs_shape",
+        "array_uniqueness_rhs_shape",
+        "numeric_shape",
+        "object_closed_properties_shape",
+        "object_property_count_shape",
+        "object_property_names_shape",
+        "object_property_values_shape",
+        "string_language_shape",
+        "string_length_shape",
+        "type_shape",
+    )
+    prefixes = (
+        "applicator",
+        "array",
+        "object",
+        "reference",
+        "scalar",
+        "semantics",
+    )
+    negative_prefixes = "".join(f"(?<!{prefix})" for prefix in prefixes)
+    pattern = re.compile(
+        rf"{negative_prefixes}\.({'|'.join(flat_fact_names + flat_alias_names)})\b"
+    )
+    violations: list[str] = []
+
+    for path in sorted(PROVER_ROOT.rglob("*.py")):
+        for lineno, line in enumerate(path.read_text().splitlines(), start=1):
+            if pattern.search(line):
+                violations.append(f"{path.relative_to(REPO_ROOT)}:{lineno}: {line.strip()}")
+
+    assert not violations, (
+        "prover code must read grouped IR facts through semantics.scalar/array/"
+        "object/applicator/reference:\n" + "\n".join(violations)
+    )
 
 
 def test_ir_package_does_not_import_runtime_packages():
@@ -822,8 +933,8 @@ def test_array_contains_difference_model_uses_compiled_ir_fact():
     source = (PROVER_ROOT / "difference_arrays.py").read_text()
 
     assert "def _array_contains(" not in source
-    assert "return self.lhs.array_contains_constraint" in source
-    assert "return self.rhs.array_contains_constraint" in source
+    assert "return self.lhs.semantics.array.array_contains_constraint" in source
+    assert "return self.rhs.semantics.array.array_contains_constraint" in source
     assert "array_contains_fragment_constraint" in source
 
 

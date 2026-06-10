@@ -115,7 +115,7 @@ def _rhs_confirmation_source(problem: Any) -> Any:
 def _contains_static_reference(problem: Any) -> bool:
     return bool(
         _has_blocking_lhs_static_reference_boundary(problem)
-        or problem.formula.rhs.has_static_reference_boundary
+        or problem.formula.rhs.semantics.reference.has_static_reference_boundary
     )
 
 
@@ -130,7 +130,7 @@ def _has_blocking_lhs_static_reference_boundary(problem: Any) -> bool:
 
 
 def _ir_has_blocking_static_reference_boundary(ir: Any) -> bool:
-    if not ir.has_static_reference_boundary:
+    if not ir.semantics.reference.has_static_reference_boundary:
         return False
     reference = ir.semantics.reference
     if reference.has_non_recursive_static_reference_boundary:
@@ -169,7 +169,7 @@ def _term_has_blocking_static_reference_boundary(
 
 
 def _node_has_blocking_static_reference_boundary(node: Any) -> bool:
-    if not node.semantics.has_static_reference_boundary:
+    if not node.semantics.reference.has_static_reference_boundary:
         return False
     reference = node.semantics.reference
     if reference.has_non_recursive_static_reference_boundary:

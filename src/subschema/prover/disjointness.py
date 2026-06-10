@@ -59,7 +59,7 @@ class SharedWitnessConfirmation:
 
 
 def _type_atoms(ir: LogicalSchemaIR) -> frozenset[str]:
-    constraint = ir.type_constraint
+    constraint = ir.semantics.scalar.type_constraint
     if constraint is None:
         return JSON_TYPE_ATOMS
     return constraint.atoms
@@ -335,8 +335,8 @@ def _numeric_disjointness_ir(
             "numeric disjointness requires numeric-only intersection"
         )
 
-    lhs_shape = lhs_ir.numeric_constraint
-    rhs_shape = rhs_ir.numeric_constraint
+    lhs_shape = lhs_ir.semantics.scalar.numeric_constraint
+    rhs_shape = rhs_ir.semantics.scalar.numeric_constraint
     if lhs_shape is None or rhs_shape is None:
         return ProofResult.unsupported(
             "numeric disjointness requires exact numeric shapes"
@@ -370,8 +370,12 @@ def _string_length_disjointness_ir(
             "string length disjointness requires string-only intersection"
         )
 
-    lhs_shape = _string_length_constraint(lhs_ir.string_length_constraint)
-    rhs_shape = _string_length_constraint(rhs_ir.string_length_constraint)
+    lhs_shape = _string_length_constraint(
+        lhs_ir.semantics.scalar.string_length_constraint
+    )
+    rhs_shape = _string_length_constraint(
+        rhs_ir.semantics.scalar.string_length_constraint
+    )
     if lhs_shape is None or rhs_shape is None:
         return ProofResult.unsupported(
             "string length disjointness requires exact string length facts"
@@ -396,8 +400,12 @@ def _string_language_disjointness_ir(
             "string language disjointness requires string-only intersection"
         )
 
-    lhs_shape = _string_language_constraint(lhs_ir.string_language_constraint)
-    rhs_shape = _string_language_constraint(rhs_ir.string_language_constraint)
+    lhs_shape = _string_language_constraint(
+        lhs_ir.semantics.scalar.string_language_constraint
+    )
+    rhs_shape = _string_language_constraint(
+        rhs_ir.semantics.scalar.string_language_constraint
+    )
     if lhs_shape is None or rhs_shape is None:
         return ProofResult.unsupported(
             "string language disjointness requires exact string language facts"
@@ -421,7 +429,7 @@ def _numeric_shape_emptiness_ir(ir: LogicalSchemaIR) -> ProofResult:
             "numeric emptiness requires numeric-only schemas"
         )
 
-    shape = ir.numeric_constraint
+    shape = ir.semantics.scalar.numeric_constraint
     if shape is None:
         return ProofResult.unsupported("numeric emptiness requires exact shape")
     if not shape.normalized_atoms() and not shape.accepts_non_numeric:
@@ -440,8 +448,8 @@ def _object_count_disjointness_ir(
             "object count disjointness requires object-only intersection"
         )
 
-    lhs_shape = lhs_ir.object_property_count_constraint
-    rhs_shape = rhs_ir.object_property_count_constraint
+    lhs_shape = lhs_ir.semantics.object.object_property_count_constraint
+    rhs_shape = rhs_ir.semantics.object.object_property_count_constraint
     if lhs_shape is None or rhs_shape is None:
         return ProofResult.unsupported(
             "object count disjointness requires exact property-count shapes"
@@ -474,7 +482,7 @@ def _object_count_emptiness_ir(ir: LogicalSchemaIR) -> ProofResult:
             "object count emptiness requires object-only schemas"
         )
 
-    shape = ir.object_property_count_constraint
+    shape = ir.semantics.object.object_property_count_constraint
     if shape is None:
         return ProofResult.unsupported(
             "object count emptiness requires exact property-count shape"
@@ -495,8 +503,8 @@ def _array_length_disjointness_ir(
             "array length disjointness requires array-only intersection"
         )
 
-    lhs_shape = lhs_ir.array_length_rhs_constraint
-    rhs_shape = rhs_ir.array_length_rhs_constraint
+    lhs_shape = lhs_ir.semantics.array.array_length_rhs_constraint
+    rhs_shape = rhs_ir.semantics.array.array_length_rhs_constraint
     if lhs_shape is None or rhs_shape is None:
         return ProofResult.unsupported(
             "array length disjointness requires exact length shapes"
@@ -526,7 +534,7 @@ def _array_length_emptiness_ir(ir: LogicalSchemaIR) -> ProofResult:
             "array length emptiness requires array-only schemas"
         )
 
-    shape = ir.array_length_rhs_constraint
+    shape = ir.semantics.array.array_length_rhs_constraint
     if shape is None:
         return ProofResult.unsupported(
             "array length emptiness requires exact length shape"
@@ -544,13 +552,13 @@ def _array_unique_items_cardinality_emptiness_ir(
         return ProofResult.unsupported(
             "array uniqueItems cardinality emptiness requires array-only schemas"
         )
-    uniqueness = ir.array_uniqueness_rhs_constraint
+    uniqueness = ir.semantics.array.array_uniqueness_rhs_constraint
     if uniqueness is None or not uniqueness.requires_unique_items:
         return ProofResult.unsupported(
             "array uniqueItems cardinality emptiness requires uniqueItems"
         )
 
-    shape = ir.array_cardinality_length_constraint
+    shape = ir.semantics.array.array_cardinality_length_constraint
     if shape is None:
         return ProofResult.unsupported(
             "array uniqueItems cardinality emptiness requires exact length shape"
@@ -576,7 +584,7 @@ def _array_unique_items_value_bound(
     ir: LogicalSchemaIR,
     context: DisjointnessContext,
 ) -> int | None:
-    item_model = ir.array_item_model_constraint
+    item_model = ir.semantics.array.array_item_model_constraint
     if item_model is None or item_model.covering_all_item_terms is None:
         return None
 
@@ -597,9 +605,9 @@ def _finite_values_for_reachable_item_term(
     if item_ir is None:
         return None
     if (
-        item_ir.has_static_reference_boundary
-        or item_ir.has_dynamic_reference
-        or item_ir.has_recursive_reference
+        item_ir.semantics.reference.has_static_reference_boundary
+        or item_ir.semantics.reference.has_dynamic_reference
+        or item_ir.semantics.reference.has_recursive_reference
     ):
         return None
     return finite_values_for_ir(item_ir)
@@ -652,7 +660,7 @@ def _array_item_disjointness_ir(
 
 
 def _first_required_array_item_term(ir: LogicalSchemaIR) -> SchemaTerm | None:
-    item_model = ir.array_item_model_constraint
+    item_model = ir.semantics.array.array_item_model_constraint
     return None if item_model is None else item_model.first_required_item_term
 
 
@@ -663,8 +671,8 @@ def _required_array_slot_disjointness_ir(
     *,
     depth: int,
 ) -> ProofResult:
-    lhs_shape = lhs_ir.array_cardinality_length_constraint
-    rhs_shape = rhs_ir.array_cardinality_length_constraint
+    lhs_shape = lhs_ir.semantics.array.array_cardinality_length_constraint
+    rhs_shape = rhs_ir.semantics.array.array_cardinality_length_constraint
     if lhs_shape is None or rhs_shape is None:
         return ProofResult.unsupported(
             "array item disjointness requires exact shared length facts"
@@ -676,8 +684,8 @@ def _required_array_slot_disjointness_ir(
         return ProofResult.true()
 
     required_length = min((interval.lower for interval in intervals), default=0)
-    lhs_item_model = lhs_ir.array_item_model_constraint
-    rhs_item_model = rhs_ir.array_item_model_constraint
+    lhs_item_model = lhs_ir.semantics.array.array_item_model_constraint
+    rhs_item_model = rhs_ir.semantics.array.array_item_model_constraint
     lhs_indexes = (
         None
         if lhs_item_model is None
@@ -726,7 +734,7 @@ def _array_contains_emptiness_ir(
     ir: LogicalSchemaIR,
     context: DisjointnessContext,
 ) -> ProofResult:
-    contains = ir.array_contains_constraint
+    contains = ir.semantics.array.array_contains_constraint
     contains_term = None if contains is None else contains.term
     if contains is None or contains_term is None or _type_atoms(ir) != {"array"}:
         return ProofResult.unsupported(
@@ -758,7 +766,7 @@ def _all_array_items_are_disjoint_from_contains_term(
     contains_term: SchemaTerm,
     context: DisjointnessContext,
 ) -> bool:
-    item_model = ir.array_item_model_constraint
+    item_model = ir.semantics.array.array_item_model_constraint
     if item_model is None or item_model.covering_all_item_terms is None:
         return False
     for item_term in item_model.covering_all_item_terms:
@@ -792,8 +800,8 @@ def _closed_finite_object_disjointness_ir(
             "closed object disjointness requires object-only intersection"
         )
 
-    lhs_shape = lhs_ir.object_closed_properties_constraint
-    rhs_shape = rhs_ir.object_closed_properties_constraint
+    lhs_shape = lhs_ir.semantics.object.object_closed_properties_constraint
+    rhs_shape = rhs_ir.semantics.object.object_closed_properties_constraint
     if (
         lhs_shape is None
         or rhs_shape is None
@@ -891,8 +899,8 @@ def _object_required_property_conflict_ir(
             "object property disjointness requires object-only intersection"
         )
 
-    lhs_constraint = lhs_ir.object_key_value_constraint
-    rhs_constraint = rhs_ir.object_key_value_constraint
+    lhs_constraint = lhs_ir.semantics.object.object_key_value_constraint
+    rhs_constraint = rhs_ir.semantics.object.object_key_value_constraint
     if lhs_constraint is None or rhs_constraint is None:
         return ProofResult.unsupported(
             "object property disjointness requires object key-value facts"

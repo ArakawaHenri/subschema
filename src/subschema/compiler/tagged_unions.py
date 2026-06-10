@@ -108,7 +108,7 @@ def _tagged_branches_for_name(
             if child_term is None or not isinstance(branch, bool | dict)
             else child_term(branch, ("oneOf", str(index)))
         )
-        tagged_branches.append(TaggedBranch(branch, tag_name, value, branch_term))
+        tagged_branches.append(TaggedBranch(tag_name, value, branch_term))
     return tuple(tagged_branches)
 
 

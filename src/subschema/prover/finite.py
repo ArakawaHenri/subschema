@@ -17,7 +17,7 @@ _FINITE_TERM_INHABITANTS_CACHE_MISS = object()
 
 def finite_values_for_ir(ir: LogicalSchemaIR) -> list[Any] | None:
     """Return compiled finite candidates, not proof-confirmed inhabitants."""
-    constraint = ir.finite_constraint
+    constraint = ir.semantics.scalar.finite_constraint
     if constraint is None:
         return None
     return list(constraint.values)
@@ -37,7 +37,7 @@ def inhabited_finite_values_for_ir(
     values = finite_values_for_ir(ir)
     if values is None:
         return None
-    constraint = ir.finite_constraint
+    constraint = ir.semantics.scalar.finite_constraint
     if constraint is not None and not constraint.requires_confirmation:
         result = dedupe(values)
         _store_finite_inhabitants(cache, cache_key, result)
@@ -114,7 +114,7 @@ def finite_complement_excluded_values_for_ir(
 def _single_not_child(ir: LogicalSchemaIR) -> SchemaNode | None:
     children = tuple(
         applicator.children[0]
-        for applicator in ir.applicators
+        for applicator in ir.root.applicators
         if applicator.kind == "not" and len(applicator.children) == 1
     )
     return children[0] if len(children) == 1 else None

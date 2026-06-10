@@ -2953,11 +2953,11 @@ def test_sat_solver_exposes_language_difference_formula():
 
     assert DifferenceFormula.__module__ == "subschema.prover.formulas"
     assert EmptinessSolver.__module__ == "subschema.prover.sat"
-    assert formula.lhs.__class__.__module__ == "subschema.ir"
+    assert formula.lhs.__class__.__module__ == "subschema.ir.nodes"
     assert formula.lhs.source.__class__.__module__ == "subschema.provenance"
-    assert formula.lhs.type_shape is not None
-    assert formula.rhs.type_shape is not None
-    assert formula.rhs.numeric_shape is not None
+    assert formula.lhs.semantics.scalar.type_constraint is not None
+    assert formula.rhs.semantics.scalar.type_constraint is not None
+    assert formula.rhs.semantics.scalar.numeric_constraint is not None
     assert proof.status == "proved_true"
 
 

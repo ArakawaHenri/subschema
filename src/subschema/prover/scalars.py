@@ -101,10 +101,10 @@ def finite_rhs_difference_plan(
     lhs: LogicalSchemaIR, rhs: LogicalSchemaIR
 ) -> FiniteRhsDifferencePlan:
     return finite_rhs_difference_plan_from_constraints(
-        lhs.type_constraint,
-        lhs.finite_constraint,
-        rhs.finite_constraint,
-        lhs.numeric_constraint,
+        lhs.semantics.scalar.type_constraint,
+        lhs.semantics.scalar.finite_constraint,
+        rhs.semantics.scalar.finite_constraint,
+        lhs.semantics.scalar.numeric_constraint,
     )
 
 
@@ -158,7 +158,7 @@ def type_difference_plan(
     lhs: LogicalSchemaIR, rhs: LogicalSchemaIR
 ) -> ScalarDifferencePlan:
     return type_difference_plan_from_constraints(
-        lhs.type_constraint, rhs.type_constraint
+        lhs.semantics.scalar.type_constraint, rhs.semantics.scalar.type_constraint
     )
 
 
@@ -291,7 +291,7 @@ def numeric_difference_plan(
     lhs: LogicalSchemaIR, rhs: LogicalSchemaIR
 ) -> ScalarDifferencePlan | ProofResult:
     return numeric_difference_plan_from_constraints(
-        lhs.numeric_constraint, rhs.numeric_constraint
+        lhs.semantics.scalar.numeric_constraint, rhs.semantics.scalar.numeric_constraint
     )
 
 
@@ -515,7 +515,8 @@ def string_length_difference_plan(
     lhs: LogicalSchemaIR, rhs: LogicalSchemaIR
 ) -> ScalarDifferencePlan:
     return string_length_difference_plan_from_constraints(
-        lhs.string_length_constraint, rhs.string_length_constraint
+        lhs.semantics.scalar.string_length_constraint,
+        rhs.semantics.scalar.string_length_constraint,
     )
 
 
@@ -552,8 +553,8 @@ def string_language_difference_plan(
     lhs: LogicalSchemaIR, rhs: LogicalSchemaIR
 ) -> ScalarDifferencePlan:
     return string_language_difference_plan_from_constraints(
-        lhs.string_language_constraint,
-        rhs.string_language_constraint,
+        lhs.semantics.scalar.string_language_constraint,
+        rhs.semantics.scalar.string_language_constraint,
     )
 
 

@@ -143,12 +143,12 @@ class ProjectionEngine:
         if not getattr(self.context, "resources", None):
             return None
         if not (
-            lhs_ir.has_static_reference_boundary
-            or lhs_ir.has_dynamic_reference
-            or lhs_ir.has_recursive_reference
-            or rhs_ir.has_static_reference_boundary
-            or rhs_ir.has_dynamic_reference
-            or rhs_ir.has_recursive_reference
+            lhs_ir.semantics.reference.has_static_reference_boundary
+            or lhs_ir.semantics.reference.has_dynamic_reference
+            or lhs_ir.semantics.reference.has_recursive_reference
+            or rhs_ir.semantics.reference.has_static_reference_boundary
+            or rhs_ir.semantics.reference.has_dynamic_reference
+            or rhs_ir.semantics.reference.has_recursive_reference
         ):
             return None
         disjoint = self.context.subproof_terms(

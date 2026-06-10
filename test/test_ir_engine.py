@@ -277,7 +277,7 @@ class TestProofEngineRouting(unittest.TestCase):
         schema = {"allOf": [{"type": "integer"}]}
 
         compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
-        child = compiled.applicators[0].children[0]
+        child = compiled.root.applicators[0].children[0]
 
         self.assertEqual(compiled.root_term, SchemaTerm.node(compiled.root_ref))
         self.assertIs(compiled.node_for_ref(compiled.root_ref), compiled.root)
@@ -288,7 +288,7 @@ class TestProofEngineRouting(unittest.TestCase):
         schema = {"allOf": [{"type": "integer"}, {"type": "number"}]}
 
         compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
-        child = compiled.applicators[0].children[0]
+        child = compiled.root.applicators[0].children[0]
 
         child_ir = compiled.with_root_ref(child.ref)
 
@@ -300,8 +300,8 @@ class TestProofEngineRouting(unittest.TestCase):
         schema = {"allOf": [{"type": "integer"}, {"type": "number"}]}
 
         compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
-        lhs = compiled.term_for_node(compiled.applicators[0].children[0])
-        rhs = compiled.term_for_node(compiled.applicators[0].children[1])
+        lhs = compiled.term_for_node(compiled.root.applicators[0].children[0])
+        rhs = compiled.term_for_node(compiled.root.applicators[0].children[1])
         context = ProofContext(Dialect.DRAFT202012)
 
         self.assertEqual(
@@ -312,8 +312,8 @@ class TestProofEngineRouting(unittest.TestCase):
         schema = {"allOf": [{"type": "integer"}, {"type": "string"}]}
 
         compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
-        lhs = compiled.term_for_node(compiled.applicators[0].children[0])
-        rhs = compiled.term_for_node(compiled.applicators[0].children[1])
+        lhs = compiled.term_for_node(compiled.root.applicators[0].children[0])
+        rhs = compiled.term_for_node(compiled.root.applicators[0].children[1])
         context = ProofContext(Dialect.DRAFT202012)
 
         proof = context.subproof_term(lhs, rhs, compiled)
@@ -510,8 +510,8 @@ class TestProofEngineRouting(unittest.TestCase):
         schema = {"allOf": [{"type": "integer"}, {"type": "number"}]}
 
         compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
-        lhs = compiled.term_for_node(compiled.applicators[0].children[0])
-        rhs = compiled.term_for_node(compiled.applicators[0].children[1])
+        lhs = compiled.term_for_node(compiled.root.applicators[0].children[0])
+        rhs = compiled.term_for_node(compiled.root.applicators[0].children[1])
         context = ProofContext(Dialect.DRAFT202012)
 
         self.assertEqual(
@@ -532,8 +532,8 @@ class TestProofEngineRouting(unittest.TestCase):
         }
 
         compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
-        item_model = compiled.array_item_model_constraint
-        contains = compiled.array_contains_constraint
+        item_model = compiled.semantics.array.array_item_model_constraint
+        contains = compiled.semantics.array.array_contains_constraint
 
         self.assertIsNotNone(item_model)
         assert item_model is not None
@@ -560,7 +560,7 @@ class TestProofEngineRouting(unittest.TestCase):
         }
 
         compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(property_values_schema)
-        values = compiled.object_property_values_constraint
+        values = compiled.semantics.object.object_property_values_constraint
 
         self.assertIsNotNone(values)
         assert values is not None
@@ -571,7 +571,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIsNotNone(compiled.node_for_ref(property_term.ref))
 
         compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(key_values_schema)
-        key_values = compiled.object_key_value_constraint
+        key_values = compiled.semantics.object.object_key_value_constraint
         self.assertIsNotNone(key_values)
         assert key_values is not None
         self.assertEqual(key_values.value_term_for("a").kind, "node")
@@ -598,27 +598,27 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(
             tuple(
                 candidate.index
-                for candidate in array_ir.semantics.array_selector_candidates
+                for candidate in array_ir.semantics.array.selector_candidates
             ),
             (0, 1),
         )
         self.assertTrue(
             all(
                 candidate.term.kind == "node"
-                for candidate in array_ir.semantics.array_selector_candidates
+                for candidate in array_ir.semantics.array.selector_candidates
             )
         )
         self.assertEqual(
             tuple(
                 candidate.name
-                for candidate in object_ir.semantics.object_selector_candidates
+                for candidate in object_ir.semantics.object.selector_candidates
             ),
             ("kind", "name"),
         )
         self.assertTrue(
             all(
                 candidate.term.kind == "node"
-                for candidate in object_ir.semantics.object_selector_candidates
+                for candidate in object_ir.semantics.object.selector_candidates
             )
         )
 
@@ -648,7 +648,7 @@ class TestProofEngineRouting(unittest.TestCase):
 
         ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
 
-        contains = ir.array_contains_constraint
+        contains = ir.semantics.array.array_contains_constraint
         self.assertIsInstance(contains, ArrayContainsConstraint)
         assert contains is not None
         self.assertEqual(contains.minimum, 2)
@@ -669,7 +669,7 @@ class TestProofEngineRouting(unittest.TestCase):
         ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
 
         self.assertEqual(
-            ir.array_contains_fragment_constraint,
+            ir.semantics.array.array_contains_fragment_constraint,
             ArrayContainsFragmentConstraint(
                 lhs_supported=True,
                 rhs_supported=False,
@@ -686,7 +686,7 @@ class TestProofEngineRouting(unittest.TestCase):
         ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
 
         self.assertEqual(
-            ir.array_item_values_fragment_constraint,
+            ir.semantics.array.array_item_values_fragment_constraint,
             ArrayItemValuesFragmentConstraint(
                 lhs_supported=True,
                 rhs_supported=False,
@@ -703,7 +703,7 @@ class TestProofEngineRouting(unittest.TestCase):
 
         ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
 
-        self.assertTrue(ir.array_unevaluated_items_true_fragment_supported)
+        self.assertTrue(ir.semantics.array.array_unevaluated_items_true_fragment_supported)
 
     def test_object_unevaluated_properties_fragment_support_is_compiled_into_ir_facts(
         self,
@@ -716,7 +716,7 @@ class TestProofEngineRouting(unittest.TestCase):
 
         ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
 
-        self.assertTrue(ir.object_unevaluated_properties_true_fragment_supported)
+        self.assertTrue(ir.semantics.object.object_unevaluated_properties_true_fragment_supported)
 
     def test_schema_node_exposes_grouped_semantic_snapshot(self):
         schema = {
@@ -1882,8 +1882,8 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(ReferenceFormula.__module__, "subschema.prover.formulas")
         self.assertEqual(TopFormula.__module__, "subschema.prover.formulas")
         self.assertEqual(UnsupportedFormula.__module__, "subschema.prover.formulas")
-        self.assertEqual(AssertionAtom.__module__, "subschema.ir")
-        self.assertEqual(ApplicatorNode.__module__, "subschema.ir")
+        self.assertEqual(AssertionAtom.__module__, "subschema.ir.semantics")
+        self.assertEqual(ApplicatorNode.__module__, "subschema.ir.nodes")
         self.assertEqual(DifferenceRuleSpec.__module__, "subschema.prover.sat")
         self.assertEqual(FiniteConstraint.__module__, "subschema.ir.constraints")
         self.assertEqual(TypeConstraint.__module__, "subschema.ir.constraints")
@@ -1935,28 +1935,28 @@ class TestProofEngineRouting(unittest.TestCase):
             "EvaluationExpression",
             inspect.getsource(context_module.ProofContext),
         )
-        self.assertEqual(LogicalSchemaIR.__module__, "subschema.ir")
+        self.assertEqual(LogicalSchemaIR.__module__, "subschema.ir.nodes")
         self.assertEqual(SchemaIRCompiler.__module__, "subschema.compiler.ir")
-        self.assertEqual(SchemaNode.__module__, "subschema.ir")
-        self.assertEqual(UnsupportedNode.__module__, "subschema.ir")
-        self.assertEqual(formula.lhs.__class__.__module__, "subschema.ir")
+        self.assertEqual(SchemaNode.__module__, "subschema.ir.nodes")
+        self.assertEqual(UnsupportedNode.__module__, "subschema.ir.nodes")
+        self.assertEqual(formula.lhs.__class__.__module__, "subschema.ir.nodes")
         self.assertEqual(
             formula.lhs.source.__class__.__module__, "subschema.provenance"
         )
-        self.assertIsInstance(formula.lhs.type_constraint, TypeConstraint)
-        self.assertIsInstance(formula.lhs.numeric_constraint, NumericConstraint)
-        self.assertIsInstance(formula.lhs.assertion("type").value, TypeConstraint)
-        self.assertIsInstance(formula.lhs.assertion("numeric").value, NumericConstraint)
-        self.assertIsNotNone(formula.lhs.type_shape)
-        self.assertIsNotNone(formula.lhs.numeric_shape)
-        self.assertTrue(formula.lhs.assertions)
+        self.assertIsInstance(formula.lhs.semantics.scalar.type_constraint, TypeConstraint)
+        self.assertIsInstance(formula.lhs.semantics.scalar.numeric_constraint, NumericConstraint)
+        self.assertIsInstance(formula.lhs.semantics.assertion("type").value, TypeConstraint)
+        self.assertIsInstance(formula.lhs.semantics.assertion("numeric").value, NumericConstraint)
+        self.assertIsNotNone(formula.lhs.semantics.scalar.type_constraint)
+        self.assertIsNotNone(formula.lhs.semantics.scalar.numeric_constraint)
+        self.assertTrue(formula.lhs.semantics.assertions())
         array_length_formula = difference_formula_from_schemas(
             {"type": "array", "minItems": 1},
             {"type": "array"},
             Dialect.DRAFT7,
         )
         self.assertIsInstance(
-            array_length_formula.lhs.array_length_lhs_constraint, ArrayLengthConstraint
+            array_length_formula.lhs.semantics.array.array_length_lhs_constraint, ArrayLengthConstraint
         )
         array_uniqueness_formula = difference_formula_from_schemas(
             {"type": "array", "uniqueItems": True},
@@ -1964,7 +1964,7 @@ class TestProofEngineRouting(unittest.TestCase):
             Dialect.DRAFT7,
         )
         self.assertIsInstance(
-            array_uniqueness_formula.lhs.array_uniqueness_lhs_constraint,
+            array_uniqueness_formula.lhs.semantics.array.array_uniqueness_lhs_constraint,
             ArrayUniquenessConstraint,
         )
         object_count_formula = difference_formula_from_schemas(
@@ -1973,7 +1973,7 @@ class TestProofEngineRouting(unittest.TestCase):
             Dialect.DRAFT7,
         )
         self.assertIsInstance(
-            object_count_formula.lhs.object_property_count_constraint,
+            object_count_formula.lhs.semantics.object.object_property_count_constraint,
             ObjectPropertyCountConstraint,
         )
         object_names_formula = difference_formula_from_schemas(
@@ -1982,7 +1982,7 @@ class TestProofEngineRouting(unittest.TestCase):
             Dialect.DRAFT7,
         )
         self.assertIsInstance(
-            object_names_formula.lhs.object_property_names_constraint,
+            object_names_formula.lhs.semantics.object.object_property_names_constraint,
             ObjectPropertyNamesConstraint,
         )
         object_values_formula = difference_formula_from_schemas(
@@ -1991,7 +1991,7 @@ class TestProofEngineRouting(unittest.TestCase):
             Dialect.DRAFT7,
         )
         self.assertIsInstance(
-            object_values_formula.lhs.object_property_values_constraint,
+            object_values_formula.lhs.semantics.object.object_property_values_constraint,
             ObjectPropertyValuesConstraint,
         )
         object_closed_formula = difference_formula_from_schemas(
@@ -2000,7 +2000,7 @@ class TestProofEngineRouting(unittest.TestCase):
             Dialect.DRAFT7,
         )
         self.assertIsInstance(
-            object_closed_formula.lhs.object_closed_properties_constraint,
+            object_closed_formula.lhs.semantics.object.object_closed_properties_constraint,
             ObjectClosedPropertiesConstraint,
         )
         tagged_formula = difference_formula_from_schemas(
@@ -2025,8 +2025,12 @@ class TestProofEngineRouting(unittest.TestCase):
             },
             Dialect.DRAFT202012,
         )
-        self.assertIsInstance(tagged_formula.rhs.tagged_one_of, TaggedOneOf)
-        self.assertEqual(tagged_formula.lhs.required_singleton_tag("kind"), "cat")
+        self.assertIsInstance(
+            tagged_formula.rhs.semantics.applicator.tagged_one_of, TaggedOneOf
+        )
+        self.assertEqual(
+            tagged_formula.lhs.semantics.required_singleton_tag("kind"), "cat"
+        )
         rule_names = [rule.name for rule in difference_rules()]
         self.assertIn("numeric-domain-ir", rule_names)
         self.assertNotIn("applicator-domain-ir", rule_names)
@@ -4122,7 +4126,7 @@ class TestProofEngineRouting(unittest.TestCase):
             ),
         )
         self.assertIn(
-            "problem.formula.rhs.tagged_one_of",
+            "problem.formula.rhs.semantics.applicator.tagged_one_of",
             inspect.getsource(
                 applicator_rules_module._matching_tagged_rhs_one_of_branch
             ),
@@ -4316,7 +4320,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn(
             "first_valid_value_for_schema", inspect.getsource(witnesses_module)
         )
-        self.assertEqual(SchemaSemantics.__module__, "subschema.ir")
+        self.assertEqual(SchemaSemantics.__module__, "subschema.ir.semantics")
         schema_semantics_source = inspect.getsource(ir_module.SchemaSemantics)
         compiler_semantics_source = inspect.getsource(semantics_module)
         self.assertFalse(hasattr(ir_module, "SchemaAnalysis"))
@@ -4336,33 +4340,32 @@ class TestProofEngineRouting(unittest.TestCase):
             + inspect.getsource(difference_objects_module),
         )
         self.assertIn("def assertion", schema_semantics_source)
-        self.assertIn(
-            "return self.semantics.assertion(kind)",
-            inspect.getsource(ir_module.LogicalSchemaIR.assertion),
-        )
-        self.assertNotIn(
-            "for assertion in self.assertions",
-            inspect.getsource(ir_module.LogicalSchemaIR.assertion),
-        )
+        logical_ir_source = inspect.getsource(ir_module.LogicalSchemaIR)
+        self.assertNotIn("def assertion", logical_ir_source)
+        self.assertNotIn("finite_constraint", logical_ir_source)
         self.assertIn("FiniteConstraint", inspect.getsource(constraints_module))
         self.assertIn("finite_constraint", schema_semantics_source)
         self.assertIn("type_constraint", schema_semantics_source)
         self.assertIn("numeric_constraint", schema_semantics_source)
         self.assertIn("string_length_constraint", schema_semantics_source)
         self.assertIn("string_language_constraint", schema_semantics_source)
-        self.assertIn("array_length_lhs_constraint", schema_semantics_source)
-        self.assertIn("array_any_of_item_schemas_constraint", schema_semantics_source)
-        self.assertIn("array_uniqueness_lhs_constraint", schema_semantics_source)
-        self.assertIn("object_property_count_constraint", schema_semantics_source)
+        array_semantics_source = inspect.getsource(ir_module.ArraySemantics)
+        object_semantics_source = inspect.getsource(ir_module.ObjectSemantics)
+        self.assertIn("array_length_lhs_constraint", array_semantics_source)
         self.assertIn(
-            "object_property_count_bounds_constraint", schema_semantics_source
+            "array_any_of_item_schemas_constraint", array_semantics_source
+        )
+        self.assertIn("array_uniqueness_lhs_constraint", array_semantics_source)
+        self.assertIn("object_property_count_constraint", object_semantics_source)
+        self.assertIn(
+            "object_property_count_bounds_constraint", object_semantics_source
         )
         self.assertIn(
-            "object_dependent_schema_properties_constraint", schema_semantics_source
+            "object_dependent_schema_properties_constraint", object_semantics_source
         )
-        self.assertIn("object_property_names_constraint", schema_semantics_source)
-        self.assertIn("object_property_values_constraint", schema_semantics_source)
-        self.assertIn("object_closed_properties_constraint", schema_semantics_source)
+        self.assertIn("object_property_names_constraint", object_semantics_source)
+        self.assertIn("object_property_values_constraint", object_semantics_source)
+        self.assertIn("object_closed_properties_constraint", object_semantics_source)
         self.assertIn(
             "array_length_lhs_constraint",
             inspect.getsource(difference_module.ArrayDifferenceModel),
@@ -4398,7 +4401,7 @@ class TestProofEngineRouting(unittest.TestCase):
 
         ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
 
-        constraint = ir.semantics.array_any_of_item_schemas_constraint
+        constraint = ir.semantics.array.array_any_of_item_schemas_constraint
         self.assertIsNotNone(constraint)
         self.assertEqual(len(constraint.item_terms), 2)
         self.assertEqual(
@@ -4414,7 +4417,7 @@ class TestProofEngineRouting(unittest.TestCase):
 
         ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
 
-        constraint = ir.semantics.object_property_count_bounds_constraint
+        constraint = ir.semantics.object.object_property_count_bounds_constraint
         self.assertIsNotNone(constraint)
         self.assertEqual(constraint.minimum, 2)
         self.assertEqual(constraint.maximum, 3)
@@ -4435,7 +4438,7 @@ class TestProofEngineRouting(unittest.TestCase):
 
         ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
 
-        constraint = ir.semantics.object_dependent_schema_properties_constraint
+        constraint = ir.semantics.object.object_dependent_schema_properties_constraint
         self.assertIsNotNone(constraint)
         self.assertEqual(len(constraint.properties), 1)
         dependent_property = constraint.properties[0]
@@ -4458,10 +4461,10 @@ class TestProofEngineRouting(unittest.TestCase):
 
         semantics = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema).semantics
 
-        self.assertTrue(semantics.has_numeric_assertions)
-        self.assertTrue(semantics.has_string_assertions)
+        self.assertTrue(semantics.scalar.has_numeric_assertions)
+        self.assertTrue(semantics.scalar.has_string_assertions)
         self.assertTrue(semantics.has_non_numeric_assertions)
-        self.assertTrue(semantics.has_object_or_array_assertions)
+        self.assertTrue(semantics.object.has_object_or_array_assertions)
 
     def test_ir_compiles_tuple_anyof_distribution_branches(self):
         schema = {
@@ -4474,7 +4477,7 @@ class TestProofEngineRouting(unittest.TestCase):
 
         semantics = SchemaIRCompiler(Dialect.DRAFT4).compile(schema).semantics
 
-        constraint = semantics.array_tuple_anyof_distribution_constraint
+        constraint = semantics.array.array_tuple_anyof_distribution_constraint
         self.assertIsNotNone(constraint)
         assert constraint is not None
 
@@ -4999,7 +5002,7 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         rhs_not_witness_constraint_plan = (
             right_not_string_overlap_plan_from_constraints(
-                rhs_not_witness_formula.lhs.string_language_constraint,
+                rhs_not_witness_formula.lhs.semantics.scalar.string_language_constraint,
                 rhs_not_witness_nnf.children[0]
                 .node.semantics.assertion("string-language")
                 .value,
@@ -5129,8 +5132,8 @@ class TestProofEngineRouting(unittest.TestCase):
         type_formula = difference_formula_from_schemas(
             {"type": "null"}, {"type": "string"}, Dialect.DRAFT7
         )
-        self.assertIsInstance(type_formula.lhs.type_constraint, TypeConstraint)
-        self.assertEqual(type_formula.lhs.finite_constraint.values, (None,))
+        self.assertIsInstance(type_formula.lhs.semantics.scalar.type_constraint, TypeConstraint)
+        self.assertEqual(type_formula.lhs.semantics.scalar.finite_constraint.values, (None,))
         type_plan = type_difference_plan(type_formula.lhs, type_formula.rhs)
         self.assertIsInstance(type_plan, ScalarDifferencePlan)
         self.assertEqual(type_plan.status, "witness")
@@ -5149,15 +5152,15 @@ class TestProofEngineRouting(unittest.TestCase):
         numeric_formula = difference_formula_from_schemas(
             {"type": "integer"}, {"type": "number"}, Dialect.DRAFT7
         )
-        self.assertIsInstance(numeric_formula.lhs.numeric_constraint, NumericConstraint)
+        self.assertIsInstance(numeric_formula.lhs.semantics.scalar.numeric_constraint, NumericConstraint)
         self.assertEqual(
             numeric_difference_plan(numeric_formula.lhs, numeric_formula.rhs).status,
             "proved_true",
         )
         self.assertEqual(
             numeric_difference_plan_from_constraints(
-                numeric_formula.lhs.numeric_constraint,
-                numeric_formula.rhs.numeric_constraint,
+                numeric_formula.lhs.semantics.scalar.numeric_constraint,
+                numeric_formula.rhs.semantics.scalar.numeric_constraint,
             ).status,
             "proved_true",
         )
@@ -5174,8 +5177,8 @@ class TestProofEngineRouting(unittest.TestCase):
             ),
         ):
             numeric_plan = numeric_difference_plan_from_constraints(
-                numeric_witness_formula.lhs.numeric_constraint,
-                numeric_witness_formula.rhs.numeric_constraint,
+                numeric_witness_formula.lhs.semantics.scalar.numeric_constraint,
+                numeric_witness_formula.rhs.semantics.scalar.numeric_constraint,
                 context=ProofContext(Dialect.DRAFT7),
             )
         self.assertEqual(numeric_plan.status, "witness")
@@ -5200,8 +5203,8 @@ class TestProofEngineRouting(unittest.TestCase):
             ),
         ):
             constructive_numeric_plan = numeric_difference_plan_from_constraints(
-                constructive_numeric_formula.lhs.numeric_constraint,
-                constructive_numeric_formula.rhs.numeric_constraint,
+                constructive_numeric_formula.lhs.semantics.scalar.numeric_constraint,
+                constructive_numeric_formula.rhs.semantics.scalar.numeric_constraint,
                 context=ProofContext(Dialect.DRAFT7),
             )
 
@@ -5238,7 +5241,7 @@ class TestProofEngineRouting(unittest.TestCase):
             Dialect.DRAFT7,
         )
         self.assertIsInstance(
-            length_formula.lhs.string_length_constraint, StringLengthConstraint
+            length_formula.lhs.semantics.scalar.string_length_constraint, StringLengthConstraint
         )
         self.assertEqual(
             string_length_difference_plan(
@@ -5248,8 +5251,8 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertEqual(
             string_length_difference_plan_from_constraints(
-                length_formula.lhs.string_length_constraint,
-                length_formula.rhs.string_length_constraint,
+                length_formula.lhs.semantics.scalar.string_length_constraint,
+                length_formula.rhs.semantics.scalar.string_length_constraint,
             ).witness,
             "aa",
         )
@@ -5260,7 +5263,7 @@ class TestProofEngineRouting(unittest.TestCase):
             Dialect.DRAFT7,
         )
         self.assertIsInstance(
-            language_formula.lhs.string_language_constraint, StringLanguageConstraint
+            language_formula.lhs.semantics.scalar.string_language_constraint, StringLanguageConstraint
         )
         self.assertEqual(
             string_language_difference_plan(
@@ -5270,8 +5273,8 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertEqual(
             string_language_difference_plan_from_constraints(
-                language_formula.lhs.string_language_constraint,
-                language_formula.rhs.string_language_constraint,
+                language_formula.lhs.semantics.scalar.string_language_constraint,
+                language_formula.rhs.semantics.scalar.string_language_constraint,
             ).status,
             "witness",
         )
@@ -5279,16 +5282,16 @@ class TestProofEngineRouting(unittest.TestCase):
         finite_formula = difference_formula_from_schemas(
             {"type": "array"}, {"const": []}, Dialect.DRAFT7
         )
-        self.assertIsInstance(finite_formula.rhs.finite_constraint, FiniteConstraint)
+        self.assertIsInstance(finite_formula.rhs.semantics.scalar.finite_constraint, FiniteConstraint)
         finite_plan = finite_rhs_difference_plan(finite_formula.lhs, finite_formula.rhs)
         self.assertIsInstance(finite_plan, FiniteRhsDifferencePlan)
         self.assertEqual(finite_plan.status, "witnesses")
         self.assertIn([None], finite_plan.witnesses)
         self.assertEqual(
             finite_rhs_difference_plan_from_constraints(
-                finite_formula.lhs.type_constraint,
-                finite_formula.lhs.finite_constraint,
-                finite_formula.rhs.finite_constraint,
+                finite_formula.lhs.semantics.scalar.type_constraint,
+                finite_formula.lhs.semantics.scalar.finite_constraint,
+                finite_formula.rhs.semantics.scalar.finite_constraint,
             ),
             finite_plan,
         )
@@ -5332,15 +5335,32 @@ class TestProofEngineRouting(unittest.TestCase):
             "string_language_difference_plan_from_constraints",
             inspect.getsource(scalars_module.string_language_difference_plan),
         )
+        self.assertIn(
+            ".semantics.scalar.type_constraint",
+            inspect.getsource(scalars_module.type_difference_plan),
+        )
         self.assertNotIn(
             ".type_shape", inspect.getsource(scalars_module.type_difference_plan)
         )
+        self.assertIn(
+            ".semantics.scalar.numeric_constraint",
+            inspect.getsource(scalars_module.numeric_difference_plan),
+        )
         self.assertNotIn(
-            ".numeric_shape", inspect.getsource(scalars_module.numeric_difference_plan)
+            ".numeric_shape",
+            inspect.getsource(scalars_module.numeric_difference_plan),
+        )
+        self.assertIn(
+            ".semantics.scalar.string_length_constraint",
+            inspect.getsource(scalars_module.string_length_difference_plan),
         )
         self.assertNotIn(
             ".string_length_shape",
             inspect.getsource(scalars_module.string_length_difference_plan),
+        )
+        self.assertIn(
+            ".semantics.scalar.string_language_constraint",
+            inspect.getsource(scalars_module.string_language_difference_plan),
         )
         self.assertNotIn(
             ".string_language_shape",
@@ -8374,21 +8394,21 @@ class TestProofEngineRouting(unittest.TestCase):
         }
 
         compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
-        child = compiled.applicators[0].children[0]
+        child = compiled.root.applicators[0].children[0]
 
-        self.assertIsInstance(compiled.evaluation, EvaluationFrontier)
-        self.assertTrue(compiled.evaluation.requires_evaluation_tracking)
+        self.assertIsInstance(compiled.root.evaluation, EvaluationFrontier)
+        self.assertTrue(compiled.root.evaluation.requires_evaluation_tracking)
         self.assertEqual(
-            compiled.evaluation.constraints,
+            compiled.root.evaluation.constraints,
             (
-                compiled.evaluation.unevaluated_properties,
-                compiled.evaluation.unevaluated_items,
+                compiled.root.evaluation.unevaluated_properties,
+                compiled.root.evaluation.unevaluated_items,
             ),
         )
         self.assertEqual(
             [
                 (source.kind, source.index, source.start_index)
-                for source in compiled.evaluation.item_sources
+                for source in compiled.root.evaluation.item_sources
             ],
             [
                 ("prefixItems", 0, None),
@@ -8396,7 +8416,7 @@ class TestProofEngineRouting(unittest.TestCase):
                 ("contains", None, None),
             ],
         )
-        contains_source = compiled.evaluation.item_sources[-1]
+        contains_source = compiled.root.evaluation.item_sources[-1]
         self.assertIsInstance(contains_source, EvaluatedItemSource)
         self.assertTrue(contains_source.marks_contains_matches)
         self.assertEqual(
@@ -8424,16 +8444,16 @@ class TestProofEngineRouting(unittest.TestCase):
 
         compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
 
-        self.assertEqual(len(compiled.unsupported), 1)
+        self.assertEqual(len(compiled.root.all_unsupported), 1)
         self.assertEqual(
-            compiled.unsupported[0].path, ("allOf", "0", "unevaluatedProperties")
+            compiled.root.all_unsupported[0].path, ("allOf", "0", "unevaluatedProperties")
         )
         self.assertEqual(
-            compiled.unsupported[0].pointer, "#/allOf/0/unevaluatedProperties"
+            compiled.root.all_unsupported[0].pointer, "#/allOf/0/unevaluatedProperties"
         )
-        self.assertEqual(compiled.unsupported[0].category, "evaluation-frontier")
+        self.assertEqual(compiled.root.all_unsupported[0].category, "evaluation-frontier")
         self.assertEqual(
-            compiled.unsupported[0].reason,
+            compiled.root.all_unsupported[0].reason,
             "unevaluatedProperties requires evaluated-property frontier proof support",
         )
 

@@ -78,7 +78,7 @@ def right_not_string_overlap_plan(
     context: RegexWorkContext | None = None,
 ) -> RightNotStringOverlapPlan:
     return right_not_string_overlap_plan_from_constraints(
-        lhs.string_language_constraint,
+        lhs.semantics.scalar.string_language_constraint,
         _string_language_constraint_for_node(negated_node),
         context,
     )

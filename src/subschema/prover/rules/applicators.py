@@ -250,18 +250,18 @@ def _prove_tagged_right_one_of_difference(
 
 def _rhs_has_evaluation_frontier_constraint(problem: DifferenceProblemProtocol) -> bool:
     return (
-        problem.formula.rhs.evaluation.unevaluated_properties is not None
-        or problem.formula.rhs.evaluation.unevaluated_items is not None
+        problem.formula.rhs.root.evaluation.unevaluated_properties is not None
+        or problem.formula.rhs.root.evaluation.unevaluated_items is not None
     )
 
 
 def _matching_tagged_rhs_one_of_branch(
     problem: DifferenceProblemProtocol,
 ) -> TaggedBranch | None:
-    tagged = problem.formula.rhs.tagged_one_of
+    tagged = problem.formula.rhs.semantics.applicator.tagged_one_of
     if tagged is None:
         return None
-    lhs_tag = problem.formula.lhs.required_singleton_tag(tagged.tag_name)
+    lhs_tag = problem.formula.lhs.semantics.required_singleton_tag(tagged.tag_name)
     if lhs_tag is None:
         return None
     for branch in tagged.branches:
@@ -796,7 +796,7 @@ def _prove_lhs_tuple_anyof_distribution(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult | None:
     constraint = (
-        problem.formula.lhs.semantics.array_tuple_anyof_distribution_constraint
+        problem.formula.lhs.semantics.array.array_tuple_anyof_distribution_constraint
     )
     if constraint is None:
         return None
@@ -1051,10 +1051,13 @@ def _rhs_nnf_branch_subproof(
 def _certified_array_item_against_rhs_anyof(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult | None:
-    if not problem.formula.lhs.array_item_values_fragment_constraint.lhs_supported:
+    lhs_fragment = (
+        problem.formula.lhs.semantics.array.array_item_values_fragment_constraint
+    )
+    if not lhs_fragment.lhs_supported:
         return None
     rhs_item_constraint = (
-        problem.formula.rhs.semantics.array_any_of_item_schemas_constraint
+        problem.formula.rhs.semantics.array.array_any_of_item_schemas_constraint
     )
     if rhs_item_constraint is None:
         return None

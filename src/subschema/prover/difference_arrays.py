@@ -557,7 +557,7 @@ def _constructive_witness_values_for_child_term(
         if finite:
             return tuple(finite)
 
-        numeric = child_ir.numeric_constraint
+        numeric = child_ir.semantics.scalar.numeric_constraint
         if numeric is not None:
             values: list[Any] = []
             for atom in numeric.normalized_atoms():
@@ -602,7 +602,7 @@ def _type_constraint_for_term(
     if term is None or ir is None or term.kind != "node" or term.ref is None:
         return None
     node = ir.node_for_ref(term.ref)
-    return None if node is None else ir.with_root(node).type_constraint
+    return None if node is None else ir.with_root(node).semantics.scalar.type_constraint
 
 
 def _json_number_from_fraction(value: Any) -> int | float:
@@ -817,7 +817,7 @@ class ArrayDifferenceModel:
         return (
             self.lhs_length_constraint
             or _array_length_constraint(self._lhs_constraint("array-length-lhs"))
-            or self.lhs.semantics.array_length_lhs_constraint
+            or self.lhs.semantics.array.array_length_lhs_constraint
         )
 
     @cached_property
@@ -825,7 +825,7 @@ class ArrayDifferenceModel:
         return (
             self.rhs_length_constraint
             or _array_length_constraint(self._rhs_constraint("array-length-rhs"))
-            or self.rhs.semantics.array_length_rhs_constraint
+            or self.rhs.semantics.array.array_length_rhs_constraint
         )
 
     @cached_property
@@ -833,7 +833,7 @@ class ArrayDifferenceModel:
         return (
             self.rhs_length_with_item_values_constraint
             or _array_length_constraint(self._rhs_constraint("array-length-lhs"))
-            or self.rhs.semantics.array_length_lhs_constraint
+            or self.rhs.semantics.array.array_length_lhs_constraint
         )
 
     @cached_property
@@ -843,7 +843,7 @@ class ArrayDifferenceModel:
             or _array_uniqueness_constraint(
                 self._lhs_constraint("array-uniqueness-lhs")
             )
-            or self.lhs.semantics.array_uniqueness_lhs_constraint
+            or self.lhs.semantics.array.array_uniqueness_lhs_constraint
         )
 
     @cached_property
@@ -853,7 +853,7 @@ class ArrayDifferenceModel:
             or _array_uniqueness_constraint(
                 self._rhs_constraint("array-uniqueness-rhs")
             )
-            or self.rhs.semantics.array_uniqueness_rhs_constraint
+            or self.rhs.semantics.array.array_uniqueness_rhs_constraint
         )
 
     @cached_property
@@ -874,11 +874,11 @@ class ArrayDifferenceModel:
 
     @cached_property
     def lhs_contains(self) -> ArrayContainsConstraint | None:
-        return self.lhs.array_contains_constraint
+        return self.lhs.semantics.array.array_contains_constraint
 
     @cached_property
     def rhs_contains(self) -> ArrayContainsConstraint | None:
-        return self.rhs.array_contains_constraint
+        return self.rhs.semantics.array.array_contains_constraint
 
     def unevaluated_items_difference_plan(
         self,
@@ -886,7 +886,7 @@ class ArrayDifferenceModel:
         budget: int = -1,
         expanded: bool = False,
     ) -> ArrayUnevaluatedItemsDifferencePlan:
-        constraint = self.rhs.evaluation.unevaluated_items
+        constraint = self.rhs.root.evaluation.unevaluated_items
         if constraint is None:
             return ArrayUnevaluatedItemsDifferencePlan.unsupported(
                 "SAT unevaluatedItems difference requires unevaluatedItems"
@@ -979,7 +979,7 @@ class ArrayDifferenceModel:
                 "SAT unevaluatedItems true proof currently requires an "
                 "array-only left schema"
             )
-        if not self.rhs.array_unevaluated_items_true_fragment_supported:
+        if not self.rhs.semantics.array.array_unevaluated_items_true_fragment_supported:
             return ArrayUnevaluatedItemsDifferencePlan.unsupported(
                 "SAT unevaluatedItems true proof defers non-frontier right assertions"
             )
@@ -1081,7 +1081,7 @@ class ArrayDifferenceModel:
             return ArrayUnevaluatedItemsDifferencePlan.unsupported(
                 "SAT unevaluatedItems conditioned proof requires an unevaluated term"
             )
-        if not self.rhs.array_unevaluated_items_true_fragment_supported:
+        if not self.rhs.semantics.array.array_unevaluated_items_true_fragment_supported:
             return ArrayUnevaluatedItemsDifferencePlan.unsupported(
                 "SAT unevaluatedItems conditioned proof defers non-frontier "
                 "right assertions"
@@ -1742,7 +1742,7 @@ class ArrayDifferenceModel:
             )
         if (
             lhs_shape is None
-            and self.lhs.accepts_only_type("array")
+            and self.lhs.semantics.accepts_only_type("array")
             and rhs_shape.requires_unique_items
         ):
             duplicate_plan = self.uniqueness_duplicate_witness_plan(budget=budget)
@@ -1849,16 +1849,18 @@ class ArrayDifferenceModel:
             return ArrayContainsDifferencePlan.unsupported(
                 "SAT array contains difference requires right contains constraint"
             )
-        if not self.lhs.array_contains_fragment_constraint.lhs_supported:
+        lhs_fragment = self.lhs.semantics.array.array_contains_fragment_constraint
+        if not lhs_fragment.lhs_supported:
             return ArrayContainsDifferencePlan.unsupported(
                 "left schema is outside the SAT array contains fragment"
             )
-        if not self.rhs.array_contains_fragment_constraint.rhs_supported:
+        rhs_fragment = self.rhs.semantics.array.array_contains_fragment_constraint
+        if not rhs_fragment.rhs_supported:
             return ArrayContainsDifferencePlan.unsupported(
                 "right schema is outside the SAT array contains fragment"
             )
-        lhs_array_only = self.lhs.accepts_only_type("array")
-        rhs_array_only = self.rhs.accepts_only_type("array")
+        lhs_array_only = self.lhs.semantics.accepts_only_type("array")
+        rhs_array_only = self.rhs.semantics.accepts_only_type("array")
         if not lhs_array_only or not rhs_array_only:
             return ArrayContainsDifferencePlan.unsupported(
                 "SAT array contains difference requires array-only schemas"
@@ -2480,8 +2482,8 @@ class ArrayDifferenceModel:
         *,
         budget: int = -1,
     ) -> ArrayItemValuesDifferencePlan:
-        lhs_fragment = self.lhs.array_item_values_fragment_constraint
-        rhs_fragment = self.rhs.array_item_values_fragment_constraint
+        lhs_fragment = self.lhs.semantics.array.array_item_values_fragment_constraint
+        rhs_fragment = self.rhs.semantics.array.array_item_values_fragment_constraint
         if not lhs_fragment.lhs_supported:
             return ArrayItemValuesDifferencePlan.unsupported(
                 "left schema is outside the SAT array item-values fragment"
@@ -2585,7 +2587,7 @@ class ArrayDifferenceModel:
         return self._item_values_true_plan()
 
     def _item_values_true_plan(self) -> ArrayItemValuesDifferencePlan:
-        if self.rhs.array_item_values_fragment_constraint.rhs_supported:
+        if self.rhs.semantics.array.array_item_values_fragment_constraint.rhs_supported:
             return ArrayItemValuesDifferencePlan.proved_true()
         return ArrayItemValuesDifferencePlan.unsupported(
             "right schema is outside the SAT array item-values true fragment"
@@ -2789,7 +2791,7 @@ def _conditioned_item_paths_cover_lhs(
     unevaluated_term: SchemaTerm,
     context: ProofContextProtocol,
 ) -> bool:
-    for candidate in model.lhs.semantics.array_selector_candidates:
+    for candidate in model.lhs.semantics.array.selector_candidates:
         lhs_values = inhabited_finite_values_for_term(
             candidate.term,
             model.lhs,
@@ -2815,7 +2817,7 @@ def _conditioned_item_product_work_units(
     paths: tuple[EvaluationTracePath, ...],
     upper_bound: int,
 ) -> int:
-    candidates = len(model.lhs.semantics.array_selector_candidates)
+    candidates = len(model.lhs.semantics.array.selector_candidates)
     reachable_indexes = sum(
         1
         for index in range(upper_bound)
@@ -2931,7 +2933,7 @@ def _negated_condition_excludes_array_selector_values(
     node = _condition_node(condition.children[0], ir)
     if node is None or not _array_condition_shape_is_supported(node):
         return False
-    item_model = node.semantics.array_item_model_constraint
+    item_model = node.semantics.array.array_item_model_constraint
     if item_model is None:
         return False
     for index, term in enumerate(item_model.prefix_terms):
@@ -3072,21 +3074,21 @@ def _term_is_false(term: SchemaTerm | None) -> bool:
 
 
 def _array_slots(ir: LogicalSchemaIR) -> tuple[ArraySlot, ...]:
-    item_model = ir.array_item_model_constraint
+    item_model = ir.semantics.array.array_item_model_constraint
     slots = [
         ArraySlot(
             source.index,
             source.kind,
             None if item_model is None else item_model.term_at_index(source.index),
         )
-        for source in ir.evaluation.item_sources
+        for source in ir.root.evaluation.item_sources
         if source.index is not None
     ]
     return tuple(sorted(slots, key=lambda slot: slot.index))
 
 
 def _array_tail(ir: LogicalSchemaIR) -> ArrayTail | None:
-    item_model = ir.array_item_model_constraint
+    item_model = ir.semantics.array.array_item_model_constraint
     tails = [
         ArrayTail(
             source.start_index,
@@ -3095,7 +3097,7 @@ def _array_tail(ir: LogicalSchemaIR) -> ArrayTail | None:
             if item_model is None
             else item_model.term_at_index(source.start_index),
         )
-        for source in ir.evaluation.item_sources
+        for source in ir.root.evaluation.item_sources
         if source.start_index is not None
     ]
     if not tails:
@@ -3118,7 +3120,7 @@ def _ir_rooted_at_term(term: SchemaTerm | None, ir: LogicalSchemaIR) -> LogicalS
     if term is None or term.kind != "node" or term.ref is None:
         return ir
     node = ir.node_for_ref(term.ref)
-    if node is None or not node.semantics.has_static_reference_boundary:
+    if node is None or not node.semantics.reference.has_static_reference_boundary:
         return ir
     return ir.with_root(node)
 
