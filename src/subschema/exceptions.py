@@ -1,12 +1,8 @@
-
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any, Protocol
 
 from jsonschema.exceptions import SchemaError
-
-if TYPE_CHECKING:
-    from subschema.kernel.contracts import UnsupportedDiagnostic
 
 __all__ = [
     "ConflictingDialectError",
@@ -22,6 +18,10 @@ __all__ = [
 ]
 
 
+class _UnsupportedDiagnosticLike(Protocol):
+    def format(self) -> str: ...
+
+
 class SubschemaError(Exception):
     """Base class for subschema-owned errors."""
 
@@ -34,7 +34,7 @@ class UnsupportedProofError(SubschemaError):
         reason: str,
         *,
         status: str | None = None,
-        diagnostics: tuple[UnsupportedDiagnostic, ...] = (),
+        diagnostics: tuple[_UnsupportedDiagnosticLike, ...] = (),
     ):
         self.reason = reason
         self.status = status

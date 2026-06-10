@@ -3,8 +3,8 @@ from typing import TextIO, cast
 
 from subschema.api import is_subschema
 from subschema.exceptions import UnsupportedProofError
-from subschema.kernel.json_data import strict_json_load
-from subschema.types import JSONSchema
+from subschema.json_data import strict_json_load
+from subschema.types import JSONResourceRegistry, JSONSchema
 
 
 def int_at_least_minus_one(value: str) -> int:
@@ -23,6 +23,15 @@ def load_json_file(path: str, label: str) -> JSONSchema:
             return cast(JSONSchema, strict_json_load(cast(TextIO, fh)))
         except Exception as err:
             raise SystemExit(f"{label} {err}") from err
+
+
+def load_resource_files(resource_args: list[list[str]] | None) -> JSONResourceRegistry:
+    resources: JSONResourceRegistry = {}
+    for uri, path in resource_args or []:
+        if uri in resources:
+            raise ValueError(f"duplicate resource URI {uri!r}")
+        resources[uri] = load_json_file(path, f"resource {uri!r}:")
+    return resources
 
 
 def format_unsupported_proof_error(error: UnsupportedProofError) -> str:
@@ -44,6 +53,16 @@ def main() -> None:
     parser.add_argument("--max-work", type=int_at_least_minus_one, default=None)
     parser.add_argument("--timeout-ms", type=int_at_least_minus_one, default=None)
     parser.add_argument(
+        "--resource",
+        action="append",
+        nargs=2,
+        metavar=("URI", "PATH"),
+        help=(
+            "Register an external resource schema from PATH under URI. May be "
+            "passed more than once. Resources are never fetched from the network."
+        ),
+    )
+    parser.add_argument(
         "LHS",
         metavar="lhs",
         type=str,
@@ -62,6 +81,10 @@ def main() -> None:
 
     s1 = load_json_file(s1_file_path, "LHS file:")
     s2 = load_json_file(s2_file_path, "RHS file:")
+    try:
+        resources = load_resource_files(args.resource)
+    except ValueError as err:
+        parser.error(str(err))
 
     try:
         result = is_subschema(
@@ -70,6 +93,7 @@ def main() -> None:
             endeavor=args.endeavor,
             max_work=args.max_work,
             timeout_ms=args.timeout_ms,
+            resources=resources,
         )
     except ValueError as err:
         parser.error(str(err))

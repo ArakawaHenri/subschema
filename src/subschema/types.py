@@ -7,5 +7,6 @@ type JSONValue = JSONScalar | list[JSONValue] | dict[str, JSONValue]
 type JSONArray = list[JSONValue]
 type JSONObject = dict[str, JSONValue]
 type JSONSchema = JSONValue
+type JSONResourceRegistry = dict[str, JSONSchema]
 type DialectInput = Dialect | str | None
 type SchemaPath = tuple[str, ...]
