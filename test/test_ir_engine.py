@@ -295,6 +295,19 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIs(child_ir.document, compiled.document)
         self.assertIs(child_ir.root, child)
         self.assertEqual(child_ir.source.pointer, ("allOf", "0"))
+        self.assertIs(
+            child_ir.document.cache_identity,
+            compiled.document.cache_identity,
+        )
+
+    def test_compiled_documents_have_stable_cache_identities(self):
+        schema = {"allOf": [{"type": "integer"}]}
+
+        first = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+        second = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        self.assertIs(first.document.cache_identity, first.document.cache_identity)
+        self.assertIsNot(first.document.cache_identity, second.document.cache_identity)
 
     def test_non_root_term_subproof_uses_source_aware_confirmation(self):
         schema = {"allOf": [{"type": "integer"}, {"type": "number"}]}

@@ -444,6 +444,24 @@ def test_prover_uses_grouped_ir_fact_access():
     )
 
 
+def test_ir_document_cache_keys_do_not_use_python_object_ids():
+    pattern = re.compile(r"id\([^\n]*(?:\.document|document)[^\n]*\)")
+    violations: list[str] = []
+
+    for root in (IR_ROOT, PROVER_ROOT):
+        for path in sorted(root.rglob("*.py")):
+            for lineno, line in enumerate(path.read_text().splitlines(), start=1):
+                if pattern.search(line):
+                    violations.append(
+                        f"{path.relative_to(REPO_ROOT)}:{lineno}: {line.strip()}"
+                    )
+
+    assert not violations, (
+        "IR/prover cache keys must use SchemaDocumentIR.cache_identity instead of "
+        "Python object ids:\n" + "\n".join(violations)
+    )
+
+
 def test_ir_package_does_not_import_runtime_packages():
     forbidden_prefixes = (
         "subschema.compiler",

@@ -176,7 +176,7 @@ def _context_cache(context: Any) -> dict[tuple[object, ...], object] | None:
 def _finite_inhabitants_cache_key(ir: LogicalSchemaIR) -> tuple[object, ...]:
     return (
         "inhabited-finite-values",
-        id(ir.document),
+        ir.document.cache_identity,
         ir.root_ref,
     )
 
@@ -187,7 +187,7 @@ def _finite_term_inhabitants_cache_key(
 ) -> tuple[object, ...]:
     return (
         "inhabited-finite-term-values",
-        id(ir.document),
+        ir.document.cache_identity,
         term,
     )
 

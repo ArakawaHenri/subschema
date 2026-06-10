@@ -76,6 +76,11 @@ class SchemaDocumentIR:
     source: SchemaSource
     root_ref: SchemaNodeRef
     nodes: Mapping[SchemaNodeRef, SchemaNode] = field(default_factory=dict)
+    cache_identity: object = field(
+        default_factory=object,
+        compare=False,
+        repr=False,
+    )
 
     @property
     def root(self) -> SchemaNode:

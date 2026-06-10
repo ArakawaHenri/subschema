@@ -165,9 +165,9 @@ class ProofContext:
             *self.proof_policy_identity,
             self.resource_registry_identity,
             "ir",
-            id(lhs.document),
+            lhs.document.cache_identity,
             lhs.root_ref,
-            id(rhs.document),
+            rhs.document.cache_identity,
             rhs.root_ref,
         )
 
@@ -191,10 +191,10 @@ class ProofContext:
             *self.proof_policy_identity,
             self.resource_registry_identity,
             "terms",
-            id(lhs_ir.document),
+            lhs_ir.document.cache_identity,
             lhs_ir.root_ref,
             lhs,
-            id(rhs_ir.document),
+            rhs_ir.document.cache_identity,
             rhs_ir.root_ref,
             rhs,
         )

@@ -782,7 +782,7 @@ def _store_witness(
 def _ir_witness_cache_key(ir: LogicalSchemaIR) -> tuple[object, ...]:
     return (
         "ir-witness",
-        id(ir.document),
+        ir.document.cache_identity,
         ir.root_ref,
     )
 
@@ -797,10 +797,10 @@ def _term_witness_cache_key(
     return (
         "term-witness",
         term,
-        id(parent_ir.document),
+        parent_ir.document.cache_identity,
         parent_ir.root_ref,
-        None if lhs_ir is None else id(lhs_ir.document),
+        None if lhs_ir is None else lhs_ir.document.cache_identity,
         None if lhs_ir is None else lhs_ir.root_ref,
-        None if rhs_ir is None else id(rhs_ir.document),
+        None if rhs_ir is None else rhs_ir.document.cache_identity,
         None if rhs_ir is None else rhs_ir.root_ref,
     )

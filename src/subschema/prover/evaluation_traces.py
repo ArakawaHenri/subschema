@@ -841,7 +841,7 @@ def _evaluation_expression_cache_key(
     context: EvaluationTraceContext,
 ) -> tuple[Any, ...]:
     return (
-        id(ir.document),
+        ir.document.cache_identity,
         node.ref,
         lhs_term,
         *context.proof_policy_identity,
