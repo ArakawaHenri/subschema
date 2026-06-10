@@ -1,9 +1,9 @@
-import subschema.kernel.regex as regex_module
+import subschema.regex as regex_module
 
 from subschema.dialects import Dialect
-from subschema.kernel import ProofBudgets, ProofContext, ProofOptions, ProofResult
-from subschema.kernel.regex import RegexLanguage
-from subschema.kernel.validation import validation_backend_for
+from subschema.prover import ProofBudgets, ProofContext, ProofOptions, ProofResult
+from subschema.regex import RegexLanguage
+from subschema.validator import validation_backend_for
 
 
 def test_regex_language_uses_json_unanchored_semantics():
@@ -264,7 +264,7 @@ def test_regex_language_ecma_hex_unicode_literals_match_validation_backend():
 
 def test_regex_language_spends_proof_work_units():
     context = ProofContext(Dialect.DRAFT7, ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0)))
-    a_prefix = RegexLanguage.from_json_regex("^a")
+    a_prefix = RegexLanguage.from_json_regex("^(a|aa)")
     b_prefix = RegexLanguage.from_json_regex("^b")
 
     assert a_prefix is not None
@@ -288,6 +288,86 @@ def test_regex_language_short_circuits_identity_operations_without_budget():
     assert a_prefix.difference(RegexLanguage.empty(), context) is a_prefix
     assert RegexLanguage.empty().intersection(a_prefix, context).is_empty()
     assert a_prefix.difference(RegexLanguage.all(), context).is_empty()
+
+
+def test_regex_language_short_circuits_equal_patterns_without_fsm(monkeypatch):
+    def fail_fsm(_pattern):
+        raise AssertionError("equal regex language checks should not build an FSM")
+
+    pattern = (
+        r"^ni:///sha-256;([a-zA-Z0-9_-]{0,86})[?]"
+        r"(fpt=ed25519-sha-256(&)?|cost=[0-9]+(&)?|"
+        r"subtypes=ed25519-sha-256(&)?){2,3}$"
+    )
+    lhs = RegexLanguage.from_json_regex(pattern)
+    rhs = RegexLanguage.from_json_regex(pattern)
+    context = ProofContext(
+        Dialect.DRAFT7,
+        ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0)),
+    )
+    monkeypatch.setattr(regex_module, "_pattern_fsm", fail_fsm)
+
+    assert not isinstance(lhs, ProofResult)
+    assert not isinstance(rhs, ProofResult)
+    assert lhs.is_subset_of(rhs, context) is True
+    assert lhs.equivalent_to(rhs, context) is True
+    assert lhs.is_disjoint_from(rhs, context) is False
+
+
+def test_regex_language_short_circuits_literal_relations_without_fsm(monkeypatch):
+    def fail_fsm(_pattern):
+        raise AssertionError("literal regex relation fast path should not build an FSM")
+
+    context = ProofContext(
+        Dialect.DRAFT7,
+        ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0)),
+    )
+    exact = RegexLanguage.from_json_regex(r"^ed25519\x2dsha\x2d256$")
+    exact_equivalent = RegexLanguage.from_json_regex("^ed25519-sha-256$")
+    prefix = RegexLanguage.from_json_regex("^ed25519")
+    other_prefix = RegexLanguage.from_json_regex("^threshold")
+
+    assert not isinstance(exact, ProofResult)
+    assert not isinstance(exact_equivalent, ProofResult)
+    assert not isinstance(prefix, ProofResult)
+    assert not isinstance(other_prefix, ProofResult)
+    monkeypatch.setattr(regex_module, "_pattern_fsm", fail_fsm)
+
+    assert exact.equivalent_to(exact_equivalent, context) is True
+    assert exact.is_subset_of(prefix, context) is True
+    assert prefix.is_subset_of(exact, context) is False
+    assert prefix.is_disjoint_from(other_prefix, context) is True
+
+
+def test_regex_language_short_circuits_charclass_repeat_relations_without_fsm(
+    monkeypatch,
+):
+    def fail_fsm(_pattern):
+        raise AssertionError(
+            "charclass repeat regex relation fast path should not build an FSM"
+        )
+
+    context = ProofContext(
+        Dialect.DRAFT7,
+        ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0)),
+    )
+    hex_64 = RegexLanguage.from_json_regex(r"^[0-9a-f]{64}$")
+    hex_bounded = RegexLanguage.from_json_regex(r"^[0-9a-f]{1,128}$")
+    digits_range = RegexLanguage.from_json_regex(r"^[0-9]{1,20}$")
+    digits_escape_range = RegexLanguage.from_json_regex(r"^\d{1,20}$")
+    letters = RegexLanguage.from_json_regex(r"^[g-z]{64}$")
+
+    assert not isinstance(hex_64, ProofResult)
+    assert not isinstance(hex_bounded, ProofResult)
+    assert not isinstance(digits_range, ProofResult)
+    assert not isinstance(digits_escape_range, ProofResult)
+    assert not isinstance(letters, ProofResult)
+    monkeypatch.setattr(regex_module, "_pattern_fsm", fail_fsm)
+
+    assert hex_64.is_subset_of(hex_bounded, context) is True
+    assert hex_bounded.is_subset_of(hex_64, context) is False
+    assert digits_range.equivalent_to(digits_escape_range, context) is True
+    assert hex_64.is_disjoint_from(letters, context) is True
 
 
 def test_regex_language_large_regular_product_uses_work_budget():

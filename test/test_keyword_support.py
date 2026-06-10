@@ -4,13 +4,14 @@ from typing import Any
 import pytest
 
 from subschema import Dialect
+from test.proof_oracle import proof_engine_for_schemas
 from subschema.dialects import (
     KeywordCategory,
     keyword_category,
     known_keywords_for_dialect,
     validate_supported_keywords,
 )
-from subschema.kernel import ProofEngine, ProofOptions
+from subschema.prover import ProofOptions
 from test.proof_oracle import (
     assert_concrete_evaluator_matches_validator,
     assert_proved,
@@ -974,7 +975,7 @@ def test_required_format_assertion_vocabulary_remains_unsupported():
         "format": "email",
         "type": "string",
     }
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         {"type": "string"},
         schema,
         dialect=Dialect.DRAFT202012,
@@ -986,6 +987,62 @@ def test_required_format_assertion_vocabulary_remains_unsupported():
     assert proof.status == "unsupported"
     assert "format-assertion" in proof.reason
     assert proof.diagnostics[0].category == "format-assertion"
+
+
+def test_required_content_vocabulary_remains_annotation_only(monkeypatch):
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$vocabulary": {
+            "https://json-schema.org/draft/2020-12/vocab/content": True,
+        },
+        "contentEncoding": "base64",
+        "contentMediaType": "application/json",
+        "contentSchema": {"type": "object", "required": ["x"]},
+        "type": "string",
+    }
+
+    assert_proved({"type": "string"}, rhs, Dialect.DRAFT202012, monkeypatch)
+    assert_concrete_evaluator_matches_validator(
+        rhs,
+        ("not base64", "eyJ4IjoxfQ==", 1),
+        Dialect.DRAFT202012,
+    )
+
+
+def test_required_format_annotation_vocabulary_remains_annotation_only(monkeypatch):
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$vocabulary": {
+            "https://json-schema.org/draft/2020-12/vocab/format-annotation": True,
+        },
+        "format": "email",
+        "type": "string",
+    }
+
+    assert_proved({"type": "string"}, rhs, Dialect.DRAFT202012, monkeypatch)
+    assert_concrete_evaluator_matches_validator(
+        rhs,
+        ("not an email", "user@example.com", 1),
+        Dialect.DRAFT202012,
+    )
+
+
+def test_optional_format_assertion_vocabulary_remains_annotation_only(monkeypatch):
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$vocabulary": {
+            "https://json-schema.org/draft/2020-12/vocab/format-assertion": False,
+        },
+        "format": "email",
+        "type": "string",
+    }
+
+    assert_proved({"type": "string"}, rhs, Dialect.DRAFT202012, monkeypatch)
+    assert_concrete_evaluator_matches_validator(
+        rhs,
+        ("not an email", "user@example.com", 1),
+        Dialect.DRAFT202012,
+    )
 
 
 @pytest.mark.parametrize("case", EXACT_PROOF_CASES, ids=lambda case: case.keyword)
@@ -1154,7 +1211,7 @@ def test_keyword_acyclic_dynamic_ref_proves_and_recursive_dynamic_ref_stays_unsu
         "$dynamicAnchor": "node",
         "allOf": [{"$dynamicRef": "#node"}],
     }
-    proof = ProofEngine.for_schemas(
+    proof = proof_engine_for_schemas(
         {"type": "object"},
         recursive,
         dialect=Dialect.DRAFT202012,
@@ -1215,7 +1272,7 @@ def test_keyword_ambiguous_unevaluated_branch_effect_stays_unsupported_with_mode
         ],
         "unevaluatedProperties": False,
     }
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         {"type": "object"},
         rhs,
         dialect=Dialect.DRAFT202012,
@@ -1225,7 +1282,7 @@ def test_keyword_ambiguous_unevaluated_branch_effect_stays_unsupported_with_mode
     proof = engine.is_subschema({"type": "object"}, rhs)
 
     assert proof.status == "unsupported"
-    assert "branch-aware anyOf effects" in proof.reason
+    assert "branch-conditioned evaluation trace paths" in proof.reason
 
 
 def test_annotation_transparency_does_not_force_complex_object_product_into_default_exact_solver():
@@ -1245,7 +1302,7 @@ def test_annotation_transparency_does_not_force_complex_object_product_into_defa
         "additionalProperties": {"type": "boolean"},
     }
 
-    proof = ProofEngine.for_schemas(
+    proof = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT7,
@@ -1258,7 +1315,7 @@ def test_annotation_transparency_does_not_force_complex_object_product_into_defa
 
 
 def _proof_without_generic_search_path(lhs, rhs, dialect, monkeypatch):
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=dialect,

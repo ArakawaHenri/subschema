@@ -1,11 +1,13 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
 from itertools import product
 from typing import Any
 
+from subschema.api import _proof_engine_for_schemas as proof_engine_for_schemas
 from subschema.dialects import Dialect
-from subschema.kernel import ProofEngine
-from subschema.kernel.validation import validation_backend_for
-from subschema.kernel.values import dedupe
+from subschema.contracts import ProofResult, certificate_is_verifiable
+from subschema.validator import validation_backend_for
+from subschema.values import dedupe
 from test.semantic_oracle import ConcreteEvaluator
 
 
@@ -71,6 +73,86 @@ class _BackendOracleValidator:
         return validation_backend_for(self.dialect).is_valid(self.schema, instance)
 
 
+def backend_is_valid(
+    schema: Any,
+    instance: Any,
+    dialect: Dialect = Dialect.DRAFT202012,
+) -> bool:
+    return validation_backend_for(dialect).is_valid(schema, instance)
+
+
+def finite_universe_counterexample(
+    lhs: Any,
+    rhs: Any,
+    dialect: Dialect = Dialect.DRAFT202012,
+    universe: Iterable[Any] | None = None,
+) -> Any | None:
+    for instance in SMALL_JSON_UNIVERSE if universe is None else universe:
+        if backend_is_valid(lhs, instance, dialect) and not backend_is_valid(
+            rhs, instance, dialect
+        ):
+            return instance
+    return None
+
+
+def finite_universe_shared_instance(
+    lhs: Any,
+    rhs: Any,
+    dialect: Dialect = Dialect.DRAFT202012,
+    universe: Iterable[Any] | None = None,
+) -> Any | None:
+    for instance in SMALL_JSON_UNIVERSE if universe is None else universe:
+        if backend_is_valid(lhs, instance, dialect) and backend_is_valid(
+            rhs, instance, dialect
+        ):
+            return instance
+    return None
+
+
+def finite_universe_schema_instance(
+    schema: Any,
+    dialect: Dialect = Dialect.DRAFT202012,
+    universe: Iterable[Any] | None = None,
+) -> Any | None:
+    for instance in SMALL_JSON_UNIVERSE if universe is None else universe:
+        if backend_is_valid(schema, instance, dialect):
+            return instance
+    return None
+
+
+def finite_universe_coverage_counterexample(
+    lhs: Any,
+    rhs_alternatives: Iterable[Any],
+    dialect: Dialect = Dialect.DRAFT202012,
+    universe: Iterable[Any] | None = None,
+) -> Any | None:
+    alternatives = tuple(rhs_alternatives)
+    for instance in SMALL_JSON_UNIVERSE if universe is None else universe:
+        if backend_is_valid(lhs, instance, dialect) and not any(
+            backend_is_valid(rhs, instance, dialect) for rhs in alternatives
+        ):
+            return instance
+    return None
+
+
+def assert_proved_false_result_is_confirmed(
+    lhs: Any,
+    rhs: Any,
+    proof: ProofResult,
+    dialect: Dialect = Dialect.DRAFT202012,
+) -> None:
+    if proof.certificate is not None:
+        assert certificate_is_verifiable(proof.certificate), proof
+        return
+    if backend_is_valid(lhs, proof.witness, dialect) and not backend_is_valid(
+        rhs,
+        proof.witness,
+        dialect,
+    ):
+        return
+    raise AssertionError(f"proved_false result is not confirmed: {proof!r}")
+
+
 def assert_concrete_evaluator_matches_validator(
     schema: Any,
     instances: tuple[Any, ...] | list[Any],
@@ -115,7 +197,7 @@ def assert_witness_validates(lhs: Any, rhs: Any, dialect: Dialect, witness: Any)
 
 
 def assert_proved_subschema(lhs: Any, rhs: Any, dialect: Dialect) -> None:
-    proof = ProofEngine.for_schemas(lhs, rhs, dialect=dialect).is_subschema(
+    proof = proof_engine_for_schemas(lhs, rhs, dialect=dialect).is_subschema(
         lhs,
         rhs,
     )
@@ -129,7 +211,7 @@ def assert_proved(
     monkeypatch: Any | None = None,
 ) -> None:
     _ = monkeypatch
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=dialect)
+    engine = proof_engine_for_schemas(lhs, rhs, dialect=dialect)
 
     proof = engine.is_subschema(lhs, rhs)
 

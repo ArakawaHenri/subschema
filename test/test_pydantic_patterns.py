@@ -117,39 +117,62 @@ def test_unevaluated_boundaries_remain_unsupported():
         "patternProperties": {"^a": {"type": "number"}},
         "additionalProperties": False,
     }
-    object_with_schema_valued_unevaluated = {
+    with pytest.raises(UnsupportedProofError):
+        is_subschema(object_with_pattern, object_rhs, dialect=Dialect.DRAFT202012)
+
+
+def test_schema_valued_unevaluated_properties_project_to_simple_open_tail():
+    lhs = {
         "type": "object",
         "properties": {"id": {"type": "integer"}},
         "unevaluatedProperties": {"type": "integer"},
     }
-    array_with_schema_valued_unevaluated = {
+
+    assert not is_subschema(
+        lhs,
+        {
+            "type": "object",
+            "properties": {"id": {"type": "integer"}},
+            "additionalProperties": False,
+        },
+        dialect=Dialect.DRAFT202012,
+    )
+    assert is_subschema(
+        lhs,
+        {
+            "type": "object",
+            "properties": {"id": {"type": "number"}},
+            "additionalProperties": {"type": "number"},
+        },
+        dialect=Dialect.DRAFT202012,
+    )
+
+
+def test_schema_valued_unevaluated_items_project_to_simple_tail_items():
+    lhs = {
         "type": "array",
         "prefixItems": [{"type": "integer"}],
         "unevaluatedItems": {"type": "integer"},
     }
 
-    with pytest.raises(UnsupportedProofError):
-        is_subschema(object_with_pattern, object_rhs, dialect=Dialect.DRAFT202012)
-    with pytest.raises(UnsupportedProofError):
-        is_subschema(
-            object_with_schema_valued_unevaluated,
-            {
-                "type": "object",
-                "properties": {"id": {"type": "integer"}},
-                "additionalProperties": False,
-            },
-            dialect=Dialect.DRAFT202012,
-        )
-    with pytest.raises(UnsupportedProofError):
-        is_subschema(
-            array_with_schema_valued_unevaluated,
-            {
-                "type": "array",
-                "prefixItems": [{"type": "integer"}],
-                "items": False,
-            },
-            dialect=Dialect.DRAFT202012,
-        )
+    assert not is_subschema(
+        lhs,
+        {
+            "type": "array",
+            "prefixItems": [{"type": "integer"}],
+            "items": False,
+        },
+        dialect=Dialect.DRAFT202012,
+    )
+    assert is_subschema(
+        lhs,
+        {
+            "type": "array",
+            "prefixItems": [{"type": "number"}],
+            "items": {"type": "number"},
+        },
+        dialect=Dialect.DRAFT202012,
+    )
 
 
 def test_const_tagged_pydantic_one_of_is_covered_by_matching_branch():

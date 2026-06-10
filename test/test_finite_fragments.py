@@ -1,7 +1,7 @@
 import pytest
 
 from subschema import Dialect, UnsupportedProofError, is_disjoint, is_subschema
-from subschema.kernel import ProofEngine
+from test.proof_oracle import proof_engine_for_schemas
 from test.proof_oracle import assert_witness_validates
 
 
@@ -88,7 +88,7 @@ def test_closed_finite_object_subproofs_cover_common_fields_and_forbidden_keys()
     }
 
     assert is_subschema(true_lhs, true_rhs)
-    proof = ProofEngine.for_schemas(false_lhs, false_rhs).is_subschema(
+    proof = proof_engine_for_schemas(false_lhs, false_rhs).is_subschema(
         false_lhs, false_rhs
     )
 
@@ -111,7 +111,7 @@ def test_fixed_finite_arrays_prove_per_index_item_obligations():
     false_rhs = {"type": "array", "items": {"type": "integer"}}
 
     assert is_subschema(true_lhs, true_rhs)
-    proof = ProofEngine.for_schemas(false_lhs, false_rhs).is_subschema(
+    proof = proof_engine_for_schemas(false_lhs, false_rhs).is_subschema(
         false_lhs, false_rhs
     )
 

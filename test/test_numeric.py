@@ -1,7 +1,29 @@
 import unittest
 
-from subschema import Dialect, is_subschema
+from subschema import Dialect, is_disjoint, is_equivalent, is_subschema
 from subschema.exceptions import SchemaError
+
+
+class TestJSONNumberSemantics(unittest.TestCase):
+
+    def test_negative_zero_is_json_equal_to_zero(self):
+        with self.subTest("negative zero is a subtype of zero"):
+            self.assertTrue(is_subschema({"const": -0.0}, {"const": 0}))
+        with self.subTest("zero is a subtype of negative zero"):
+            self.assertTrue(is_subschema({"const": 0}, {"const": -0.0}))
+        with self.subTest("negative zero and zero are equivalent"):
+            self.assertTrue(is_equivalent({"const": -0.0}, {"const": 0}))
+
+    def test_integer_valued_float_is_an_integer_instance(self):
+        with self.subTest("const"):
+            self.assertTrue(is_subschema({"const": 1.0}, {"type": "integer"}))
+        with self.subTest("enum"):
+            self.assertTrue(is_subschema({"enum": [1.0]}, {"type": "integer"}))
+        with self.subTest("overlap"):
+            self.assertFalse(is_disjoint({"const": 1.0}, {"type": "integer"}))
+
+    def test_non_integer_float_is_not_an_integer_instance(self):
+        self.assertFalse(is_subschema({"const": 1.5}, {"type": "integer"}))
 
 
 class TestIntegerSubtype(unittest.TestCase):

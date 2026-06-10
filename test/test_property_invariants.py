@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from hypothesis import assume, given, settings
-from hypothesis import strategies as st
 
 from subschema import (
+    Dialect,
     UnsupportedProofError,
     is_disjoint,
     is_empty,
@@ -14,208 +13,13 @@ from subschema import (
     join_schemas,
     meet_schemas,
 )
-
-
-JSON_EXAMPLES: tuple[Any, ...] = (None, True, False, -1, 0, 1, "", "a", "b")
-TYPE_SCHEMAS = (
-    {"type": "null"},
-    {"type": "boolean"},
-    {"type": "integer"},
-    {"type": "number"},
-    {"type": "string"},
-    {"type": "array"},
-    {"type": "object"},
+from test.proof_oracle import proof_engine_for_schemas
+from test.proof_oracle import (
+    assert_proved_false_result_is_confirmed,
+    finite_universe_counterexample,
+    finite_universe_shared_instance,
 )
-STRING_PATTERNS = ("", "^a$", "^[ab]{0,2}$", r"[\s\S]")
-
-
-def stable_json_key(value: Any) -> str:
-    return json.dumps(value, allow_nan=False, sort_keys=True, separators=(",", ":"))
-
-
-@st.composite
-def simple_schema(draw: st.DrawFn) -> Any:
-    return draw(
-        st.one_of(
-            st.booleans(),
-            st.sampled_from(TYPE_SCHEMAS).map(dict),
-            _const_schema(),
-            _enum_schema(),
-            _numeric_schema(),
-            _string_schema(),
-            _closed_object_schema(),
-            _fixed_tuple_schema(),
-        )
-    )
-
-
-def covered_schema() -> st.SearchStrategy[Any]:
-    return st.recursive(
-        simple_schema(),
-        lambda children: st.one_of(
-            _all_of_schema(children),
-            _any_of_schema(children),
-            _finite_one_of_schema(),
-            _nested_closed_object_schema(children),
-            _nested_fixed_tuple_schema(children),
-        ),
-        max_leaves=8,
-    )
-
-
-def _const_schema() -> st.SearchStrategy[dict[str, Any]]:
-    return st.sampled_from(JSON_EXAMPLES).map(lambda value: {"const": value})
-
-
-def _enum_schema() -> st.SearchStrategy[dict[str, Any]]:
-    return st.lists(
-        st.sampled_from(JSON_EXAMPLES),
-        min_size=1,
-        max_size=3,
-        unique_by=stable_json_key,
-    ).map(lambda values: {"enum": values})
-
-
-@st.composite
-def _numeric_schema(draw: st.DrawFn) -> dict[str, Any]:
-    lower = draw(st.integers(min_value=-3, max_value=3))
-    upper = draw(st.integers(min_value=lower, max_value=4))
-    schema: dict[str, Any] = {
-        "type": draw(st.sampled_from(("integer", "number"))),
-        "minimum": lower,
-        "maximum": upper,
-    }
-    if draw(st.booleans()):
-        schema["multipleOf"] = draw(st.sampled_from((1, 2)))
-    return schema
-
-
-@st.composite
-def _string_schema(draw: st.DrawFn) -> dict[str, Any]:
-    min_length = draw(st.integers(min_value=0, max_value=2))
-    max_length = draw(st.integers(min_value=min_length, max_value=3))
-    schema: dict[str, Any] = {
-        "type": "string",
-        "minLength": min_length,
-        "maxLength": max_length,
-    }
-    if draw(st.booleans()):
-        schema["pattern"] = draw(st.sampled_from(STRING_PATTERNS))
-    return schema
-
-
-@st.composite
-def _closed_object_schema(draw: st.DrawFn) -> dict[str, Any]:
-    property_names = draw(
-        st.lists(st.sampled_from(("a", "b")), unique=True, max_size=2)
-    )
-    properties = {
-        name: draw(st.sampled_from(TYPE_SCHEMAS).map(dict))
-        for name in property_names
-    }
-    required_strategy = (
-        st.lists(st.sampled_from(property_names), unique=True)
-        if property_names
-        else st.just([])
-    )
-    required = draw(required_strategy)
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": required,
-        "additionalProperties": False,
-    }
-
-
-@st.composite
-def _fixed_tuple_schema(draw: st.DrawFn) -> dict[str, Any]:
-    item_schemas = draw(
-        st.lists(st.sampled_from(TYPE_SCHEMAS).map(dict), min_size=0, max_size=3)
-    )
-    length = len(item_schemas)
-    if length == 0:
-        return {
-            "type": "array",
-            "items": False,
-            "minItems": 0,
-            "maxItems": 0,
-        }
-    return {
-        "type": "array",
-        "prefixItems": item_schemas,
-        "items": False,
-        "minItems": length,
-        "maxItems": length,
-    }
-
-
-def _all_of_schema(
-    children: st.SearchStrategy[Any],
-) -> st.SearchStrategy[dict[str, Any]]:
-    return st.lists(children, min_size=1, max_size=3).map(
-        lambda schemas: {"allOf": schemas}
-    )
-
-
-def _any_of_schema(
-    children: st.SearchStrategy[Any],
-) -> st.SearchStrategy[dict[str, Any]]:
-    return st.lists(children, min_size=1, max_size=3).map(
-        lambda schemas: {"anyOf": schemas}
-    )
-
-
-def _finite_one_of_schema() -> st.SearchStrategy[dict[str, Any]]:
-    return st.lists(
-        st.sampled_from(JSON_EXAMPLES),
-        min_size=1,
-        max_size=3,
-        unique_by=stable_json_key,
-    ).map(lambda values: {"oneOf": [{"const": value} for value in values]})
-
-
-@st.composite
-def _nested_closed_object_schema(
-    draw: st.DrawFn, children: st.SearchStrategy[Any]
-) -> dict[str, Any]:
-    property_names = draw(
-        st.lists(st.sampled_from(("a", "b")), unique=True, max_size=2)
-    )
-    properties = {name: draw(children) for name in property_names}
-    required_strategy = (
-        st.lists(st.sampled_from(property_names), unique=True)
-        if property_names
-        else st.just([])
-    )
-    required = draw(required_strategy)
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": required,
-        "additionalProperties": False,
-    }
-
-
-@st.composite
-def _nested_fixed_tuple_schema(
-    draw: st.DrawFn, children: st.SearchStrategy[Any]
-) -> dict[str, Any]:
-    item_schemas = draw(st.lists(children, min_size=0, max_size=3))
-    length = len(item_schemas)
-    if length == 0:
-        return {
-            "type": "array",
-            "items": False,
-            "minItems": 0,
-            "maxItems": 0,
-        }
-    return {
-        "type": "array",
-        "prefixItems": item_schemas,
-        "items": False,
-        "minItems": length,
-        "maxItems": length,
-    }
+from test.schema_strategies import covered_schema, simple_schema
 
 
 @given(simple_schema())
@@ -258,6 +62,73 @@ def test_disjointness_matches_all_of_emptiness(lhs: Any, rhs: Any) -> None:
 @settings(max_examples=200, deadline=None)
 def test_covered_schema_reflexivity(schema: Any) -> None:
     assert is_subschema(schema, schema)
+
+
+@given(simple_schema(), simple_schema())
+@settings(max_examples=150, deadline=None)
+def test_all_of_strengthening_is_monotone(base: Any, restriction: Any) -> None:
+    assert is_subschema({"allOf": [base, restriction]}, base)
+
+
+@given(simple_schema(), simple_schema())
+@settings(max_examples=150, deadline=None)
+def test_any_of_weakening_is_monotone(base: Any, alternative: Any) -> None:
+    assert is_subschema(base, {"anyOf": [base, alternative]})
+
+
+@given(covered_schema(), covered_schema())
+@settings(max_examples=120, deadline=None)
+def test_proved_subschema_has_no_small_counterexample(lhs: Any, rhs: Any) -> None:
+    try:
+        result = is_subschema(lhs, rhs)
+    except UnsupportedProofError:
+        assume(False)
+
+    if result:
+        assert finite_universe_counterexample(lhs, rhs) is None
+
+
+@given(covered_schema(), covered_schema())
+@settings(max_examples=180, deadline=None)
+def test_generated_proved_false_results_are_confirmed(
+    lhs: Any, rhs: Any
+) -> None:
+    proof = proof_engine_for_schemas(
+        lhs, rhs, dialect=Dialect.DRAFT202012
+    ).is_subschema(lhs, rhs)
+
+    if proof.status == "proved_false":
+        assert_proved_false_result_is_confirmed(lhs, rhs, proof)
+
+
+def test_large_array_false_certificate_is_verifiable() -> None:
+    lhs = {
+        "type": "array",
+        "minItems": 10_000,
+        "items": {"type": "string"},
+    }
+    rhs = {"type": "array", "items": {"type": "integer"}}
+
+    proof = proof_engine_for_schemas(
+        lhs, rhs, dialect=Dialect.DRAFT202012
+    ).is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_false"
+    assert proof.witness is None
+    assert proof.certificate is not None
+    assert_proved_false_result_is_confirmed(lhs, rhs, proof)
+
+
+@given(covered_schema(), covered_schema())
+@settings(max_examples=120, deadline=None)
+def test_proved_disjointness_has_no_small_shared_instance(lhs: Any, rhs: Any) -> None:
+    try:
+        result = is_disjoint(lhs, rhs)
+    except UnsupportedProofError:
+        assume(False)
+
+    if result:
+        assert finite_universe_shared_instance(lhs, rhs) is None
 
 
 @given(covered_schema(), covered_schema())

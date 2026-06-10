@@ -1,38 +1,55 @@
 import inspect
 import unittest
 from functools import cached_property
+from typing import Any
 from unittest.mock import patch
 
 import subschema.api as public_api
-import subschema.kernel.applicators as applicators_module
-import subschema.kernel.constraints as constraints_module
-import subschema.kernel.context as context_module
-import subschema.kernel.contracts as contracts_module
-import subschema.kernel.difference as difference_module
-import subschema.kernel.disjointness as disjointness_module
-import subschema.kernel.driver as driver_module
-import subschema.kernel.engine as engine_module
-import subschema.kernel.evaluation as evaluation_module
-import subschema.kernel.evaluation_traces as evaluation_traces_module
-import subschema.kernel.formulas as formulas_module
-import subschema.kernel.ir as ir_module
-import subschema.kernel.normalization as normalization_module
-import subschema.kernel.overlaps as overlaps_module
-import subschema.kernel.references as references_module
-import subschema.kernel.regex as regex_module
-import subschema.kernel.scalars as scalars_module
-import subschema.kernel.sat as sat_module
-import subschema.kernel.symbolic as symbolic_module
-import subschema.kernel.validation as validation_module
-import subschema.kernel.witnesses as witnesses_module
-import subschema.kernel.domains.arrays as arrays_module
-import subschema.kernel.domains.numbers as numbers_module
-import subschema.kernel.domains.objects as objects_module
-import subschema.kernel.domains.strings as strings_module
-import subschema.kernel.domains.types as types_module
+from subschema.api import _difference_formula_from_schemas as difference_formula_from_schemas
+import subschema.compiler.normalization as compiler_normalization_module
+import subschema.compiler.semantics as semantics_module
+import subschema.prover.applicators as applicators_module
+import subschema.ir.constraints as constraints_module
+import subschema.prover.context as context_module
+import subschema.prover.confirmation as confirmation_module
+import subschema.contracts as contracts_module
+import subschema.prover.difference as difference_module
+import subschema.prover.difference_arrays as difference_arrays_module
+import subschema.prover.difference_objects as difference_objects_module
+import subschema.prover.driver as driver_module
+import subschema.prover.engine as engine_module
+import subschema.ir.evaluation as evaluation_module
+import subschema.prover.evaluation_traces as evaluation_traces_module
+import subschema.prover.finite as finite_module
+import subschema.prover.formulas as formulas_module
+import subschema.ir as ir_module
+import subschema.validator.normalization as normalization_module
+import subschema.prover.overlaps as overlaps_module
+import subschema.compiler.resources as references_module
+import subschema.regex as regex_module
+import subschema.prover.rules.applicators as applicator_rules_module
+import subschema.prover.rules.arrays as array_rules_module
+import subschema.prover.rules.objects as object_rules_module
+import subschema.prover.rules.scalars as scalar_rules_module
+import subschema.prover.scalars as scalars_module
+import subschema.prover.sat as sat_module
+import subschema.symbolic as symbolic_module
+import subschema.validator.core as validation_module
+import subschema.prover.witnesses as witnesses_module
+import subschema.compiler.domains.arrays as arrays_module
+import subschema.compiler.domains.numbers as numbers_module
+import subschema.compiler.domains.objects as objects_module
+import subschema.compiler.domains.strings as strings_module
+import subschema.compiler.domains.types as types_module
+from subschema.compiler.ir import SchemaIRCompiler
+from subschema.api import (
+    _proof_engine as proof_engine,
+    _proof_engine_for_schemas as proof_engine_for_schemas,
+    _schemas_are_disjoint as schemas_are_disjoint,
+)
 from subschema.exceptions import UnsupportedKeywordError
-from subschema.kernel.values import json_semantic_key
-from subschema.kernel.applicators import (
+from subschema.values import json_semantic_key
+from subschema.prover.applicators import (
     ApplicatorBaseProduct,
     ApplicatorBranchPlan,
     ApplicatorBranchProduct,
@@ -69,34 +86,24 @@ from subschema.kernel.applicators import (
     conditional_final_proof_choice,
     left_all_of_branch_proof_choice,
     left_any_of_branch_proof_choice,
-    left_branch_resolved_lhs_schema,
     left_one_of_branch_proof_choice,
-    one_of_branch_resolved_schema,
     one_of_cardinality_products,
     one_of_coverage_expansion_budget,
     one_of_coverage_branch_proof_choice,
     one_of_covering_selection,
-    one_of_disjointness_complement_schema,
     one_of_disjointness_expansion_budget,
     one_of_disjointness_direct_proof_choice,
     one_of_disjointness_proof_choice,
     one_of_disjointness_products,
-    one_of_disjointness_resolved_branch_schema,
     one_of_overlap_product,
     one_of_overlap_witness_plan,
-    right_not_complement_needs_subproof,
-    right_not_complement_proof_choice,
-    right_not_complement_schema,
-    right_not_resolved_rhs_schema,
-    right_not_subproof_choice,
     right_negative_all_of_branch_product_plan,
     right_negative_all_of_branch_proof_choice,
     right_negative_any_of_branch_product_plan,
     right_negative_any_of_branch_proof_choice,
     right_not_witness_plan,
-    right_nnf_branch_resolved_rhs_schema,
 )
-from subschema.kernel.contracts import (
+from subschema.contracts import (
     CounterexampleCertificate,
     ProofBudgets,
     ProofOptions,
@@ -104,7 +111,10 @@ from subschema.kernel.contracts import (
     UnsupportedDiagnostic,
     certificate_is_verifiable,
 )
-from subschema.kernel.constraints import (
+from subschema.ir.constraints import (
+    ArrayContainsConstraint,
+    ArrayContainsFragmentConstraint,
+    ArrayItemValuesFragmentConstraint,
     ArrayLengthConstraint,
     ArrayUniquenessConstraint,
     FiniteConstraint,
@@ -117,9 +127,9 @@ from subschema.kernel.constraints import (
     StringLengthConstraint,
     TypeConstraint,
 )
-from subschema.kernel.context import ProofContext
-from subschema.kernel.engine import ProofEngine
-from subschema.kernel.formulas import (
+from subschema.prover.context import ProofContext
+from subschema.prover.engine import ProofEngine
+from subschema.prover.formulas import (
     AndFormula,
     AssertionFormula,
     BottomFormula,
@@ -134,7 +144,7 @@ from subschema.kernel.formulas import (
     TopFormula,
     UnsupportedFormula,
 )
-from subschema.kernel.evaluation import (
+from subschema.ir.evaluation import (
     EvaluatedItemSource,
     EvaluatedPropertySource,
     EvaluationExpression,
@@ -142,9 +152,8 @@ from subschema.kernel.evaluation import (
     EvaluationFrontier,
     EvaluationTraceExpression,
 )
-from subschema.kernel.evaluation_traces import evaluation_trace_for_source
-from subschema.kernel.difference import (
-    ArrayContainsConstraint,
+from subschema.prover.evaluation_traces import evaluation_trace_for_node
+from subschema.prover.difference import (
     ArrayContainsDifferencePlan,
     ArrayContainsItemProof,
     ArrayContainsMaxViolationPlan,
@@ -168,7 +177,7 @@ from subschema.kernel.difference import (
     ObjectDifferenceModel,
     ObjectKeyValueDifferencePlan,
     ObjectKeyValueObligation,
-    ObjectKeyValueShape,
+    ObjectKeyValueConstraint,
     ObjectKeyValueWitnessSkeleton,
     ObjectKeyValueWitnessSlot,
     ObjectPropertyCountDifferencePlan,
@@ -191,25 +200,24 @@ from subschema.kernel.difference import (
     materialize_object_property_names_repair_skeleton,
     materialize_object_property_value_witness_skeleton,
 )
-from subschema.kernel.ir import (
+from subschema.ir import (
     ApplicatorNode,
     AssertionAtom,
-    DomainFacts,
     LogicalSchemaIR,
-    SchemaAnalysis,
-    SchemaIRCompiler,
+    SchemaSemantics,
     SchemaNode,
+    SchemaTerm,
     TaggedOneOf,
     UnsupportedNode,
 )
-from subschema.kernel.overlaps import (
+from subschema.prover.overlaps import (
     RightNotStringOverlapPlan,
     right_not_string_overlap_plan,
     right_not_string_overlap_plan_from_constraints,
     right_not_string_overlap_proof_choice,
 )
-from subschema.kernel.projection import ProjectionEngine
-from subschema.kernel.scalars import (
+from subschema.prover.projection import ProjectionEngine
+from subschema.prover.scalars import (
     FiniteRhsDifferencePlan,
     ScalarDifferencePlan,
     finite_rhs_difference_plan,
@@ -223,18 +231,18 @@ from subschema.kernel.scalars import (
     type_difference_plan,
     type_difference_plan_from_constraints,
 )
-from subschema.kernel.sat import (
+from subschema.prover.sat import (
     DifferenceProblem,
     DifferenceRuleSpec,
     EmptinessSolver,
     difference_rule_specs,
     difference_rules,
 )
-from subschema.kernel.symbolic import SymbolicSolver
-from subschema.kernel.witnesses import (
+from subschema.symbolic import SymbolicSolver
+from subschema.prover.witnesses import (
     WitnessBuildResult,
-    build_schema_witness,
-    finite_projection_witness,
+    build_ir_witness,
+    build_term_witness,
 )
 from subschema import Dialect, is_subschema, join_schemas, meet_schemas
 from test.proof_oracle import (
@@ -245,7 +253,375 @@ from test.proof_oracle import (
 from test.semantic_oracle import ConcreteEvaluator
 
 
+def _term_targets_pointer(
+    term: SchemaTerm | None,
+    ir: LogicalSchemaIR,
+    pointer: tuple[str, ...],
+) -> bool:
+    if term is None or term.kind != "node" or term.ref is None:
+        return False
+    node = ir.node_for_ref(term.ref)
+    return node is not None and node.source.pointer == pointer
+
+
+def _static_reference_target_pointer(ir: LogicalSchemaIR) -> tuple[str, ...] | None:
+    term = ir.root.semantics.reference.static_reference.target
+    if term is None or term.kind != "node" or term.ref is None:
+        return None
+    node = ir.node_for_ref(term.ref)
+    return None if node is None else node.source.pointer
+
+
 class TestProofEngineRouting(unittest.TestCase):
+    def test_compiled_ir_exposes_stable_node_terms(self):
+        schema = {"allOf": [{"type": "integer"}]}
+
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+        child = compiled.applicators[0].children[0]
+
+        self.assertEqual(compiled.root_term, SchemaTerm.node(compiled.root_ref))
+        self.assertIs(compiled.node_for_ref(compiled.root_ref), compiled.root)
+        self.assertIs(compiled.node_for_ref(child.ref), child)
+        self.assertEqual(compiled.term_for_node(child), SchemaTerm.node(child.ref))
+
+    def test_with_root_ref_preserves_document_context(self):
+        schema = {"allOf": [{"type": "integer"}, {"type": "number"}]}
+
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+        child = compiled.applicators[0].children[0]
+
+        child_ir = compiled.with_root_ref(child.ref)
+
+        self.assertIs(child_ir.document, compiled.document)
+        self.assertIs(child_ir.root, child)
+        self.assertEqual(child_ir.source.pointer, ("allOf", "0"))
+
+    def test_non_root_term_subproof_uses_source_aware_confirmation(self):
+        schema = {"allOf": [{"type": "integer"}, {"type": "number"}]}
+
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+        lhs = compiled.term_for_node(compiled.applicators[0].children[0])
+        rhs = compiled.term_for_node(compiled.applicators[0].children[1])
+        context = ProofContext(Dialect.DRAFT202012)
+
+        self.assertEqual(
+            context.subproof_term(lhs, rhs, compiled).status, "proved_true"
+        )
+
+    def test_non_root_term_false_witness_uses_source_aware_confirmation(self):
+        schema = {"allOf": [{"type": "integer"}, {"type": "string"}]}
+
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+        lhs = compiled.term_for_node(compiled.applicators[0].children[0])
+        rhs = compiled.term_for_node(compiled.applicators[0].children[1])
+        context = ProofContext(Dialect.DRAFT202012)
+
+        proof = context.subproof_term(lhs, rhs, compiled)
+
+        self.assertEqual(proof.status, "proved_false")
+        self.assertEqual(proof.witness, 0)
+
+    def test_recursive_ir_subproof_cycle_reports_structured_diagnostic(self):
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile({"type": "object"})
+        context = ProofContext(Dialect.DRAFT202012)
+
+        with patch.object(
+            driver_module,
+            "prove_ir_subschema_with_context",
+            side_effect=lambda active_context, lhs_ir, rhs_ir: active_context.subproof_ir(
+                lhs_ir,
+                rhs_ir,
+            ),
+        ):
+            proof = context.subproof_ir(compiled, compiled)
+
+        self.assertEqual(proof.status, "unsupported")
+        self.assertEqual(
+            proof.reason,
+            "positive recursive IR subproof cycle is unsupported",
+        )
+        self.assertEqual(len(proof.diagnostics), 1)
+        self.assertEqual(proof.diagnostics[0].category, "recursive-reference")
+        self.assertEqual(
+            proof.diagnostics[0].reason,
+            "positive recursive IR subproof cycle is unsupported",
+        )
+
+    def test_positive_recursive_term_subproof_cycle_reports_polarity(self):
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile({"type": "object"})
+        term = compiled.root_term
+        context = ProofContext(Dialect.DRAFT202012)
+
+        with patch.object(
+            driver_module,
+            "prove_terms_subschema_with_context",
+            side_effect=(
+                lambda active_context,
+                lhs_term,
+                lhs_ir,
+                rhs_term,
+                rhs_ir: active_context.subproof_terms(
+                    lhs_term,
+                    lhs_ir,
+                    rhs_term,
+                    rhs_ir,
+                )
+            ),
+        ):
+            proof = context.subproof_terms(term, compiled, term, compiled)
+
+        self.assertEqual(proof.status, "unsupported")
+        self.assertEqual(
+            proof.reason,
+            "positive recursive term subproof cycle is unsupported",
+        )
+        self.assertEqual(len(proof.diagnostics), 1)
+        self.assertEqual(proof.diagnostics[0].category, "recursive-reference")
+        self.assertEqual(
+            proof.diagnostics[0].reason,
+            "positive recursive term subproof cycle is unsupported",
+        )
+
+    def test_negative_recursive_term_subproof_cycle_reports_polarity(self):
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile({"type": "object"})
+        term = compiled.root_term
+        context = ProofContext(Dialect.DRAFT202012)
+
+        with patch.object(
+            driver_module,
+            "prove_terms_subschema_with_context",
+            side_effect=(
+                lambda active_context,
+                lhs_term,
+                lhs_ir,
+                rhs_term,
+                rhs_ir: active_context.subproof_terms(
+                    lhs_term,
+                    lhs_ir,
+                    rhs_term,
+                    rhs_ir,
+                )
+            ),
+        ):
+            proof = context.subproof_terms(
+                term,
+                compiled,
+                SchemaTerm.not_(term),
+                compiled,
+            )
+
+        self.assertEqual(proof.status, "unsupported")
+        self.assertEqual(
+            proof.reason,
+            "negative recursive term subproof cycle is unsupported",
+        )
+        self.assertEqual(len(proof.diagnostics), 1)
+        self.assertEqual(proof.diagnostics[0].category, "recursive-reference")
+        self.assertEqual(
+            proof.diagnostics[0].reason,
+            "negative recursive term subproof cycle is unsupported",
+        )
+
+    def test_synthetic_applicator_base_term_uses_self_contained_source(self):
+        formula = difference_formula_from_schemas(
+            {"type": "integer"},
+            {
+                "type": "string",
+                "if": {"type": "integer"},
+                "then": {"type": "number"},
+            },
+            Dialect.DRAFT7,
+        )
+        plan = applicator_difference_plans(formula)[0]
+        product = applicator_base_product(
+            plan,
+            lhs_term=formula.lhs.root_term,
+        )
+        self.assertIsNotNone(product)
+        assert product is not None
+
+        proof = ProofContext(Dialect.DRAFT7).subproof_terms(
+            product.lhs_term,
+            formula.lhs,
+            product.rhs_term,
+            formula.rhs,
+        )
+        rhs_base = formula.rhs.with_root_ref(product.rhs_term.ref)
+
+        self.assertEqual(proof.status, "proved_false")
+        self.assertEqual(proof.witness, 0)
+        self.assertEqual(rhs_base.source.schema, {"type": "string"})
+        self.assertEqual(rhs_base.source.document_pointer, ())
+        self.assertEqual(rhs_base.source.document_root, {"type": "string"})
+
+    def test_cross_ir_term_subproof_uses_each_side_registry(self):
+        lhs_ir = SchemaIRCompiler(Dialect.DRAFT202012).compile({"type": "integer"})
+        rhs_ir = SchemaIRCompiler(Dialect.DRAFT202012).compile({"type": "number"})
+        context = ProofContext(Dialect.DRAFT202012)
+
+        self.assertEqual(
+            context.subproof_terms(
+                lhs_ir.root_term,
+                lhs_ir,
+                rhs_ir.root_term,
+                rhs_ir,
+            ).status,
+            "proved_true",
+        )
+
+    def test_external_non_root_term_false_witness_uses_source_context(self):
+        lhs_ir = SchemaIRCompiler(Dialect.DRAFT202012).compile({"const": "b"})
+        rhs_schema = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$ref": "https://example.com/schemas/root.json",
+        }
+        resources = {
+            "https://example.com/schemas/root.json": {
+                "$id": "https://example.com/schemas/root.json",
+                "$defs": {
+                    "name": {
+                        "$id": "defs/name.json",
+                        "type": "string",
+                        "pattern": "^a$",
+                    }
+                },
+                "$ref": "defs/name.json",
+            }
+        }
+        rhs_ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(
+            rhs_schema,
+            resources=resources,
+        )
+        rhs_target = rhs_ir.root.semantics.reference.static_reference.target
+        assert rhs_target is not None
+        context = ProofContext(Dialect.DRAFT202012, resources=resources)
+
+        proof = context.subproof_terms(
+            lhs_ir.root_term,
+            lhs_ir,
+            rhs_target,
+            rhs_ir,
+        )
+
+        self.assertEqual(proof.status, "proved_false")
+        self.assertEqual(proof.witness, "b")
+
+    def test_composite_lhs_term_subproof_uses_term_lowered_assertions(self):
+        schema = {"allOf": [{"type": "integer"}, {"type": "number"}]}
+
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+        lhs = compiled.term_for_node(compiled.applicators[0].children[0])
+        rhs = compiled.term_for_node(compiled.applicators[0].children[1])
+        context = ProofContext(Dialect.DRAFT202012)
+
+        self.assertEqual(
+            context.subproof_term(SchemaTerm.all_of((lhs, rhs)), rhs, compiled).status,
+            "proved_true",
+        )
+        self.assertEqual(
+            context.subproof_term(lhs, SchemaTerm.not_(rhs), compiled).status,
+            "proved_false",
+        )
+
+    def test_array_child_constraints_expose_ir_terms(self):
+        schema = {
+            "type": "array",
+            "prefixItems": [{"type": "string"}],
+            "items": {"type": "integer"},
+            "contains": {"const": 1},
+        }
+
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+        item_model = compiled.array_item_model_constraint
+        contains = compiled.array_contains_constraint
+
+        self.assertIsNotNone(item_model)
+        assert item_model is not None
+        self.assertEqual(item_model.prefix_terms[0].kind, "node")
+        self.assertEqual(item_model.tail_term.kind, "node")
+        self.assertIsNotNone(compiled.node_for_ref(item_model.prefix_terms[0].ref))
+        self.assertIsNotNone(compiled.node_for_ref(item_model.tail_term.ref))
+        self.assertIsNotNone(contains)
+        assert contains is not None
+        self.assertEqual(contains.term.kind, "node")
+        self.assertIsNotNone(compiled.node_for_ref(contains.term.ref))
+
+    def test_object_child_constraints_expose_ir_terms(self):
+        property_values_schema = {
+            "type": "object",
+            "properties": {"a": {"type": "string"}},
+            "required": ["a"],
+        }
+        key_values_schema = {
+            "type": "object",
+            "properties": {"a": {"type": "string"}},
+            "patternProperties": {"^b$": {"type": "integer"}},
+            "additionalProperties": {"type": "null"},
+        }
+
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(property_values_schema)
+        values = compiled.object_property_values_constraint
+
+        self.assertIsNotNone(values)
+        assert values is not None
+        property_term = values.property_term_for("a")
+        self.assertIsNotNone(property_term)
+        assert property_term is not None
+        self.assertEqual(property_term.kind, "node")
+        self.assertIsNotNone(compiled.node_for_ref(property_term.ref))
+
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(key_values_schema)
+        key_values = compiled.object_key_value_constraint
+        self.assertIsNotNone(key_values)
+        assert key_values is not None
+        self.assertEqual(key_values.value_term_for("a").kind, "node")
+        self.assertEqual(key_values.value_term_for("b").kind, "node")
+        self.assertEqual(key_values.value_term_for("c").kind, "node")
+
+    def test_selector_candidates_are_compiled_into_ir_facts(self):
+        array_schema = {
+            "type": "array",
+            "prefixItems": [{"enum": ["cat", "dog"]}, {"type": "string"}],
+        }
+        object_schema = {
+            "type": "object",
+            "properties": {
+                "kind": {"enum": ["cat", "dog"]},
+                "name": {"type": "string"},
+            },
+            "required": ["kind", "name"],
+        }
+
+        array_ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(array_schema)
+        object_ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(object_schema)
+
+        self.assertEqual(
+            tuple(
+                candidate.index
+                for candidate in array_ir.semantics.array_selector_candidates
+            ),
+            (0, 1),
+        )
+        self.assertTrue(
+            all(
+                candidate.term.kind == "node"
+                for candidate in array_ir.semantics.array_selector_candidates
+            )
+        )
+        self.assertEqual(
+            tuple(
+                candidate.name
+                for candidate in object_ir.semantics.object_selector_candidates
+            ),
+            ("kind", "name"),
+        )
+        self.assertTrue(
+            all(
+                candidate.term.kind == "node"
+                for candidate in object_ir.semantics.object_selector_candidates
+            )
+        )
+
     def test_public_api_routes_through_proof_engine(self):
         lhs = {"type": "integer"}
         rhs = {"type": "number"}
@@ -262,15 +638,428 @@ class TestProofEngineRouting(unittest.TestCase):
             public_api.canonicalize_schema(False, dialect=Dialect.DRAFT6), {"not": {}}
         )
 
+    def test_array_contains_constraint_is_compiled_into_ir_facts(self):
+        schema = {
+            "type": "array",
+            "contains": {"type": "integer"},
+            "minContains": 2,
+            "maxContains": 3,
+        }
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        contains = ir.array_contains_constraint
+        self.assertIsInstance(contains, ArrayContainsConstraint)
+        assert contains is not None
+        self.assertEqual(contains.minimum, 2)
+        self.assertEqual(contains.maximum, 3)
+        self.assertTrue(contains.marks_evaluated)
+        self.assertEqual(contains.term.kind, "node")
+        assert contains.term.ref is not None
+        self.assertEqual(ir.node_for_ref(contains.term.ref).source.pointer, ("contains",))
+
+    def test_array_contains_fragment_support_is_compiled_into_ir_facts(self):
+        schema = {
+            "type": "array",
+            "maxItems": 1,
+            "contains": {"type": "integer"},
+            "minContains": 1,
+        }
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        self.assertEqual(
+            ir.array_contains_fragment_constraint,
+            ArrayContainsFragmentConstraint(
+                lhs_supported=True,
+                rhs_supported=False,
+            ),
+        )
+
+    def test_array_item_values_fragment_support_is_compiled_into_ir_facts(self):
+        schema = {
+            "type": "array",
+            "contains": {"type": "integer"},
+            "minContains": 1,
+        }
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        self.assertEqual(
+            ir.array_item_values_fragment_constraint,
+            ArrayItemValuesFragmentConstraint(
+                lhs_supported=True,
+                rhs_supported=False,
+                rhs_witness_supported=True,
+            ),
+        )
+
+    def test_array_unevaluated_items_fragment_support_is_compiled_into_ir_facts(self):
+        schema = {
+            "type": "array",
+            "allOf": [{"prefixItems": [{"type": "integer"}]}],
+            "unevaluatedItems": False,
+        }
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        self.assertTrue(ir.array_unevaluated_items_true_fragment_supported)
+
+    def test_object_unevaluated_properties_fragment_support_is_compiled_into_ir_facts(
+        self,
+    ):
+        schema = {
+            "type": "object",
+            "allOf": [{"properties": {"a": {"type": "integer"}}}],
+            "unevaluatedProperties": False,
+        }
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        self.assertTrue(ir.object_unevaluated_properties_true_fragment_supported)
+
+    def test_schema_node_exposes_grouped_semantic_snapshot(self):
+        schema = {
+            "type": "object",
+            "minProperties": 1,
+            "properties": {
+                "kind": {"const": "cat"},
+                "age": {"type": "integer", "minimum": 0},
+            },
+            "required": ["kind"],
+            "additionalProperties": False,
+        }
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+        semantics = ir.semantics
+
+        self.assertIsInstance(semantics, SchemaSemantics)
+        self.assertIs(ir.root.semantics, semantics)
+        self.assertIsNotNone(semantics.scalar.type_constraint)
+        self.assertIsNotNone(semantics.object.object_property_count_constraint)
+        self.assertIsNotNone(semantics.object.object_closed_properties_constraint)
+        self.assertIn("properties", semantics.vocabulary.present_keywords)
+        self.assertFalse(hasattr(semantics, "unsupported"))
+
+    def test_complex_keywords_are_positive_ir_facts_not_capability_gaps(self):
+        schema = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$dynamicRef": "#node",
+            "$recursiveRef": "#",
+            "pattern": "(?=a)a",
+        }
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        self.assertTrue(ir.semantics.reference.has_dynamic_reference)
+        self.assertTrue(ir.semantics.reference.has_recursive_reference)
+        self.assertIn("$dynamicRef", ir.semantics.vocabulary.present_keywords)
+        self.assertIn("$recursiveRef", ir.semantics.vocabulary.present_keywords)
+        self.assertIn("pattern", ir.semantics.vocabulary.present_keywords)
+        self.assertFalse(hasattr(ir.semantics, "unsupported"))
+
+    def test_recursive_ref_keyword_is_compiled_as_typed_reference_fact(self):
+        schema = {
+            "type": "object",
+            "properties": {"child": {"$recursiveRef": "#"}},
+        }
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        self.assertEqual(
+            ir.semantics.reference.recursive_references,
+            (
+                ir_module.RecursiveReferenceFact(
+                    keyword="$recursiveRef",
+                    path=("properties", "child", "$recursiveRef"),
+                    ref="#",
+                    guard_kind="object",
+                ),
+            ),
+        )
+
+    def test_guarded_recursive_static_refs_are_compiled_as_typed_reference_facts(
+        self,
+    ):
+        object_schema = {
+            "$defs": {
+                "node": {
+                    "type": "object",
+                    "properties": {"child": {"$ref": "#/$defs/node"}},
+                }
+            },
+            "$ref": "#/$defs/node",
+        }
+        array_schema = {
+            "$defs": {
+                "node": {
+                    "type": "array",
+                    "items": {"$ref": "#/$defs/node"},
+                }
+            },
+            "$ref": "#/$defs/node",
+        }
+
+        object_ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(object_schema)
+        array_ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(array_schema)
+
+        self.assertIn(
+            ir_module.RecursiveReferenceFact(
+                keyword="$ref",
+                path=("$defs", "node", "properties", "child", "$ref"),
+                ref="#/$defs/node",
+                guard_kind="object",
+            ),
+            object_ir.semantics.reference.recursive_references,
+        )
+        self.assertIn(
+            ir_module.RecursiveReferenceFact(
+                keyword="$ref",
+                path=("$defs", "node", "items", "$ref"),
+                ref="#/$defs/node",
+                guard_kind="array",
+            ),
+            array_ir.semantics.reference.recursive_references,
+        )
+        self.assertEqual(
+            _static_reference_target_pointer(object_ir),
+            ("$defs", "node"),
+        )
+        self.assertEqual(
+            _static_reference_target_pointer(array_ir),
+            ("$defs", "node"),
+        )
+        array_target = array_ir.root.semantics.reference.static_reference.target
+        self.assertIsNotNone(array_target)
+        self.assertIsNotNone(array_target.ref)
+        array_target_node = array_ir.node_for_ref(array_target.ref)
+        self.assertIsNotNone(array_target_node)
+        self.assertEqual(
+            array_target_node.semantics.scalar.type_constraint,
+            TypeConstraint(frozenset({"array"}), language_complete=False),
+        )
+
+    def test_recursive_reference_facts_preserve_polarity(self):
+        schema = {
+            "$defs": {
+                "node": {
+                    "type": "object",
+                    "not": {
+                        "properties": {
+                            "child": {"$recursiveRef": "#"},
+                        }
+                    },
+                }
+            },
+            "$ref": "#/$defs/node",
+        }
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        self.assertIn(
+            ir_module.RecursiveReferenceFact(
+                keyword="$recursiveRef",
+                path=("$defs", "node", "not", "properties", "child", "$recursiveRef"),
+                ref="#",
+                guard_kind="object",
+                polarity="negative",
+            ),
+            ir.semantics.reference.recursive_references,
+        )
+
+    def test_recursive_static_reference_facts_preserve_nested_polarity(self):
+        schema = {
+            "$defs": {
+                "node": {
+                    "type": "object",
+                    "not": {
+                        "properties": {
+                            "child": {"$ref": "#/$defs/node"},
+                        }
+                    },
+                }
+            },
+            "$ref": "#/$defs/node",
+        }
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        self.assertIn(
+            ir_module.RecursiveReferenceFact(
+                keyword="$ref",
+                path=("$defs", "node", "not", "properties", "child", "$ref"),
+                ref="#/$defs/node",
+                guard_kind="object",
+                polarity="negative",
+            ),
+            ir.semantics.reference.recursive_references,
+        )
+
+    def test_negative_recursive_ref_diagnostic_reports_polarity(self):
+        schema = {
+            "type": "object",
+            "not": {
+                "properties": {
+                    "child": {"$recursiveRef": "#"},
+                }
+            },
+        }
+        engine = proof_engine_for_schemas(
+            schema, {"type": "object"}, dialect=Dialect.DRAFT202012
+        )
+
+        proof = engine._bounded_ir_proof(schema, {"type": "object"})
+
+        self.assertEqual(proof.status, "unsupported")
+        self.assertEqual(
+            proof.diagnostics[0].format(),
+            "lhs #/not/properties/child/$recursiveRef: "
+            "negative-polarity $recursiveRef requires guarded recursive "
+            "reference proof support",
+        )
+
+    def test_unguarded_recursive_static_ref_is_compiled_as_typed_reference_fact(
+        self,
+    ):
+        schema = {
+            "$defs": {"alias": {"$ref": "#/$defs/alias"}},
+            "$ref": "#/$defs/alias",
+        }
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        self.assertIn(
+            ir_module.RecursiveReferenceFact(
+                keyword="$ref",
+                path=("$defs", "alias", "$ref"),
+                ref="#/$defs/alias",
+                guard_kind="unguarded",
+            ),
+            ir.semantics.reference.recursive_references,
+        )
+
+    def test_known_keywords_are_categorized_by_schema_semantics(self):
+        schema = {
+            "$anchor": "root",
+            "$comment": "comment",
+            "$defs": {},
+            "$dynamicAnchor": "node",
+            "$dynamicRef": "#node",
+            "$id": "urn:example:root",
+            "$recursiveAnchor": True,
+            "$recursiveRef": "#",
+            "$ref": "#",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$vocabulary": {},
+            "additionalItems": False,
+            "additionalProperties": False,
+            "allOf": [],
+            "anyOf": [],
+            "const": 1,
+            "contains": {},
+            "contentEncoding": "base64",
+            "contentMediaType": "application/json",
+            "contentSchema": {},
+            "default": 1,
+            "definitions": {},
+            "dependencies": {},
+            "dependentRequired": {},
+            "dependentSchemas": {},
+            "deprecated": True,
+            "description": "description",
+            "discriminator": {"propertyName": "kind"},
+            "else": {},
+            "enum": [1],
+            "examples": [1],
+            "exclusiveMaximum": 3,
+            "exclusiveMinimum": 0,
+            "format": "email",
+            "id": "legacy-id",
+            "if": {},
+            "items": {},
+            "maximum": 3,
+            "maxContains": 1,
+            "maxItems": 2,
+            "maxLength": 4,
+            "maxProperties": 2,
+            "minimum": 0,
+            "minContains": 0,
+            "minItems": 0,
+            "minLength": 1,
+            "minProperties": 0,
+            "multipleOf": 1,
+            "not": {},
+            "oneOf": [],
+            "pattern": "a",
+            "patternProperties": {},
+            "prefixItems": [],
+            "properties": {},
+            "propertyNames": {},
+            "readOnly": True,
+            "required": [],
+            "then": {},
+            "title": "title",
+            "type": "object",
+            "unevaluatedItems": False,
+            "unevaluatedProperties": False,
+            "uniqueItems": True,
+            "writeOnly": True,
+        }
+
+        compiler = SchemaIRCompiler(Dialect.DRAFT202012)
+        for keyword, value in schema.items():
+            with self.subTest(keyword=keyword):
+                semantics = compiler.compile({keyword: value}).semantics
+                keyword_groups = (
+                    semantics.vocabulary.scalar_keywords
+                    | semantics.vocabulary.array_keywords
+                    | semantics.vocabulary.object_keywords
+                    | semantics.vocabulary.applicator_keywords
+                    | semantics.vocabulary.reference_keywords
+                    | semantics.vocabulary.evaluation_keywords
+                    | semantics.vocabulary.annotation_keywords
+                    | semantics.vocabulary.vocabulary_keywords
+                )
+
+                self.assertIn(keyword, semantics.vocabulary.present_keywords)
+                self.assertIn(keyword, keyword_groups)
+
+    def test_compiler_reuses_equivalent_synthetic_terms_within_scope(self):
+        compiler = SchemaIRCompiler(Dialect.DRAFT202012)
+        graph = references_module.ResourceGraph.build(
+            {"type": "object"},
+            dialect=Dialect.DRAFT202012,
+        )
+        schema = {"type": "object", "properties": {"x": {"type": "integer"}}}
+
+        first = compiler._compile_synthetic_term(
+            schema,
+            graph,
+            Dialect.DRAFT202012,
+            depth=0,
+            path=("first",),
+            ref_prefix=(),
+        )
+        second = compiler._compile_synthetic_term(
+            schema,
+            graph,
+            Dialect.DRAFT202012,
+            depth=0,
+            path=("second",),
+            ref_prefix=(),
+        )
+
+        self.assertEqual(first, second)
+
     def test_proof_engine_is_the_only_public_subschema_runtime(self):
         lhs = {"type": "object", "properties": {"a": {"type": "integer"}}}
         rhs = {"type": "object", "properties": {"a": {"type": "number"}}}
 
-        proof = ProofEngine.for_schemas(lhs, rhs).is_subschema(lhs, rhs)
+        proof = proof_engine_for_schemas(lhs, rhs).is_subschema(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
         self.assertTrue(is_subschema(lhs, rhs))
-        self.assertEqual(ProofEngine.__module__, "subschema.kernel.engine")
+        self.assertEqual(ProofEngine.__module__, "subschema.prover.engine")
 
     def test_kernel_returns_solver_result_directly(self):
         lhs = {
@@ -283,7 +1072,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "minProperties": 1,
             "patternProperties": {"^a+": {"type": "number"}},
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, options=ProofOptions())
+        engine = proof_engine_for_schemas(lhs, rhs, options=ProofOptions())
 
         proof = engine.is_subschema(lhs, rhs)
 
@@ -454,8 +1243,14 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn("options.endeavor", inspect.getsource(driver_module))
         self.assertNotIn("options.endeavor", sat_source)
         self.assertNotIn("not options.endeavor", sat_source)
-        self.assertIn('enter_expensive_proof("object_product")', sat_source)
-        self.assertIn('enter_expensive_proof("array_product")', sat_source)
+        self.assertIn(
+            'enter_expensive_proof("object_product")',
+            inspect.getsource(object_rules_module),
+        )
+        self.assertIn(
+            'enter_expensive_proof("array_product")',
+            inspect.getsource(array_rules_module),
+        )
 
     def test_regular_language_operations_are_routed_through_regex_backend(self):
         for module in (
@@ -481,32 +1276,48 @@ class TestProofEngineRouting(unittest.TestCase):
             evaluation_module,
         ):
             source = inspect.getsource(module)
-            self.assertNotIn("from subschema.kernel.engine", source)
-            self.assertNotIn("import subschema.kernel.engine", source)
+            self.assertNotIn("from subschema.prover.engine", source)
+            self.assertNotIn("import subschema.prover.engine", source)
             self.assertNotIn("ProofEngine(", source)
 
-    def test_meet_and_join_delegate_to_context_projection_policy(self):
-        projection_sources = inspect.getsource(ProofEngine.meet) + inspect.getsource(
-            ProofEngine.join
-        )
+    def test_meet_and_join_use_compiler_projection_services(self):
+        projection_sources = inspect.getsource(
+            public_api._SchemaProofEngine.meet
+        ) + inspect.getsource(public_api._SchemaProofEngine.join)
 
-        self.assertIn("self.context.meet", projection_sources)
-        self.assertIn("self.context.join", projection_sources)
+        self.assertIn("_meet_projection_with_context", projection_sources)
+        self.assertIn("_join_projection_with_context", projection_sources)
+        self.assertNotIn("_raw_meet_projection", projection_sources)
+        self.assertNotIn("_raw_join_projection", projection_sources)
+        self.assertNotIn("self.context.meet", projection_sources)
+        self.assertNotIn("self.context.join", projection_sources)
+        self.assertFalse(hasattr(ProofEngine, "meet"))
+        self.assertFalse(hasattr(ProofEngine, "join"))
+        self.assertFalse(hasattr(ProofContext, "meet"))
+        self.assertFalse(hasattr(ProofContext, "join"))
         self.assertNotIn("finite_", projection_sources)
-        self.assertEqual(ProjectionEngine.__module__, "subschema.kernel.projection")
+        self.assertEqual(
+            public_api._meet_projection_with_context.__module__,
+            "subschema.api",
+        )
+        self.assertEqual(
+            public_api._join_projection_with_context.__module__,
+            "subschema.api",
+        )
+        self.assertEqual(ProjectionEngine.__module__, "subschema.prover.projection")
 
-    def test_symbolic_solver_lives_in_kernel_package(self):
-        self.assertEqual(SymbolicSolver.__module__, "subschema.kernel.symbolic")
+    def test_symbolic_solver_lives_in_shared_symbolic_module(self):
+        self.assertEqual(SymbolicSolver.__module__, "subschema.symbolic")
 
     def test_difference_formula_lowering_golden_cases(self):
-        boolean_formula = DifferenceFormula.from_schemas(True, False, Dialect.DRAFT7)
+        boolean_formula = difference_formula_from_schemas(True, False, Dialect.DRAFT7)
 
-        self.assertEqual(boolean_formula.positive_lhs.schema, True)
-        self.assertEqual(boolean_formula.negative_rhs.schema, False)
+        self.assertIs(boolean_formula.positive_lhs.ir.root.boolean_value, True)
+        self.assertIs(boolean_formula.negative_rhs.ir.root.boolean_value, False)
         self.assertEqual(applicator_formula_fragments(boolean_formula), ())
         self.assertEqual(applicator_nnf_fragments(boolean_formula), ())
 
-        rhs_all_of_formula = DifferenceFormula.from_schemas(
+        rhs_all_of_formula = difference_formula_from_schemas(
             {"type": "string"},
             {"allOf": [{"type": "string"}, {"minLength": 1}]},
             Dialect.DRAFT7,
@@ -545,11 +1356,11 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIn("negative allOf normalizes", rhs_all_of_nnf.reason)
         rhs_all_of_products = applicator_nnf_branch_products(
             rhs_all_of_nnf,
-            lhs_schema=rhs_all_of_formula.lhs.schema,
+            lhs_term=rhs_all_of_formula.lhs.root_term,
         )
         rhs_all_of_product_plan = right_negative_all_of_branch_product_plan(
             rhs_all_of_nnf,
-            lhs_schema=rhs_all_of_formula.lhs.schema,
+            lhs_term=rhs_all_of_formula.lhs.root_term,
         )
         self.assertIsInstance(rhs_all_of_product_plan, ApplicatorNnfBranchProductPlan)
         self.assertTrue(rhs_all_of_product_plan.is_supported)
@@ -559,11 +1370,18 @@ class TestProofEngineRouting(unittest.TestCase):
             "SAT right-allOf conjunct witness could not be constructed",
         )
         self.assertEqual(
+            rhs_all_of_products[0].lhs_term, rhs_all_of_formula.lhs.root_term
+        )
+        self.assertEqual(
+            rhs_all_of_products[0].rhs_term,
+            SchemaTerm.node(rhs_all_of_products[0].child.node.ref, scope="rhs"),
+        )
+        self.assertEqual(
             rhs_all_of_products[0].witness_rejected_reason,
             "SAT right-allOf conjunct witness was rejected",
         )
 
-        rhs_any_of_formula = DifferenceFormula.from_schemas(
+        rhs_any_of_formula = difference_formula_from_schemas(
             {"type": "string"},
             {"anyOf": [{"type": "number"}, {"type": "string"}]},
             Dialect.DRAFT7,
@@ -595,12 +1413,12 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIn("negative anyOf normalizes", rhs_any_of_nnf.reason)
         rhs_any_of_product_plan = right_negative_any_of_branch_product_plan(
             rhs_any_of_nnf,
-            lhs_schema=rhs_any_of_formula.lhs.schema,
+            lhs_term=rhs_any_of_formula.lhs.root_term,
         )
         self.assertTrue(rhs_any_of_product_plan.is_supported)
         self.assertEqual(len(rhs_any_of_product_plan.products), 2)
 
-        rhs_one_of_formula = DifferenceFormula.from_schemas(
+        rhs_one_of_formula = difference_formula_from_schemas(
             {"type": "string"},
             {"oneOf": [{"type": "number"}, {"type": "string"}]},
             Dialect.DRAFT7,
@@ -620,7 +1438,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIn("branch-cardinality", rhs_one_of_nnf.reason)
         unsupported_nnf_product_plan = right_negative_any_of_branch_product_plan(
             rhs_one_of_nnf,
-            lhs_schema=rhs_one_of_formula.lhs.schema,
+            lhs_term=rhs_one_of_formula.lhs.root_term,
         )
         self.assertFalse(unsupported_nnf_product_plan.is_supported)
         self.assertEqual(
@@ -656,18 +1474,23 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         rhs_one_of_products = one_of_cardinality_products(
             rhs_one_of_plan,
-            lhs_schema=rhs_one_of_formula.lhs.schema,
+            lhs_term=rhs_one_of_formula.lhs.root_term,
         )
         self.assertEqual([product.index for product in rhs_one_of_products], [0, 1])
-        self.assertEqual(rhs_one_of_products[0].lhs_schema, {"type": "string"})
-        self.assertEqual(rhs_one_of_products[0].branch_schema, {"type": "number"})
+        self.assertEqual(
+            rhs_one_of_products[0].lhs_term, rhs_one_of_formula.lhs.root_term
+        )
+        self.assertEqual(
+            rhs_one_of_products[0].branch_term,
+            SchemaTerm.node(rhs_one_of_products[0].child.ref, scope="rhs"),
+        )
         self.assertEqual(
             rhs_one_of_products[0].witness_rejected_reason,
             "SAT right-oneOf branch witness was rejected",
         )
         rhs_one_of_overlap_selection = one_of_covering_selection(
             rhs_one_of_plan,
-            lhs_schema=rhs_one_of_formula.lhs.schema,
+            lhs_term=rhs_one_of_formula.lhs.root_term,
             covering_indexes=(0, 1),
         )
         self.assertIsInstance(
@@ -683,7 +1506,7 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         rhs_one_of_selected = one_of_covering_selection(
             rhs_one_of_plan,
-            lhs_schema=rhs_one_of_formula.lhs.schema,
+            lhs_term=rhs_one_of_formula.lhs.root_term,
             covering_indexes=(0,),
         )
         self.assertTrue(rhs_one_of_selected.is_selected)
@@ -691,13 +1514,13 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIsNone(rhs_one_of_selected.overlap_product)
         rhs_one_of_incomplete = one_of_covering_selection(
             rhs_one_of_plan,
-            lhs_schema=rhs_one_of_formula.lhs.schema,
+            lhs_term=rhs_one_of_formula.lhs.root_term,
             covering_indexes=(),
         )
         self.assertFalse(rhs_one_of_incomplete.is_selected)
         self.assertIsNone(rhs_one_of_incomplete.overlap_product)
 
-        lhs_not_formula = DifferenceFormula.from_schemas(
+        lhs_not_formula = difference_formula_from_schemas(
             {"not": {"type": "string"}},
             {"type": "number"},
             Dialect.DRAFT7,
@@ -717,7 +1540,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIsInstance(lhs_not_wrapper.child, AndFormula)
         self.assertEqual(applicator_difference_plans(lhs_not_formula), ())
 
-        lhs_conditional_formula = DifferenceFormula.from_schemas(
+        lhs_conditional_formula = difference_formula_from_schemas(
             {"if": {"type": "string"}, "then": {"minLength": 1}, "else": False},
             {"type": "string"},
             Dialect.DRAFT7,
@@ -771,20 +1594,40 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         lhs_conditional_products = conditional_branch_products(
             lhs_conditional_plan,
-            lhs_schema=lhs_conditional_formula.lhs.schema,
-            rhs_schema=lhs_conditional_formula.rhs.schema,
+            lhs_term=lhs_conditional_formula.lhs.root_term,
+            rhs_term=lhs_conditional_formula.rhs.root_term,
         )
         self.assertEqual(
-            lhs_conditional_products[0].lhs_schema,
-            {"allOf": [{"type": "string"}, {"minLength": 1}]},
+            lhs_conditional_products[0].lhs_term,
+            SchemaTerm.all_of(
+                (
+                    SchemaTerm.node(lhs_conditional_plan.if_child.ref, scope="lhs"),
+                    SchemaTerm.node(lhs_conditional_plan.then_child.ref, scope="lhs"),
+                )
+            ),
         )
-        self.assertEqual(lhs_conditional_products[0].rhs_schema, {"type": "string"})
-        self.assertIsNone(lhs_conditional_products[0].covering_schema)
-        self.assertEqual(lhs_conditional_products[1].lhs_schema, False)
-        self.assertIsNone(lhs_conditional_products[1].covering_schema)
+        self.assertEqual(
+            lhs_conditional_products[0].rhs_term,
+            lhs_conditional_formula.rhs.root_term,
+        )
+        self.assertEqual(
+            lhs_conditional_products[1].lhs_term,
+            SchemaTerm.all_of(
+                (
+                    SchemaTerm.not_(
+                        SchemaTerm.node(lhs_conditional_plan.if_child.ref, scope="lhs")
+                    ),
+                    SchemaTerm.node(lhs_conditional_plan.else_child.ref, scope="lhs"),
+                )
+            ),
+        )
+        self.assertEqual(
+            lhs_conditional_products[1].rhs_term,
+            lhs_conditional_formula.rhs.root_term,
+        )
 
     def test_difference_formula_owns_unsupported_diagnostics(self):
-        formula = DifferenceFormula.from_schemas(
+        formula = difference_formula_from_schemas(
             {"type": "object", "unevaluatedProperties": False},
             {"$dynamicRef": "#node"},
             Dialect.DRAFT202012,
@@ -812,18 +1655,50 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(proof.diagnostics[0].keyword, "$dynamicRef")
         self.assertEqual(proof.diagnostics[0].category, "dynamic-reference")
 
+    def test_recursive_reference_boundary_uses_typed_reference_facts(self):
+        formula = difference_formula_from_schemas(
+            {
+                "$defs": {
+                    "node": {
+                        "type": "object",
+                        "properties": {"child": {"$ref": "#/$defs/node"}},
+                    }
+                },
+                "$ref": "#/$defs/node",
+            },
+            {"type": "object"},
+            Dialect.DRAFT202012,
+        )
+
+        self.assertEqual(formula.unsupported_diagnostics, ())
+        proof = sat_module._prove_recursive_reference_boundary(
+            DifferenceProblem(formula, ProofContext(Dialect.DRAFT202012))
+        )
+
+        self.assertEqual(proof.status, "unsupported")
+        self.assertEqual(len(proof.diagnostics), 1)
+        self.assertEqual(proof.diagnostics[0].category, "recursive-reference")
+        self.assertEqual(
+            proof.diagnostics[0].path,
+            ("$defs", "node", "properties", "child", "$ref"),
+        )
+        self.assertIn("object-guarded recursive lhs $ref", proof.reason)
+
     def test_sat_emptiness_solver_lives_in_kernel_package(self):
-        formula = DifferenceFormula.from_schemas(
+        formula = difference_formula_from_schemas(
             {"type": "integer"}, {"type": "number"}, Dialect.DRAFT7
         )
 
-        self.assertEqual(DifferenceFormula.__module__, "subschema.kernel.formulas")
-        self.assertEqual(FormulaOccurrence.__module__, "subschema.kernel.formulas")
-        self.assertEqual(DifferenceProblem.__module__, "subschema.kernel.sat")
-        self.assertEqual(EmptinessSolver.__module__, "subschema.kernel.sat")
-        self.assertEqual(SymbolicSolver.__module__, "subschema.kernel.symbolic")
-        self.assertEqual(WitnessBuildResult.__module__, "subschema.kernel.witnesses")
-        self.assertEqual(build_schema_witness.__module__, "subschema.kernel.witnesses")
+        self.assertEqual(DifferenceFormula.__module__, "subschema.prover.formulas")
+        self.assertEqual(FormulaOccurrence.__module__, "subschema.prover.formulas")
+        self.assertEqual(DifferenceProblem.__module__, "subschema.prover.sat")
+        self.assertEqual(EmptinessSolver.__module__, "subschema.prover.sat")
+        self.assertEqual(SymbolicSolver.__module__, "subschema.symbolic")
+        self.assertEqual(
+            WitnessBuildResult.__module__,
+            "subschema.prover.witness_results",
+        )
+        self.assertEqual(build_ir_witness.__module__, "subschema.prover.witnesses")
         self.assertEqual(formula.positive_lhs.side, "lhs")
         self.assertEqual(formula.positive_lhs.polarity, "positive")
         self.assertIs(formula.positive_lhs.ir, formula.lhs)
@@ -834,229 +1709,223 @@ class TestProofEngineRouting(unittest.TestCase):
             formula.occurrences, (formula.positive_lhs, formula.negative_rhs)
         )
         self.assertEqual(
-            ApplicatorBranchPlan.__module__, "subschema.kernel.applicators"
+            ApplicatorBranchPlan.__module__, "subschema.prover.applicators"
         )
         self.assertEqual(
-            ApplicatorBranchProduct.__module__, "subschema.kernel.applicators"
+            ApplicatorBranchProduct.__module__, "subschema.prover.applicators"
         )
         self.assertEqual(
-            ApplicatorConditionalBranch.__module__, "subschema.kernel.applicators"
+            ApplicatorConditionalBranch.__module__, "subschema.prover.applicators"
         )
         self.assertEqual(
-            ApplicatorConditionalPlan.__module__, "subschema.kernel.applicators"
+            ApplicatorConditionalPlan.__module__, "subschema.prover.applicators"
         )
         self.assertEqual(
-            ApplicatorConditionalProduct.__module__, "subschema.kernel.applicators"
+            ApplicatorConditionalProduct.__module__, "subschema.prover.applicators"
         )
         self.assertEqual(
-            ApplicatorFormulaFragment.__module__, "subschema.kernel.applicators"
+            ApplicatorFormulaFragment.__module__, "subschema.prover.applicators"
         )
-        self.assertEqual(ApplicatorNnfChild.__module__, "subschema.kernel.applicators")
+        self.assertEqual(ApplicatorNnfChild.__module__, "subschema.prover.applicators")
         self.assertEqual(
-            ApplicatorNnfBranchProduct.__module__, "subschema.kernel.applicators"
-        )
-        self.assertEqual(
-            ApplicatorNnfFragment.__module__, "subschema.kernel.applicators"
+            ApplicatorNnfBranchProduct.__module__, "subschema.prover.applicators"
         )
         self.assertEqual(
-            ApplicatorOneOfBranchProduct.__module__, "subschema.kernel.applicators"
+            ApplicatorNnfFragment.__module__, "subschema.prover.applicators"
         )
         self.assertEqual(
-            ApplicatorOneOfCardinalityPlan.__module__, "subschema.kernel.applicators"
-        )
-        self.assertEqual(UnsupportedDiagnostic.__module__, "subschema.kernel.contracts")
-        self.assertEqual(ArrayDifferenceModel.__module__, "subschema.kernel.difference")
-        self.assertEqual(
-            ArrayContainsConstraint.__module__, "subschema.kernel.difference"
+            ApplicatorOneOfBranchProduct.__module__, "subschema.prover.applicators"
         )
         self.assertEqual(
-            ArrayContainsDifferencePlan.__module__, "subschema.kernel.difference"
+            ApplicatorOneOfCardinalityPlan.__module__, "subschema.prover.applicators"
+        )
+        self.assertEqual(UnsupportedDiagnostic.__module__, "subschema.contracts")
+        array_difference_module = "subschema.prover.difference_arrays"
+        object_difference_module = "subschema.prover.difference_objects"
+        self.assertEqual(ArrayDifferenceModel.__module__, array_difference_module)
+        self.assertEqual(
+            ArrayContainsConstraint.__module__, "subschema.ir.constraints"
         )
         self.assertEqual(
-            ArrayContainsItemProof.__module__, "subschema.kernel.difference"
+            ArrayContainsFragmentConstraint.__module__,
+            "subschema.ir.constraints",
         )
         self.assertEqual(
-            ArrayContainsMaxViolationPlan.__module__, "subschema.kernel.difference"
+            ArrayItemValuesFragmentConstraint.__module__,
+            "subschema.ir.constraints",
         )
         self.assertEqual(
-            ArrayContainsMinViolationPlan.__module__, "subschema.kernel.difference"
+            ArrayContainsDifferencePlan.__module__, array_difference_module
+        )
+        self.assertEqual(ArrayContainsItemProof.__module__, array_difference_module)
+        self.assertEqual(
+            ArrayContainsMaxViolationPlan.__module__, array_difference_module
         )
         self.assertEqual(
-            ArrayDuplicateWitnessPlan.__module__, "subschema.kernel.difference"
+            ArrayContainsMinViolationPlan.__module__, array_difference_module
         )
+        self.assertEqual(ArrayDuplicateWitnessPlan.__module__, array_difference_module)
+        self.assertEqual(ArrayItemValueObligation.__module__, array_difference_module)
         self.assertEqual(
-            ArrayItemValueObligation.__module__, "subschema.kernel.difference"
+            ArrayItemValuesDifferencePlan.__module__, array_difference_module
         )
+        self.assertEqual(ArrayLengthDifferencePlan.__module__, array_difference_module)
         self.assertEqual(
-            ArrayItemValuesDifferencePlan.__module__, "subschema.kernel.difference"
-        )
-        self.assertEqual(
-            ArrayLengthDifferencePlan.__module__, "subschema.kernel.difference"
-        )
-        self.assertEqual(
-            ArrayUnevaluatedItemObligation.__module__, "subschema.kernel.difference"
+            ArrayUnevaluatedItemObligation.__module__, array_difference_module
         )
         self.assertEqual(
             ArrayUnevaluatedItemsDifferencePlan.__module__,
-            "subschema.kernel.difference",
+            array_difference_module,
         )
         self.assertEqual(
-            ArrayUniquenessDifferencePlan.__module__, "subschema.kernel.difference"
+            ArrayUniquenessDifferencePlan.__module__, array_difference_module
         )
-        self.assertEqual(ArrayWitnessOverride.__module__, "subschema.kernel.difference")
-        self.assertEqual(ArrayWitnessPlan.__module__, "subschema.kernel.difference")
-        self.assertEqual(ArrayWitnessSkeleton.__module__, "subschema.kernel.difference")
-        self.assertEqual(ArrayWitnessSlot.__module__, "subschema.kernel.difference")
+        self.assertEqual(ArrayWitnessOverride.__module__, array_difference_module)
+        self.assertEqual(ArrayWitnessPlan.__module__, array_difference_module)
+        self.assertEqual(ArrayWitnessSkeleton.__module__, array_difference_module)
+        self.assertEqual(ArrayWitnessSlot.__module__, array_difference_module)
         self.assertEqual(
             materialize_array_duplicate_witness_plan.__module__,
-            "subschema.kernel.difference",
+            array_difference_module,
         )
         self.assertEqual(
-            materialize_array_witness_plan.__module__, "subschema.kernel.difference"
+            materialize_array_witness_plan.__module__, array_difference_module
         )
         self.assertEqual(
-            materialize_array_witness_skeleton.__module__, "subschema.kernel.difference"
+            materialize_array_witness_skeleton.__module__, array_difference_module
         )
         self.assertEqual(
             materialize_object_key_value_witness_skeleton.__module__,
-            "subschema.kernel.difference",
+            object_difference_module,
         )
         self.assertEqual(
             materialize_object_property_value_witness_skeleton.__module__,
-            "subschema.kernel.difference",
+            object_difference_module,
         )
         self.assertEqual(
-            ClosedObjectDifferencePlan.__module__, "subschema.kernel.difference"
+            ClosedObjectDifferencePlan.__module__, object_difference_module
         )
         self.assertEqual(
-            ClosedObjectValueObligation.__module__, "subschema.kernel.difference"
+            ClosedObjectValueObligation.__module__, object_difference_module
         )
         self.assertEqual(
-            ClosedObjectWitnessSkeleton.__module__, "subschema.kernel.difference"
+            ClosedObjectWitnessSkeleton.__module__, object_difference_module
+        )
+        self.assertEqual(ClosedObjectWitnessSlot.__module__, object_difference_module)
+        self.assertEqual(ObjectDifferenceModel.__module__, object_difference_module)
+        self.assertEqual(
+            ObjectKeyValueDifferencePlan.__module__, object_difference_module
+        )
+        self.assertEqual(ObjectKeyValueObligation.__module__, object_difference_module)
+        self.assertEqual(
+            ObjectKeyValueConstraint.__module__, "subschema.ir.constraints"
         )
         self.assertEqual(
-            ClosedObjectWitnessSlot.__module__, "subschema.kernel.difference"
+            ObjectKeyValueWitnessSkeleton.__module__,
+            "subschema.ir.constraints",
         )
         self.assertEqual(
-            ObjectDifferenceModel.__module__, "subschema.kernel.difference"
+            ObjectKeyValueWitnessSlot.__module__, "subschema.ir.constraints"
         )
         self.assertEqual(
-            ObjectKeyValueDifferencePlan.__module__, "subschema.kernel.difference"
+            ObjectPropertyCountDifferencePlan.__module__, object_difference_module
         )
         self.assertEqual(
-            ObjectKeyValueObligation.__module__, "subschema.kernel.difference"
-        )
-        self.assertEqual(ObjectKeyValueShape.__module__, "subschema.kernel.difference")
-        self.assertEqual(
-            ObjectKeyValueWitnessSkeleton.__module__, "subschema.kernel.difference"
+            ObjectPropertyValueObligation.__module__, object_difference_module
         )
         self.assertEqual(
-            ObjectKeyValueWitnessSlot.__module__, "subschema.kernel.difference"
+            ObjectPropertyValuesDifferencePlan.__module__, object_difference_module
         )
         self.assertEqual(
-            ObjectPropertyCountDifferencePlan.__module__, "subschema.kernel.difference"
+            ObjectPropertyValueWitnessSkeleton.__module__, object_difference_module
         )
         self.assertEqual(
-            ObjectPropertyValueObligation.__module__, "subschema.kernel.difference"
+            ObjectPropertyValueWitnessSlot.__module__, object_difference_module
         )
         self.assertEqual(
-            ObjectPropertyValuesDifferencePlan.__module__, "subschema.kernel.difference"
+            ObjectPropertyNamesDifferencePlan.__module__, object_difference_module
         )
         self.assertEqual(
-            ObjectPropertyValueWitnessSkeleton.__module__, "subschema.kernel.difference"
+            ObjectPropertyNamesRepairSkeleton.__module__, object_difference_module
         )
         self.assertEqual(
-            ObjectPropertyValueWitnessSlot.__module__, "subschema.kernel.difference"
-        )
-        self.assertEqual(
-            ObjectPropertyNamesDifferencePlan.__module__, "subschema.kernel.difference"
-        )
-        self.assertEqual(
-            ObjectPropertyNamesRepairSkeleton.__module__, "subschema.kernel.difference"
-        )
-        self.assertEqual(
-            ObjectPropertyNamesRepairSlot.__module__, "subschema.kernel.difference"
+            ObjectPropertyNamesRepairSlot.__module__, object_difference_module
         )
         self.assertEqual(
             ObjectUnevaluatedPropertiesDifferencePlan.__module__,
-            "subschema.kernel.difference",
+            object_difference_module,
         )
         self.assertEqual(
             ObjectUnevaluatedPropertyObligation.__module__,
-            "subschema.kernel.difference",
+            object_difference_module,
         )
-        self.assertEqual(
-            ObjectPresenceProductPlan.__module__, "subschema.kernel.difference"
-        )
-        self.assertEqual(
-            ObjectPresenceWitnessPlan.__module__, "subschema.kernel.difference"
-        )
+        self.assertEqual(ObjectPresenceProductPlan.__module__, object_difference_module)
+        self.assertEqual(ObjectPresenceWitnessPlan.__module__, object_difference_module)
         self.assertEqual(
             materialize_closed_object_witness_skeleton.__module__,
-            "subschema.kernel.difference",
+            object_difference_module,
         )
         self.assertEqual(
             materialize_object_property_names_repair_skeleton.__module__,
-            "subschema.kernel.difference",
+            object_difference_module,
         )
-        self.assertEqual(AndFormula.__module__, "subschema.kernel.formulas")
-        self.assertEqual(AssertionFormula.__module__, "subschema.kernel.formulas")
-        self.assertEqual(BottomFormula.__module__, "subschema.kernel.formulas")
+        self.assertEqual(AndFormula.__module__, "subschema.prover.formulas")
+        self.assertEqual(AssertionFormula.__module__, "subschema.prover.formulas")
+        self.assertEqual(BottomFormula.__module__, "subschema.prover.formulas")
         self.assertEqual(
-            EvaluationEffectFormula.__module__, "subschema.kernel.formulas"
+            EvaluationEffectFormula.__module__, "subschema.prover.formulas"
         )
-        self.assertEqual(ExactlyOneFormula.__module__, "subschema.kernel.formulas")
-        self.assertEqual(GuardedFormula.__module__, "subschema.kernel.formulas")
-        self.assertEqual(NotFormula.__module__, "subschema.kernel.formulas")
-        self.assertEqual(OrFormula.__module__, "subschema.kernel.formulas")
-        self.assertEqual(ReferenceFormula.__module__, "subschema.kernel.formulas")
-        self.assertEqual(TopFormula.__module__, "subschema.kernel.formulas")
-        self.assertEqual(UnsupportedFormula.__module__, "subschema.kernel.formulas")
-        self.assertEqual(AssertionAtom.__module__, "subschema.kernel.ir")
-        self.assertEqual(ApplicatorNode.__module__, "subschema.kernel.ir")
-        self.assertEqual(DifferenceRuleSpec.__module__, "subschema.kernel.sat")
-        self.assertEqual(DomainFacts.__module__, "subschema.kernel.ir")
-        self.assertEqual(FiniteConstraint.__module__, "subschema.kernel.constraints")
-        self.assertEqual(TypeConstraint.__module__, "subschema.kernel.constraints")
-        self.assertEqual(NumericConstraint.__module__, "subschema.kernel.constraints")
+        self.assertEqual(ExactlyOneFormula.__module__, "subschema.prover.formulas")
+        self.assertEqual(GuardedFormula.__module__, "subschema.prover.formulas")
+        self.assertEqual(NotFormula.__module__, "subschema.prover.formulas")
+        self.assertEqual(OrFormula.__module__, "subschema.prover.formulas")
+        self.assertEqual(ReferenceFormula.__module__, "subschema.prover.formulas")
+        self.assertEqual(TopFormula.__module__, "subschema.prover.formulas")
+        self.assertEqual(UnsupportedFormula.__module__, "subschema.prover.formulas")
+        self.assertEqual(AssertionAtom.__module__, "subschema.ir")
+        self.assertEqual(ApplicatorNode.__module__, "subschema.ir")
+        self.assertEqual(DifferenceRuleSpec.__module__, "subschema.prover.sat")
+        self.assertEqual(FiniteConstraint.__module__, "subschema.ir.constraints")
+        self.assertEqual(TypeConstraint.__module__, "subschema.ir.constraints")
+        self.assertEqual(NumericConstraint.__module__, "subschema.ir.constraints")
         self.assertEqual(
-            StringLengthConstraint.__module__, "subschema.kernel.constraints"
-        )
-        self.assertEqual(
-            StringLanguageConstraint.__module__, "subschema.kernel.constraints"
+            StringLengthConstraint.__module__, "subschema.ir.constraints"
         )
         self.assertEqual(
-            ArrayLengthConstraint.__module__, "subschema.kernel.constraints"
+            StringLanguageConstraint.__module__, "subschema.ir.constraints"
         )
         self.assertEqual(
-            ArrayUniquenessConstraint.__module__, "subschema.kernel.constraints"
+            ArrayLengthConstraint.__module__, "subschema.ir.constraints"
         )
         self.assertEqual(
-            ObjectPropertyCountConstraint.__module__, "subschema.kernel.constraints"
+            ArrayUniquenessConstraint.__module__, "subschema.ir.constraints"
         )
         self.assertEqual(
-            ObjectPropertyNamesConstraint.__module__, "subschema.kernel.constraints"
+            ObjectPropertyCountConstraint.__module__, "subschema.ir.constraints"
         )
         self.assertEqual(
-            ObjectPropertyValuesConstraint.__module__, "subschema.kernel.constraints"
+            ObjectPropertyNamesConstraint.__module__, "subschema.ir.constraints"
         )
         self.assertEqual(
-            ObjectClosedPropertiesConstraint.__module__, "subschema.kernel.constraints"
-        )
-        self.assertEqual(EvaluationFrontier.__module__, "subschema.kernel.evaluation")
-        self.assertEqual(EvaluationExpression.__module__, "subschema.kernel.evaluation")
-        self.assertEqual(
-            EvaluationExpressionOrigin.__module__, "subschema.kernel.evaluation"
+            ObjectPropertyValuesConstraint.__module__, "subschema.ir.constraints"
         )
         self.assertEqual(
-            EvaluationTraceExpression.__module__, "subschema.kernel.evaluation"
+            ObjectClosedPropertiesConstraint.__module__, "subschema.ir.constraints"
+        )
+        self.assertEqual(EvaluationFrontier.__module__, "subschema.ir.evaluation")
+        self.assertEqual(EvaluationExpression.__module__, "subschema.ir.evaluation")
+        self.assertEqual(
+            EvaluationExpressionOrigin.__module__, "subschema.ir.evaluation"
+        )
+        self.assertEqual(
+            EvaluationTraceExpression.__module__, "subschema.ir.evaluation"
         )
         self.assertEqual(ConcreteEvaluator.__module__, "test.semantic_oracle")
         self.assertEqual(
-            references_module.ReferenceFrame.__module__, "subschema.kernel.references"
+            references_module.ReferenceFrame.__module__, "subschema.compiler.resources"
         )
         self.assertEqual(
-            references_module.DynamicScope.__module__, "subschema.kernel.references"
+            references_module.DynamicScope.__module__, "subschema.compiler.resources"
         )
         self.assertIn(
             "origins", inspect.getsource(evaluation_module.EvaluationExpression)
@@ -1066,13 +1935,13 @@ class TestProofEngineRouting(unittest.TestCase):
             "EvaluationExpression",
             inspect.getsource(context_module.ProofContext),
         )
-        self.assertEqual(LogicalSchemaIR.__module__, "subschema.kernel.ir")
-        self.assertEqual(SchemaIRCompiler.__module__, "subschema.kernel.ir")
-        self.assertEqual(SchemaNode.__module__, "subschema.kernel.ir")
-        self.assertEqual(UnsupportedNode.__module__, "subschema.kernel.ir")
-        self.assertEqual(formula.lhs.__class__.__module__, "subschema.kernel.ir")
+        self.assertEqual(LogicalSchemaIR.__module__, "subschema.ir")
+        self.assertEqual(SchemaIRCompiler.__module__, "subschema.compiler.ir")
+        self.assertEqual(SchemaNode.__module__, "subschema.ir")
+        self.assertEqual(UnsupportedNode.__module__, "subschema.ir")
+        self.assertEqual(formula.lhs.__class__.__module__, "subschema.ir")
         self.assertEqual(
-            formula.lhs.source.__class__.__module__, "subschema.kernel.references"
+            formula.lhs.source.__class__.__module__, "subschema.provenance"
         )
         self.assertIsInstance(formula.lhs.type_constraint, TypeConstraint)
         self.assertIsInstance(formula.lhs.numeric_constraint, NumericConstraint)
@@ -1081,7 +1950,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIsNotNone(formula.lhs.type_shape)
         self.assertIsNotNone(formula.lhs.numeric_shape)
         self.assertTrue(formula.lhs.assertions)
-        array_length_formula = DifferenceFormula.from_schemas(
+        array_length_formula = difference_formula_from_schemas(
             {"type": "array", "minItems": 1},
             {"type": "array"},
             Dialect.DRAFT7,
@@ -1089,7 +1958,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIsInstance(
             array_length_formula.lhs.array_length_lhs_constraint, ArrayLengthConstraint
         )
-        array_uniqueness_formula = DifferenceFormula.from_schemas(
+        array_uniqueness_formula = difference_formula_from_schemas(
             {"type": "array", "uniqueItems": True},
             {"type": "array"},
             Dialect.DRAFT7,
@@ -1098,7 +1967,7 @@ class TestProofEngineRouting(unittest.TestCase):
             array_uniqueness_formula.lhs.array_uniqueness_lhs_constraint,
             ArrayUniquenessConstraint,
         )
-        object_count_formula = DifferenceFormula.from_schemas(
+        object_count_formula = difference_formula_from_schemas(
             {"type": "object", "minProperties": 1},
             {"type": "object"},
             Dialect.DRAFT7,
@@ -1107,7 +1976,7 @@ class TestProofEngineRouting(unittest.TestCase):
             object_count_formula.lhs.object_property_count_constraint,
             ObjectPropertyCountConstraint,
         )
-        object_names_formula = DifferenceFormula.from_schemas(
+        object_names_formula = difference_formula_from_schemas(
             {"type": "object", "propertyNames": {"pattern": "^a"}},
             {"type": "object"},
             Dialect.DRAFT7,
@@ -1116,7 +1985,7 @@ class TestProofEngineRouting(unittest.TestCase):
             object_names_formula.lhs.object_property_names_constraint,
             ObjectPropertyNamesConstraint,
         )
-        object_values_formula = DifferenceFormula.from_schemas(
+        object_values_formula = difference_formula_from_schemas(
             {"type": "object", "properties": {"a": {"type": "integer"}}},
             {"type": "object"},
             Dialect.DRAFT7,
@@ -1125,7 +1994,7 @@ class TestProofEngineRouting(unittest.TestCase):
             object_values_formula.lhs.object_property_values_constraint,
             ObjectPropertyValuesConstraint,
         )
-        object_closed_formula = DifferenceFormula.from_schemas(
+        object_closed_formula = difference_formula_from_schemas(
             {"type": "object", "additionalProperties": False},
             {"type": "object"},
             Dialect.DRAFT7,
@@ -1134,7 +2003,7 @@ class TestProofEngineRouting(unittest.TestCase):
             object_closed_formula.lhs.object_closed_properties_constraint,
             ObjectClosedPropertiesConstraint,
         )
-        tagged_formula = DifferenceFormula.from_schemas(
+        tagged_formula = difference_formula_from_schemas(
             {
                 "type": "object",
                 "required": ["kind"],
@@ -1162,12 +2031,20 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIn("numeric-domain-ir", rule_names)
         self.assertNotIn("applicator-domain-ir", rule_names)
         self.assertLess(
-            rule_names.index("finite-domain-ir"),
             rule_names.index("static-reference-ir"),
+            rule_names.index("finite-domain-ir"),
         )
         self.assertLess(
             rule_names.index("static-reference-ir"),
             rule_names.index("dynamic-reference-ir"),
+        )
+        self.assertLess(
+            rule_names.index("dynamic-reference-ir"),
+            rule_names.index("recursive-reference-boundary"),
+        )
+        self.assertLess(
+            rule_names.index("recursive-reference-boundary"),
+            rule_names.index("finite-domain-ir"),
         )
         self.assertLess(
             rule_names.index("dynamic-reference-ir"),
@@ -1419,7 +2296,7 @@ class TestProofEngineRouting(unittest.TestCase):
             ],
             "exact",
         )
-        applicator_formula = DifferenceFormula.from_schemas(
+        applicator_formula = difference_formula_from_schemas(
             {"anyOf": [{"type": "string"}]},
             {"type": "string"},
             Dialect.DRAFT7,
@@ -1474,16 +2351,14 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(
             applicator_plans[0].children[0].source.schema, {"type": "string"}
         )
-        self.assertTrue(applicator_plans[0].formula.base_schema)
+        self.assertEqual(applicator_plans[0].formula.base_term, SchemaTerm.true())
         applicator_products = applicator_branch_products(
             applicator_plans[0],
-            lhs_schema=applicator_formula.lhs.schema,
-            rhs_schema=applicator_formula.rhs.schema,
+            lhs_term=applicator_formula.lhs.root_term,
+            rhs_term=applicator_formula.rhs.root_term,
         )
         self.assertEqual(len(applicator_products), 1)
         self.assertIsInstance(applicator_products[0], ApplicatorBranchProduct)
-        self.assertEqual(applicator_products[0].lhs_schema, {"type": "string"})
-        self.assertEqual(applicator_products[0].rhs_schema, {"type": "string"})
         self.assertEqual(
             applicator_products[0].witness_missing_reason,
             "SAT left-anyOf branch witness could not be constructed",
@@ -1493,7 +2368,14 @@ class TestProofEngineRouting(unittest.TestCase):
             "SAT left-anyOf branch witness was rejected",
         )
         self.assertIsNone(applicator_products[0].witness_unsupported_reason)
-        mixed_lhs_any_of_formula = DifferenceFormula.from_schemas(
+        self.assertEqual(
+            applicator_products[0].lhs_term,
+            SchemaTerm.node(applicator_products[0].child.ref, scope="lhs"),
+        )
+        self.assertEqual(
+            applicator_products[0].rhs_term, applicator_formula.rhs.root_term
+        )
+        mixed_lhs_any_of_formula = difference_formula_from_schemas(
             {"type": "string", "anyOf": [{"maxLength": 3}, {"pattern": "^a"}]},
             {"type": "string"},
             Dialect.DRAFT7,
@@ -1505,40 +2387,38 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(mixed_lhs_any_of_fragments[0].side, "lhs")
         self.assertEqual(mixed_lhs_any_of_fragments[0].polarity, "positive")
         self.assertEqual(mixed_lhs_any_of_fragments[0].kind, "anyOf")
-        self.assertEqual(mixed_lhs_any_of_fragments[0].base_schema, {"type": "string"})
+        self.assertEqual(
+            mixed_lhs_any_of_fragments[0].base_semantic_keywords, frozenset({"type"})
+        )
         mixed_lhs_any_of_products = applicator_branch_products(
             applicator_difference_plans(mixed_lhs_any_of_formula)[0],
-            lhs_schema=mixed_lhs_any_of_formula.lhs.schema,
-            rhs_schema=mixed_lhs_any_of_formula.rhs.schema,
+            lhs_term=mixed_lhs_any_of_formula.lhs.root_term,
+            rhs_term=mixed_lhs_any_of_formula.rhs.root_term,
         )
         self.assertEqual(
-            mixed_lhs_any_of_products[0].lhs_schema,
-            {"allOf": [{"type": "string"}, {"maxLength": 3}]},
-        )
-        self.assertEqual(mixed_lhs_any_of_products[0].base_schema, {"type": "string"})
-        self.assertEqual(
-            left_branch_resolved_lhs_schema(
-                mixed_lhs_any_of_products[0], {"pattern": "^a"}
+            mixed_lhs_any_of_products[0].lhs_term,
+            SchemaTerm.all_of(
+                (
+                    mixed_lhs_any_of_fragments[0].base_term.with_scope("lhs"),
+                    SchemaTerm.node(
+                        mixed_lhs_any_of_products[0].child.ref, scope="lhs"
+                    ),
+                )
             ),
-            {"allOf": [{"type": "string"}, {"pattern": "^a"}]},
         )
         self.assertEqual(
-            left_branch_resolved_lhs_schema(mixed_lhs_any_of_products[0], False), False
+            mixed_lhs_any_of_products[0].rhs_term,
+            mixed_lhs_any_of_formula.rhs.root_term,
         )
-        self.assertEqual(
-            left_branch_resolved_lhs_schema(applicator_products[0], {"type": "number"}),
-            {"type": "number"},
+        lhs_one_of_formula = difference_formula_from_schemas(
+            {"oneOf": [{"type": "string"}, {"type": "number"}]},
+            {"type": "string"},
+            Dialect.DRAFT7,
         )
         lhs_one_of_products = applicator_branch_products(
-            applicator_difference_plans(
-                DifferenceFormula.from_schemas(
-                    {"oneOf": [{"type": "string"}, {"type": "number"}]},
-                    {"type": "string"},
-                    Dialect.DRAFT7,
-                )
-            )[0],
-            lhs_schema={"oneOf": [{"type": "string"}, {"type": "number"}]},
-            rhs_schema={"type": "string"},
+            applicator_difference_plans(lhs_one_of_formula)[0],
+            lhs_term=lhs_one_of_formula.lhs.root_term,
+            rhs_term=lhs_one_of_formula.rhs.root_term,
         )
         self.assertEqual(
             lhs_one_of_products[0].witness_missing_reason,
@@ -1552,16 +2432,15 @@ class TestProofEngineRouting(unittest.TestCase):
             lhs_one_of_products[0].witness_unsupported_reason,
             "SAT left-oneOf branch counterexample is not necessarily in the oneOf result",
         )
+        lhs_all_of_formula = difference_formula_from_schemas(
+            {"allOf": [{"type": "string"}, {"minLength": 1}]},
+            {"type": "string"},
+            Dialect.DRAFT7,
+        )
         lhs_all_of_products = applicator_branch_products(
-            applicator_difference_plans(
-                DifferenceFormula.from_schemas(
-                    {"allOf": [{"type": "string"}, {"minLength": 1}]},
-                    {"type": "string"},
-                    Dialect.DRAFT7,
-                )
-            )[0],
-            lhs_schema={"allOf": [{"type": "string"}, {"minLength": 1}]},
-            rhs_schema={"type": "string"},
+            applicator_difference_plans(lhs_all_of_formula)[0],
+            lhs_term=lhs_all_of_formula.lhs.root_term,
+            rhs_term=lhs_all_of_formula.rhs.root_term,
         )
         self.assertEqual(
             lhs_all_of_products[0].witness_missing_reason,
@@ -1571,7 +2450,7 @@ class TestProofEngineRouting(unittest.TestCase):
             lhs_all_of_products[0].witness_rejected_reason,
             "SAT left-allOf branch witness was rejected",
         )
-        mixed_rhs_any_of_formula = DifferenceFormula.from_schemas(
+        mixed_rhs_any_of_formula = difference_formula_from_schemas(
             {"type": "string", "maxLength": 3},
             {"type": "string", "anyOf": [{"maxLength": 5}, {"pattern": "^a"}]},
             Dialect.DRAFT7,
@@ -1583,7 +2462,9 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(mixed_rhs_any_of_fragments[0].side, "rhs")
         self.assertEqual(mixed_rhs_any_of_fragments[0].polarity, "negative")
         self.assertEqual(mixed_rhs_any_of_fragments[0].kind, "anyOf")
-        self.assertEqual(mixed_rhs_any_of_fragments[0].base_schema, {"type": "string"})
+        self.assertEqual(
+            mixed_rhs_any_of_fragments[0].base_semantic_keywords, frozenset({"type"})
+        )
         mixed_rhs_any_of_formula_node = mixed_rhs_any_of_formula.negative_rhs.formula
         self.assertIsInstance(mixed_rhs_any_of_formula_node, NotFormula)
         self.assertIs(
@@ -1604,7 +2485,7 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         mixed_rhs_any_of_base = applicator_base_product(
             applicator_difference_plans(mixed_rhs_any_of_formula)[0],
-            lhs_schema=mixed_rhs_any_of_formula.lhs.schema,
+            lhs_term=mixed_rhs_any_of_formula.lhs.root_term,
         )
         self.assertIsInstance(mixed_rhs_any_of_base, ApplicatorBaseProduct)
         self.assertEqual(
@@ -1615,7 +2496,7 @@ class TestProofEngineRouting(unittest.TestCase):
             mixed_rhs_any_of_base.witness_rejected_reason,
             "SAT right-anyOf base witness was rejected",
         )
-        mixed_rhs_all_of_formula = DifferenceFormula.from_schemas(
+        mixed_rhs_all_of_formula = difference_formula_from_schemas(
             {"type": "string"},
             {
                 "type": "string",
@@ -1632,8 +2513,8 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(mixed_rhs_all_of_fragments[0].polarity, "negative")
         self.assertEqual(mixed_rhs_all_of_fragments[0].kind, "allOf")
         self.assertEqual(
-            mixed_rhs_all_of_fragments[0].base_schema,
-            {"type": "string", "definitions": {"name": {"type": "string"}}},
+            mixed_rhs_all_of_fragments[0].base_semantic_keywords,
+            frozenset({"type"}),
         )
         mixed_rhs_all_of_formula_node = mixed_rhs_all_of_formula.negative_rhs.formula
         self.assertIsInstance(mixed_rhs_all_of_formula_node, NotFormula)
@@ -1651,7 +2532,7 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         mixed_rhs_all_of_base = applicator_base_product(
             applicator_difference_plans(mixed_rhs_all_of_formula)[0],
-            lhs_schema=mixed_rhs_all_of_formula.lhs.schema,
+            lhs_term=mixed_rhs_all_of_formula.lhs.root_term,
         )
         self.assertIsInstance(mixed_rhs_all_of_base, ApplicatorBaseProduct)
         self.assertEqual(
@@ -1662,7 +2543,7 @@ class TestProofEngineRouting(unittest.TestCase):
             mixed_rhs_all_of_base.witness_rejected_reason,
             "SAT right-allOf base witness was rejected",
         )
-        hard_keyword_formula = DifferenceFormula.from_schemas(
+        hard_keyword_formula = difference_formula_from_schemas(
             {"type": "array"},
             {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1671,8 +2552,12 @@ class TestProofEngineRouting(unittest.TestCase):
             },
             Dialect.DRAFT202012,
         )
-        self.assertEqual(applicator_formula_fragments(hard_keyword_formula), ())
-        lhs_hard_keyword_formula = DifferenceFormula.from_schemas(
+        hard_keyword_plans = applicator_difference_plans(hard_keyword_formula)
+        self.assertEqual(len(hard_keyword_plans), 1)
+        self.assertIsInstance(hard_keyword_plans[0], ApplicatorBranchPlan)
+        self.assertEqual(hard_keyword_plans[0].strategy, "right-allof-nnf-exact")
+        self.assertFalse(hard_keyword_plans[0].base_is_standalone)
+        lhs_hard_keyword_formula = difference_formula_from_schemas(
             {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
                 "anyOf": [{"type": "array"}],
@@ -1682,7 +2567,7 @@ class TestProofEngineRouting(unittest.TestCase):
             Dialect.DRAFT202012,
         )
         self.assertEqual(applicator_formula_fragments(lhs_hard_keyword_formula), ())
-        rhs_not_formula = DifferenceFormula.from_schemas(
+        rhs_not_formula = difference_formula_from_schemas(
             {"type": "string"},
             {"not": {"type": "number"}},
             Dialect.DRAFT7,
@@ -1705,11 +2590,14 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         rhs_not_product = applicator_nnf_schema_product(
             rhs_not_nnf[0],
-            lhs_schema=rhs_not_formula.lhs.schema,
+            lhs_term=rhs_not_formula.lhs.root_term,
         )
         self.assertIsInstance(rhs_not_product, ApplicatorNnfSchemaProduct)
-        self.assertEqual(rhs_not_product.lhs_schema, {"type": "string"})
-        self.assertEqual(rhs_not_product.rhs_schema, {"type": "number"})
+        self.assertEqual(rhs_not_product.lhs_term, rhs_not_formula.lhs.root_term)
+        self.assertEqual(
+            rhs_not_product.rhs_term,
+            SchemaTerm.node(rhs_not_product.child.node.ref, scope="rhs"),
+        )
         self.assertIsInstance(
             rhs_not_product.rhs_string_language_constraint, StringLanguageConstraint
         )
@@ -1729,21 +2617,13 @@ class TestProofEngineRouting(unittest.TestCase):
             rhs_not_product.complement_witness_rejected_reason,
             "SAT right-not complement witness was rejected",
         )
-        rhs_not_witness = right_not_witness_plan(rhs_not_product, Dialect.DRAFT7)
+        rhs_not_witness = right_not_witness_plan(
+            rhs_not_product,
+            proof_engine(Dialect.DRAFT7).context,
+            rhs_not_formula.lhs,
+        )
         self.assertTrue(rhs_not_witness.has_witness)
         self.assertEqual(rhs_not_witness.witness, "")
-        rhs_not_complement = right_not_complement_schema(
-            rhs_not_product, rhs_not_product.rhs_schema
-        )
-        self.assertEqual(rhs_not_complement, {"not": {"type": "number"}})
-        self.assertFalse(
-            right_not_complement_needs_subproof(
-                rhs_not_product,
-                rhs_not_complement,
-                original_lhs_schema=rhs_not_formula.lhs.schema,
-                original_rhs_schema=rhs_not_formula.rhs.schema,
-            )
-        )
         self.assertEqual(rhs_not_plans[0].side, "rhs")
         self.assertEqual(rhs_not_plans[0].polarity, "negative")
         self.assertEqual(rhs_not_plans[0].kind, "not")
@@ -1753,11 +2633,10 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs_not_overlap_plan = right_not_string_overlap_plan(
             rhs_not_formula.lhs,
             rhs_not_nnf[0].children[0].node,
-            Dialect.DRAFT7,
         )
         self.assertIsInstance(rhs_not_overlap_plan, RightNotStringOverlapPlan)
         self.assertEqual(rhs_not_overlap_plan.status, "unsupported")
-        mixed_rhs_not_formula = DifferenceFormula.from_schemas(
+        mixed_rhs_not_formula = difference_formula_from_schemas(
             {"const": "b"},
             {
                 "type": "string",
@@ -1768,8 +2647,8 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         mixed_rhs_not_plan = applicator_difference_plans(mixed_rhs_not_formula)[0]
         self.assertEqual(
-            mixed_rhs_not_plan.formula.base_schema,
-            {"type": "string", "definitions": {"bad": {"const": "a"}}},
+            mixed_rhs_not_plan.formula.base_semantic_keywords,
+            frozenset({"type"}),
         )
         self.assertIsInstance(mixed_rhs_not_plan.formula.formula_node, NotFormula)
         self.assertEqual(mixed_rhs_not_plan.formula.formula_node.applicator_kind, "not")
@@ -1779,13 +2658,16 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         mixed_rhs_not_base = applicator_base_product(
             mixed_rhs_not_plan,
-            lhs_schema=mixed_rhs_not_formula.lhs.schema,
+            lhs_term=mixed_rhs_not_formula.lhs.root_term,
         )
         self.assertIsInstance(mixed_rhs_not_base, ApplicatorBaseProduct)
-        self.assertEqual(mixed_rhs_not_base.lhs_schema, {"const": "b"})
         self.assertEqual(
-            mixed_rhs_not_base.rhs_schema,
-            {"type": "string", "definitions": {"bad": {"const": "a"}}},
+            mixed_rhs_not_base.lhs_term,
+            mixed_rhs_not_formula.lhs.root_term,
+        )
+        self.assertEqual(
+            mixed_rhs_not_base.rhs_term,
+            mixed_rhs_not_plan.formula.base_term.with_scope("rhs"),
         )
         self.assertEqual(
             mixed_rhs_not_base.witness_missing_reason,
@@ -1797,40 +2679,22 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         mixed_rhs_not_product = applicator_nnf_schema_product(
             mixed_rhs_not_plan.nnf,
-            lhs_schema=mixed_rhs_not_formula.lhs.schema,
+            lhs_term=mixed_rhs_not_formula.lhs.root_term,
         )
         self.assertEqual(
-            mixed_rhs_not_product.lhs_schema,
-            {
-                "allOf": [
-                    {"const": "b"},
-                    {"type": "string", "definitions": {"bad": {"const": "a"}}},
-                ]
-            },
+            mixed_rhs_not_product.lhs_term,
+            SchemaTerm.all_of(
+                (
+                    mixed_rhs_not_formula.lhs.root_term,
+                    mixed_rhs_not_plan.formula.base_term.with_scope("rhs"),
+                )
+            ),
         )
         self.assertEqual(
-            mixed_rhs_not_product.rhs_schema, {"$ref": "#/definitions/bad"}
+            mixed_rhs_not_product.rhs_term,
+            SchemaTerm.node(mixed_rhs_not_product.child.node.ref, scope="rhs"),
         )
-        self.assertEqual(
-            right_not_resolved_rhs_schema(mixed_rhs_not_product, {"const": "a"}),
-            {"const": "a"},
-        )
-        self.assertEqual(
-            right_not_resolved_rhs_schema(mixed_rhs_not_product, None),
-            {"$ref": "#/definitions/bad"},
-        )
-        mixed_rhs_not_complement = right_not_complement_schema(
-            mixed_rhs_not_product, {"const": "a"}
-        )
-        self.assertTrue(
-            right_not_complement_needs_subproof(
-                mixed_rhs_not_product,
-                mixed_rhs_not_complement,
-                original_lhs_schema=mixed_rhs_not_formula.lhs.schema,
-                original_rhs_schema=mixed_rhs_not_formula.rhs.schema,
-            )
-        )
-        hard_keyword_not_formula = DifferenceFormula.from_schemas(
+        hard_keyword_not_formula = difference_formula_from_schemas(
             {"type": "object"},
             {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1840,7 +2704,7 @@ class TestProofEngineRouting(unittest.TestCase):
             Dialect.DRAFT202012,
         )
         self.assertEqual(applicator_difference_plans(hard_keyword_not_formula), ())
-        rhs_any_of_formula = DifferenceFormula.from_schemas(
+        rhs_any_of_formula = difference_formula_from_schemas(
             {"type": "string"},
             {"anyOf": [{"type": "number"}, {"type": "string"}]},
             Dialect.DRAFT7,
@@ -1853,29 +2717,26 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         rhs_any_of_products = applicator_nnf_branch_products(
             rhs_any_of_nnf[0],
-            lhs_schema=rhs_any_of_formula.lhs.schema,
+            lhs_term=rhs_any_of_formula.lhs.root_term,
         )
         self.assertEqual(len(rhs_any_of_products), 2)
         self.assertIsInstance(rhs_any_of_products[0], ApplicatorNnfBranchProduct)
-        self.assertEqual(rhs_any_of_products[0].lhs_schema, {"type": "string"})
-        self.assertEqual(rhs_any_of_products[0].rhs_schema, {"type": "number"})
         self.assertEqual(
             rhs_any_of_products[0].witness_missing_reason,
             "SAT right-anyOf branch witness could not be constructed",
         )
         self.assertEqual(
+            rhs_any_of_products[0].lhs_term, rhs_any_of_formula.lhs.root_term
+        )
+        self.assertEqual(
+            rhs_any_of_products[0].rhs_term,
+            SchemaTerm.node(rhs_any_of_products[0].child.node.ref, scope="rhs"),
+        )
+        self.assertEqual(
             rhs_any_of_products[0].witness_rejected_reason,
             "SAT right-anyOf branch witness was rejected",
         )
-        self.assertEqual(
-            right_nnf_branch_resolved_rhs_schema(rhs_any_of_products[0], {"const": 1}),
-            {"const": 1},
-        )
-        self.assertEqual(
-            right_nnf_branch_resolved_rhs_schema(rhs_any_of_products[0], None),
-            {"type": "number"},
-        )
-        rhs_one_of_formula = DifferenceFormula.from_schemas(
+        rhs_one_of_formula = difference_formula_from_schemas(
             {"type": "object"},
             {"oneOf": [{"type": "object"}, {"type": "array"}]},
             Dialect.DRAFT7,
@@ -1891,7 +2752,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(rhs_one_of_plan.strategy, "right-oneof-cardinality-exact")
         rhs_one_of_products = one_of_cardinality_products(
             rhs_one_of_plan,
-            lhs_schema=rhs_one_of_formula.lhs.schema,
+            lhs_term=rhs_one_of_formula.lhs.root_term,
         )
         self.assertTrue(
             all(
@@ -1899,22 +2760,20 @@ class TestProofEngineRouting(unittest.TestCase):
                 for product in rhs_one_of_products
             )
         )
-        self.assertEqual(rhs_one_of_products[1].branch_schema, {"type": "array"})
         self.assertEqual(
-            one_of_branch_resolved_schema(rhs_one_of_products[1], {"type": "integer"}),
-            {"type": "integer"},
-        )
-        self.assertEqual(
-            one_of_branch_resolved_schema(rhs_one_of_products[1], None),
-            {"type": "array"},
+            rhs_one_of_products[1].branch_term,
+            SchemaTerm.node(rhs_one_of_products[1].child.ref, scope="rhs"),
         )
         rhs_one_of_overlap_product = one_of_overlap_product(
             rhs_one_of_plan,
-            lhs_schema=rhs_one_of_formula.lhs.schema,
+            lhs_term=rhs_one_of_formula.lhs.root_term,
             covering_indexes=(0, 1),
         )
         self.assertIsInstance(rhs_one_of_overlap_product, ApplicatorOneOfOverlapProduct)
-        self.assertEqual(rhs_one_of_overlap_product.lhs_schema, {"type": "object"})
+        self.assertEqual(
+            rhs_one_of_overlap_product.lhs_term,
+            rhs_one_of_formula.lhs.root_term,
+        )
         self.assertEqual(rhs_one_of_overlap_product.covering_indexes, (0, 1))
         self.assertEqual(
             rhs_one_of_overlap_product.witness_missing_reason,
@@ -1925,13 +2784,15 @@ class TestProofEngineRouting(unittest.TestCase):
             "SAT right-oneOf overlap witness was rejected",
         )
         rhs_one_of_overlap_witness = one_of_overlap_witness_plan(
-            rhs_one_of_overlap_product, Dialect.DRAFT7
+            rhs_one_of_overlap_product,
+            proof_engine(Dialect.DRAFT7).context,
+            rhs_one_of_formula.lhs,
         )
         self.assertTrue(rhs_one_of_overlap_witness.has_witness)
         self.assertEqual(rhs_one_of_overlap_witness.witness, {})
         rhs_one_of_disjointness_products = one_of_disjointness_products(
             rhs_one_of_plan,
-            lhs_schema=rhs_one_of_formula.lhs.schema,
+            lhs_term=rhs_one_of_formula.lhs.root_term,
             covered_index=0,
         )
         self.assertEqual(len(rhs_one_of_disjointness_products), 1)
@@ -1941,10 +2802,14 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(rhs_one_of_disjointness_products[0].covered_index, 0)
         self.assertEqual(rhs_one_of_disjointness_products[0].index, 1)
         self.assertEqual(
-            rhs_one_of_disjointness_products[0].lhs_schema, {"type": "object"}
+            rhs_one_of_disjointness_products[0].lhs_term,
+            rhs_one_of_formula.lhs.root_term,
         )
         self.assertEqual(
-            rhs_one_of_disjointness_products[0].branch_schema, {"type": "array"}
+            rhs_one_of_disjointness_products[0].branch_term,
+            SchemaTerm.node(
+                rhs_one_of_disjointness_products[0].child.ref, scope="rhs"
+            ),
         )
         self.assertEqual(
             rhs_one_of_disjointness_products[0].witness_missing_reason,
@@ -1954,34 +2819,16 @@ class TestProofEngineRouting(unittest.TestCase):
             rhs_one_of_disjointness_products[0].witness_rejected_reason,
             "SAT right-oneOf overlap witness was rejected",
         )
-        self.assertEqual(
-            one_of_disjointness_complement_schema(
-                rhs_one_of_disjointness_products[0],
-                rhs_one_of_disjointness_products[0].branch_schema,
-            ),
-            {"not": {"type": "array"}},
-        )
-        self.assertEqual(
-            one_of_disjointness_resolved_branch_schema(
-                rhs_one_of_disjointness_products[0],
-                {"type": "integer"},
-            ),
-            {"type": "integer"},
-        )
-        self.assertEqual(
-            one_of_disjointness_resolved_branch_schema(
-                rhs_one_of_disjointness_products[0], None
-            ),
-            {"type": "array"},
-        )
-        mixed_rhs_one_of_formula = DifferenceFormula.from_schemas(
+        mixed_rhs_one_of_formula = difference_formula_from_schemas(
             {"type": "string", "minLength": 1},
             {"type": "string", "oneOf": [{"minLength": 1}, {"maxLength": 0}]},
             Dialect.DRAFT7,
         )
         mixed_rhs_one_of_plan = applicator_difference_plans(mixed_rhs_one_of_formula)[0]
         self.assertIsInstance(mixed_rhs_one_of_plan, ApplicatorOneOfCardinalityPlan)
-        self.assertEqual(mixed_rhs_one_of_plan.formula.base_schema, {"type": "string"})
+        self.assertEqual(
+            mixed_rhs_one_of_plan.formula.base_semantic_keywords, frozenset({"type"})
+        )
         self.assertIsInstance(mixed_rhs_one_of_plan.formula.formula_node, NotFormula)
         self.assertEqual(
             mixed_rhs_one_of_plan.formula.formula_node.applicator_kind, "oneOf"
@@ -1992,13 +2839,17 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         mixed_rhs_one_of_base = applicator_base_product(
             mixed_rhs_one_of_plan,
-            lhs_schema=mixed_rhs_one_of_formula.lhs.schema,
+            lhs_term=mixed_rhs_one_of_formula.lhs.root_term,
         )
         self.assertIsInstance(mixed_rhs_one_of_base, ApplicatorBaseProduct)
         self.assertEqual(
-            mixed_rhs_one_of_base.lhs_schema, {"type": "string", "minLength": 1}
+            mixed_rhs_one_of_base.lhs_term,
+            mixed_rhs_one_of_formula.lhs.root_term,
         )
-        self.assertEqual(mixed_rhs_one_of_base.rhs_schema, {"type": "string"})
+        self.assertEqual(
+            mixed_rhs_one_of_base.rhs_term,
+            mixed_rhs_one_of_plan.formula.base_term.with_scope("rhs"),
+        )
         self.assertEqual(
             mixed_rhs_one_of_base.witness_missing_reason,
             "SAT right-oneOf base witness could not be constructed",
@@ -2009,31 +2860,46 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         mixed_rhs_one_of_products = one_of_cardinality_products(
             mixed_rhs_one_of_plan,
-            lhs_schema=mixed_rhs_one_of_formula.lhs.schema,
+            lhs_term=mixed_rhs_one_of_formula.lhs.root_term,
         )
         self.assertEqual(
-            mixed_rhs_one_of_products[0].lhs_schema,
-            {"allOf": [{"type": "string", "minLength": 1}, {"type": "string"}]},
+            mixed_rhs_one_of_products[0].lhs_term,
+            SchemaTerm.all_of(
+                (
+                    mixed_rhs_one_of_formula.lhs.root_term,
+                    mixed_rhs_one_of_plan.formula.base_term.with_scope("rhs"),
+                )
+            ),
         )
         mixed_rhs_one_of_overlap = one_of_overlap_product(
             mixed_rhs_one_of_plan,
-            lhs_schema=mixed_rhs_one_of_formula.lhs.schema,
+            lhs_term=mixed_rhs_one_of_formula.lhs.root_term,
             covering_indexes=(0, 1),
         )
         self.assertEqual(
-            mixed_rhs_one_of_overlap.lhs_schema,
-            {"allOf": [{"type": "string", "minLength": 1}, {"type": "string"}]},
+            mixed_rhs_one_of_overlap.lhs_term,
+            SchemaTerm.all_of(
+                (
+                    mixed_rhs_one_of_formula.lhs.root_term,
+                    mixed_rhs_one_of_plan.formula.base_term.with_scope("rhs"),
+                )
+            ),
         )
         mixed_rhs_one_of_disjointness = one_of_disjointness_products(
             mixed_rhs_one_of_plan,
-            lhs_schema=mixed_rhs_one_of_formula.lhs.schema,
+            lhs_term=mixed_rhs_one_of_formula.lhs.root_term,
             covered_index=0,
         )
         self.assertEqual(
-            mixed_rhs_one_of_disjointness[0].lhs_schema,
-            {"allOf": [{"type": "string", "minLength": 1}, {"type": "string"}]},
+            mixed_rhs_one_of_disjointness[0].lhs_term,
+            SchemaTerm.all_of(
+                (
+                    mixed_rhs_one_of_formula.lhs.root_term,
+                    mixed_rhs_one_of_plan.formula.base_term.with_scope("rhs"),
+                )
+            ),
         )
-        hard_keyword_one_of_formula = DifferenceFormula.from_schemas(
+        hard_keyword_one_of_formula = difference_formula_from_schemas(
             {"type": "array"},
             {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2043,7 +2909,7 @@ class TestProofEngineRouting(unittest.TestCase):
             Dialect.DRAFT202012,
         )
         self.assertEqual(applicator_difference_plans(hard_keyword_one_of_formula), ())
-        conditional_formula = DifferenceFormula.from_schemas(
+        conditional_formula = difference_formula_from_schemas(
             {"type": "string"},
             {"if": {"type": "string"}, "then": {"minLength": 1}, "else": False},
             Dialect.DRAFT7,
@@ -2112,20 +2978,32 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         conditional_products = conditional_branch_products(
             conditional_plans[0],
-            lhs_schema=conditional_formula.lhs.schema,
-            rhs_schema=conditional_formula.rhs.schema,
+            lhs_term=conditional_formula.lhs.root_term,
+            rhs_term=conditional_formula.rhs.root_term,
         )
         self.assertEqual(len(conditional_products), 2)
         self.assertEqual(
-            conditional_products[0].lhs_schema,
-            {"allOf": [{"type": "string"}, {"type": "string"}]},
+            conditional_products[0].lhs_term,
+            SchemaTerm.all_of(
+                (
+                    conditional_formula.lhs.root_term,
+                    SchemaTerm.node(conditional_plans[0].if_child.ref, scope="rhs"),
+                )
+            ),
         )
-        self.assertEqual(conditional_products[0].rhs_schema, {"minLength": 1})
         self.assertEqual(
-            conditional_products[0].covering_schema, {"not": {"type": "string"}}
+            conditional_products[0].rhs_term,
+            SchemaTerm.node(conditional_plans[0].then_child.ref, scope="rhs"),
         )
         self.assertEqual(
-            conditional_products[0].covering_lhs_schema, {"type": "string"}
+            conditional_products[0].covering_term,
+            SchemaTerm.not_(
+                SchemaTerm.node(conditional_plans[0].if_child.ref, scope="rhs")
+            ),
+        )
+        self.assertEqual(
+            conditional_products[0].covering_lhs_term,
+            conditional_formula.lhs.root_term,
         )
         self.assertFalse(conditional_products[0].is_trivially_empty_difference)
         self.assertEqual(
@@ -2137,32 +3015,50 @@ class TestProofEngineRouting(unittest.TestCase):
             "SAT conditional branch witness was rejected",
         )
         self.assertEqual(
-            conditional_products[1].lhs_schema,
-            {"allOf": [{"type": "string"}, {"not": {"type": "string"}}]},
+            conditional_products[1].lhs_term,
+            SchemaTerm.all_of(
+                (
+                    conditional_formula.lhs.root_term,
+                    SchemaTerm.not_(
+                        SchemaTerm.node(
+                            conditional_plans[0].if_child.ref, scope="rhs"
+                        )
+                    ),
+                )
+            ),
         )
-        self.assertEqual(conditional_products[1].rhs_schema, False)
-        self.assertEqual(conditional_products[1].covering_schema, {"type": "string"})
         self.assertEqual(
-            conditional_products[1].covering_lhs_schema, {"type": "string"}
+            conditional_products[1].rhs_term,
+            SchemaTerm.node(conditional_plans[0].else_child.ref, scope="rhs"),
+        )
+        self.assertEqual(
+            conditional_products[1].covering_term,
+            SchemaTerm.node(conditional_plans[0].if_child.ref, scope="rhs"),
+        )
+        self.assertEqual(
+            conditional_products[1].covering_lhs_term,
+            conditional_formula.lhs.root_term,
         )
         self.assertFalse(conditional_products[1].is_trivially_empty_difference)
         self.assertTrue(
             ApplicatorConditionalProduct(
                 "if-true",
-                False,
-                {"type": "string"},
                 conditional_products[0].branch,
+                lhs_term=SchemaTerm.false(),
+                rhs_term=SchemaTerm.node(
+                    conditional_plans[0].then_child.ref, scope="rhs"
+                ),
             ).is_trivially_empty_difference
         )
         self.assertTrue(
             ApplicatorConditionalProduct(
                 "if-true",
-                {"type": "string"},
-                True,
                 conditional_products[0].branch,
+                lhs_term=conditional_formula.lhs.root_term,
+                rhs_term=SchemaTerm.true(),
             ).is_trivially_empty_difference
         )
-        mixed_lhs_conditional_formula = DifferenceFormula.from_schemas(
+        mixed_lhs_conditional_formula = difference_formula_from_schemas(
             {"type": "string", "if": {"type": "string"}, "then": {"minLength": 1}},
             {"type": "string"},
             Dialect.DRAFT7,
@@ -2171,7 +3067,9 @@ class TestProofEngineRouting(unittest.TestCase):
             mixed_lhs_conditional_formula
         )[0]
         self.assertIsInstance(mixed_lhs_conditional_plan, ApplicatorConditionalPlan)
-        self.assertEqual(mixed_lhs_conditional_plan.base_schema, {"type": "string"})
+        self.assertEqual(
+            mixed_lhs_conditional_plan.base_semantic_keywords, frozenset({"type"})
+        )
         mixed_lhs_conditional_root = mixed_lhs_conditional_formula.positive_lhs.formula
         if isinstance(mixed_lhs_conditional_root, GuardedFormula):
             mixed_lhs_guarded = mixed_lhs_conditional_root
@@ -2191,14 +3089,24 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIs(mixed_lhs_conditional_plan.formula_node, mixed_lhs_guarded)
         mixed_lhs_conditional_products = conditional_branch_products(
             mixed_lhs_conditional_plan,
-            lhs_schema=mixed_lhs_conditional_formula.lhs.schema,
-            rhs_schema=mixed_lhs_conditional_formula.rhs.schema,
+            lhs_term=mixed_lhs_conditional_formula.lhs.root_term,
+            rhs_term=mixed_lhs_conditional_formula.rhs.root_term,
         )
         self.assertEqual(
-            mixed_lhs_conditional_products[0].lhs_schema,
-            {"allOf": [{"type": "string"}, {"type": "string"}, {"minLength": 1}]},
+            mixed_lhs_conditional_products[0].lhs_term,
+            SchemaTerm.all_of(
+                (
+                    mixed_lhs_conditional_plan.base_term.with_scope("lhs"),
+                    SchemaTerm.node(
+                        mixed_lhs_conditional_plan.if_child.ref, scope="lhs"
+                    ),
+                    SchemaTerm.node(
+                        mixed_lhs_conditional_plan.then_child.ref, scope="lhs"
+                    ),
+                )
+            ),
         )
-        mixed_rhs_conditional_formula = DifferenceFormula.from_schemas(
+        mixed_rhs_conditional_formula = difference_formula_from_schemas(
             {"type": "string", "minLength": 2},
             {"type": "string", "if": {"type": "string"}, "then": {"minLength": 1}},
             Dialect.DRAFT7,
@@ -2207,16 +3115,22 @@ class TestProofEngineRouting(unittest.TestCase):
             mixed_rhs_conditional_formula
         )[0]
         self.assertIsInstance(mixed_rhs_conditional_plan, ApplicatorConditionalPlan)
-        self.assertEqual(mixed_rhs_conditional_plan.base_schema, {"type": "string"})
+        self.assertEqual(
+            mixed_rhs_conditional_plan.base_semantic_keywords, frozenset({"type"})
+        )
         mixed_rhs_conditional_base = applicator_base_product(
             mixed_rhs_conditional_plan,
-            lhs_schema=mixed_rhs_conditional_formula.lhs.schema,
+            lhs_term=mixed_rhs_conditional_formula.lhs.root_term,
         )
         self.assertIsInstance(mixed_rhs_conditional_base, ApplicatorBaseProduct)
         self.assertEqual(
-            mixed_rhs_conditional_base.lhs_schema, {"type": "string", "minLength": 2}
+            mixed_rhs_conditional_base.lhs_term,
+            mixed_rhs_conditional_formula.lhs.root_term,
         )
-        self.assertEqual(mixed_rhs_conditional_base.rhs_schema, {"type": "string"})
+        self.assertEqual(
+            mixed_rhs_conditional_base.rhs_term,
+            mixed_rhs_conditional_plan.base_term.with_scope("rhs"),
+        )
         self.assertEqual(
             mixed_rhs_conditional_base.witness_missing_reason,
             "SAT conditional base witness could not be constructed",
@@ -2241,7 +3155,7 @@ class TestProofEngineRouting(unittest.TestCase):
                 mixed_rhs_conditional_plan.else_child,
             ),
         )
-        hard_keyword_conditional_formula = DifferenceFormula.from_schemas(
+        evaluation_sibling_conditional_formula = difference_formula_from_schemas(
             {"type": "array"},
             {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2251,8 +3165,18 @@ class TestProofEngineRouting(unittest.TestCase):
             },
             Dialect.DRAFT202012,
         )
+        evaluation_sibling_conditional_plans = applicator_difference_plans(
+            evaluation_sibling_conditional_formula
+        )
+        self.assertEqual(len(evaluation_sibling_conditional_plans), 1)
+        evaluation_sibling_conditional_plan = evaluation_sibling_conditional_plans[0]
+        self.assertIsInstance(
+            evaluation_sibling_conditional_plan, ApplicatorConditionalPlan
+        )
+        self.assertFalse(evaluation_sibling_conditional_plan.base_is_standalone)
         self.assertEqual(
-            applicator_difference_plans(hard_keyword_conditional_formula), ()
+            evaluation_sibling_conditional_plan.base_semantic_keywords,
+            frozenset({"unevaluatedItems"}),
         )
         self.assertFalse(hasattr(sat_module, "ExactTacticRule"))
         self.assertFalse(hasattr(sat_module, "_pure_applicator"))
@@ -2275,7 +3199,11 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "formula.unsupported_diagnostics",
-            inspect.getsource(sat_module._semantic_unsupported),
+            inspect.getsource(sat_module._formula_capability_boundary_unsupported),
+        )
+        self.assertIn(
+            "_recursive_reference_obligations",
+            inspect.getsource(sat_module._recursive_reference_diagnostics),
         )
         self.assertFalse(hasattr(sat_module, "_unsupported_diagnostics"))
         self.assertIn(
@@ -2295,9 +3223,13 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn(
             "for plan in problem.applicator_plans", inspect.getsource(sat_module)
         )
-        self.assertIn("branch_with_strategy", inspect.getsource(sat_module))
-        self.assertIn("one_of_cardinality()", inspect.getsource(sat_module))
-        self.assertIn("conditional()", inspect.getsource(sat_module))
+        self.assertIn(
+            "branch_with_strategy", inspect.getsource(applicator_rules_module)
+        )
+        self.assertIn(
+            "one_of_cardinality()", inspect.getsource(applicator_rules_module)
+        )
+        self.assertIn("conditional()", inspect.getsource(applicator_rules_module))
         self.assertNotIn(
             "applicator_difference_plans(problem.formula)",
             inspect.getsource(sat_module),
@@ -2357,7 +3289,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertFalse(hasattr(sat_module, "_applicator_plan_with_strategy"))
         self.assertFalse(hasattr(sat_module, "_one_of_cardinality_plan"))
         self.assertFalse(hasattr(sat_module, "_conditional_plan"))
-        self.assertIn("plan.nnf", inspect.getsource(sat_module))
+        self.assertIn("plan.nnf", inspect.getsource(applicator_rules_module))
         self.assertNotIn(
             "applicator_nnf_fragment(plan.formula)", inspect.getsource(sat_module)
         )
@@ -2377,7 +3309,7 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "applicator_branch_products",
-            inspect.getsource(sat_module._left_branch_products),
+            inspect.getsource(applicator_rules_module._left_branch_products),
         )
         self.assertIn(
             "witness_unsupported_reason",
@@ -2385,15 +3317,15 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "product.witness_missing_reason",
-            inspect.getsource(sat_module._prove_left_any_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_any_of_difference),
         )
         self.assertIn(
             "product.witness_rejected_reason",
-            inspect.getsource(sat_module._prove_left_any_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_any_of_difference),
         )
         self.assertIn(
             "product.witness_unsupported_reason",
-            inspect.getsource(sat_module._prove_left_one_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_one_of_difference),
         )
         self.assertEqual(left_any_of_branch_proof_choice("proved_true"), "continue")
         self.assertEqual(left_any_of_branch_proof_choice("unsupported"), "return_proof")
@@ -2431,27 +3363,27 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "left_any_of_branch_proof_choice",
-            inspect.getsource(sat_module._prove_left_any_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_any_of_difference),
         )
         self.assertIn(
             "left_one_of_branch_proof_choice",
-            inspect.getsource(sat_module._prove_left_one_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_one_of_difference),
         )
         self.assertIn(
             "left_all_of_branch_proof_choice",
-            inspect.getsource(sat_module._prove_left_all_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_all_of_difference),
         )
         self.assertNotIn(
             'proof.status == "proved_true"',
-            inspect.getsource(sat_module._prove_left_any_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_any_of_difference),
         )
         self.assertNotIn(
             'proof.status == "unsupported"',
-            inspect.getsource(sat_module._prove_left_one_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_one_of_difference),
         )
         self.assertNotIn(
             'proof.status == "resource_exhausted"',
-            inspect.getsource(sat_module._prove_left_all_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_all_of_difference),
         )
         self.assertNotIn("left-anyOf branch witness", inspect.getsource(sat_module))
         self.assertNotIn("left-oneOf branch witness", inspect.getsource(sat_module))
@@ -2461,39 +3393,60 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertNotIn(
             "child.source.schema",
-            inspect.getsource(sat_module._prove_left_any_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_any_of_difference),
         )
         self.assertNotIn(
             "child.source.schema",
-            inspect.getsource(sat_module._prove_left_one_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_one_of_difference),
         )
         self.assertNotIn(
             "child.source.schema",
-            inspect.getsource(sat_module._prove_left_all_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_all_of_difference),
         )
-        self.assertIn(
+        self.assertNotIn(
             "left_branch_resolved_lhs_schema", inspect.getsource(applicators_module)
         )
-        self.assertIn(
-            "left_branch_resolved_lhs_schema",
-            inspect.getsource(sat_module._left_branch_subproof),
+        self.assertNotIn(
+            "lhs_schema", inspect.getsource(applicators_module.ApplicatorBranchProduct)
         )
+        self.assertNotIn(
+            "rhs_schema", inspect.getsource(applicators_module.ApplicatorBranchProduct)
+        )
+        self.assertNotIn(
+            "base_schema", inspect.getsource(applicators_module.ApplicatorBranchProduct)
+        )
+        self.assertNotIn("base_schema", inspect.getsource(applicators_module))
+        left_branch_subproof_source = inspect.getsource(
+            applicator_rules_module._left_branch_subproof
+        )
+        self.assertIn("_static_reference_term_for_node", left_branch_subproof_source)
+        self.assertIn("subproof_terms", left_branch_subproof_source)
+        self.assertNotIn("left_branch_resolved_lhs_schema", left_branch_subproof_source)
+        self.assertNotIn("context.subproof(", left_branch_subproof_source)
         self.assertFalse(hasattr(sat_module, "_left_branch_resolved_schema"))
         self.assertNotIn(
-            '{"allOf": [product.base_schema, resolution.schema]}',
+            '{"allOf": [product.base_term, resolution.schema]}',
             inspect.getsource(sat_module),
         )
         self.assertIn(
             "conditional_branch_products",
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
-        self.assertIn(
+        self.assertNotIn(
             "covering_lhs_schema",
             inspect.getsource(applicators_module.ApplicatorConditionalProduct),
         )
         self.assertIn(
+            "product.covering_lhs_term",
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_conditional_product_empty
+            ),
+        )
+        self.assertNotIn(
             "product.covering_lhs_schema",
-            inspect.getsource(sat_module._prove_rhs_conditional_product_empty),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_conditional_product_empty
+            ),
         )
         self.assertIn(
             "is_trivially_empty_difference",
@@ -2501,15 +3454,15 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "product.is_trivially_empty_difference",
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertNotIn(
             "schema_is_false",
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertNotIn(
             "schema_is_true",
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertIn(
             "witness_missing_reason",
@@ -2517,11 +3470,11 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "product.witness_missing_reason",
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertIn(
             "product.witness_rejected_reason",
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertNotIn("conditional branch witness", inspect.getsource(sat_module))
         self.assertEqual(
@@ -2578,77 +3531,94 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "conditional_covering_product_proof_choice",
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertIn(
             "conditional_branch_proof_choice",
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertIn(
             "conditional_final_proof_choice",
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertIn(
             "conditional_covering_subproof_choice",
-            inspect.getsource(sat_module._prove_rhs_conditional_product_empty),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_conditional_product_empty
+            ),
         )
         self.assertNotIn(
             'empty.status == "proved_true"',
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertNotIn(
             'proof.status == "proved_true"',
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertNotIn(
             'proof.status == "resource_exhausted"',
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertNotIn(
             'proof.status == "unsupported"',
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertNotIn(
             'base_proof.status == "proved_true"',
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertNotIn(
             'proof.status == "proved_true"',
-            inspect.getsource(sat_module._prove_rhs_conditional_product_empty),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_conditional_product_empty
+            ),
         )
         self.assertNotIn(
             'proof.status == "resource_exhausted"',
-            inspect.getsource(sat_module._prove_rhs_conditional_product_empty),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_conditional_product_empty
+            ),
         )
         self.assertIn(
             "_applicator_expansion_budget_exhausted",
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertIn(
             "applicator_branch_expansion_budget(plan)",
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertIn(
             "_prove_applicator_base_difference",
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertIn(
             "applicator_base_product",
-            inspect.getsource(sat_module._prove_applicator_base_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_applicator_base_difference
+            ),
         )
         self.assertIn("ApplicatorBaseProduct", inspect.getsource(applicators_module))
         self.assertIn(
             "witness_missing_reason",
             inspect.getsource(applicators_module.ApplicatorBaseProduct),
         )
-        self.assertIn("_validated_applicator_base_false", inspect.getsource(sat_module))
+        self.assertNotIn(
+            "lhs_schema", inspect.getsource(applicators_module.ApplicatorBaseProduct)
+        )
+        self.assertNotIn(
+            "rhs_schema", inspect.getsource(applicators_module.ApplicatorBaseProduct)
+        )
+        self.assertIn(
+            "_validated_applicator_base_false",
+            inspect.getsource(applicator_rules_module),
+        )
         self.assertIn(
             "product.witness_missing_reason",
-            inspect.getsource(sat_module._validated_applicator_base_false),
+            inspect.getsource(applicator_rules_module._validated_applicator_base_false),
         )
         self.assertIn(
             "product.witness_rejected_reason",
-            inspect.getsource(sat_module._validated_applicator_base_false),
+            inspect.getsource(applicator_rules_module._validated_applicator_base_false),
         )
         self.assertEqual(
             applicator_base_pre_branch_choice("proved_false"), "base_false"
@@ -2659,52 +3629,69 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "applicator_base_pre_branch_choice",
-            inspect.getsource(sat_module._run_right_applicator_base_first_flow),
+            inspect.getsource(
+                applicator_rules_module._run_right_applicator_base_first_flow
+            ),
         )
         self.assertIn(
             "applicator_base_pre_branch_choice",
-            inspect.getsource(sat_module._prove_conditional_difference),
+            inspect.getsource(applicator_rules_module._prove_conditional_difference),
         )
         self.assertNotIn(
             'base_proof.status == "proved_false"', inspect.getsource(sat_module)
         )
-        self.assertTrue(hasattr(sat_module, "ApplicatorProofFlow"))
+        self.assertTrue(hasattr(applicator_rules_module, "ApplicatorProofFlow"))
         self.assertIn(
             "_run_right_applicator_base_first_flow",
-            inspect.getsource(sat_module._run_right_applicator_flow),
+            inspect.getsource(applicator_rules_module._run_right_applicator_flow),
         )
         self.assertIn(
             "_run_right_applicator_branch_first_flow",
-            inspect.getsource(sat_module._run_right_applicator_flow),
+            inspect.getsource(applicator_rules_module._run_right_applicator_flow),
         )
         self.assertIn(
             'branch_proof.status in {"proved_false", "resource_exhausted"}',
-            inspect.getsource(sat_module._run_right_applicator_branch_first_flow),
+            inspect.getsource(
+                applicator_rules_module._run_right_applicator_branch_first_flow
+            ),
         )
         self.assertIn(
             'branch_proof.status == "proved_true" and base_proof.status == "proved_true"',
-            inspect.getsource(sat_module._run_right_applicator_base_first_flow),
+            inspect.getsource(
+                applicator_rules_module._run_right_applicator_base_first_flow
+            ),
         )
-        self.assertNotIn("right_applicator_base_first_result_choice", inspect.getsource(applicators_module))
+        self.assertNotIn(
+            "right_applicator_base_first_result_choice",
+            inspect.getsource(applicators_module),
+        )
         self.assertNotIn(
             "right_applicator_branch_first_result_choice",
             inspect.getsource(applicators_module),
         )
         self.assertNotIn(
             "right_applicator_base_first_result_choice",
-            inspect.getsource(sat_module._prove_right_not_applicator_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_right_not_applicator_difference
+            ),
         )
         self.assertNotIn(
             "right_applicator_branch_first_pre_base_choice",
-            inspect.getsource(sat_module._prove_right_any_of_applicator_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_right_any_of_applicator_difference
+            ),
         )
         self.assertNotIn(
             "right_applicator_branch_first_result_choice",
-            inspect.getsource(sat_module._prove_right_any_of_applicator_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_right_any_of_applicator_difference
+            ),
         )
         self.assertNotIn(
             'branch_proof.status == "proved_true" and base_proof.status == "proved_true"',
-            inspect.getsource(sat_module._prove_right_not_applicator_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_right_not_applicator_difference
+            ),
         )
         self.assertNotIn("right-not base witness", inspect.getsource(sat_module))
         self.assertNotIn("right-anyOf base witness", inspect.getsource(sat_module))
@@ -2714,15 +3701,15 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertFalse(hasattr(sat_module, "_prove_rhs_applicator_base_difference"))
         self.assertFalse(hasattr(sat_module, "_prove_rhs_one_of_base_difference"))
         self.assertFalse(hasattr(sat_module, "_prove_rhs_conditional_base_difference"))
-        self.assertNotIn("plan.formula.base_schema", inspect.getsource(sat_module))
-        self.assertNotIn("plan.base_schema", inspect.getsource(sat_module))
+        self.assertNotIn("plan.formula.base_term", inspect.getsource(sat_module))
+        self.assertNotIn("plan.base_term", inspect.getsource(sat_module))
         self.assertIn(
             "_applicator_expansion_budget_exhausted",
-            inspect.getsource(sat_module._prove_left_any_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_any_of_difference),
         )
         self.assertIn(
             "applicator_branch_expansion_budget(plan)",
-            inspect.getsource(sat_module._prove_left_any_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_any_of_difference),
         )
         self.assertIn(
             "branch_budget_exhausted_reason",
@@ -2730,27 +3717,35 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertNotIn(
             "plan.branch_product_count",
-            inspect.getsource(sat_module._prove_left_any_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_any_of_difference),
         )
         self.assertNotIn(
             "plan.branch_budget_exhausted_reason",
-            inspect.getsource(sat_module._prove_left_any_of_difference),
+            inspect.getsource(applicator_rules_module._prove_left_any_of_difference),
         )
         self.assertIn(
             "_applicator_expansion_budget_exhausted",
-            inspect.getsource(sat_module._prove_rhs_negative_all_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_all_of_difference
+            ),
         )
         self.assertIn(
             "applicator_branch_expansion_budget(nnf)",
-            inspect.getsource(sat_module._prove_rhs_negative_all_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_all_of_difference
+            ),
         )
         self.assertNotIn(
             "nnf.branch_product_count",
-            inspect.getsource(sat_module._prove_rhs_negative_all_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_all_of_difference
+            ),
         )
         self.assertNotIn(
             "nnf.branch_budget_exhausted_reason",
-            inspect.getsource(sat_module._prove_rhs_negative_all_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_all_of_difference
+            ),
         )
         self.assertIn(
             "coverage_budget_exhausted_reason",
@@ -2758,19 +3753,27 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "one_of_coverage_expansion_budget(plan)",
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertIn(
             "one_of_disjointness_expansion_budget(plan)",
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertNotIn(
             "plan.coverage_product_count",
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertNotIn(
             "plan.disjointness_product_count",
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertIn(
             "witness_missing_reason",
@@ -2778,15 +3781,21 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "product.witness_rejected_reason",
-            inspect.getsource(sat_module._prove_rhs_negative_any_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_any_of_difference
+            ),
         )
         self.assertIn(
             "product.witness_missing_reason",
-            inspect.getsource(sat_module._prove_rhs_negative_all_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_all_of_difference
+            ),
         )
         self.assertIn(
             "product.witness_rejected_reason",
-            inspect.getsource(sat_module._prove_rhs_negative_all_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_all_of_difference
+            ),
         )
         self.assertEqual(
             right_negative_any_of_branch_proof_choice("proved_true"), "proved_true"
@@ -2838,27 +3847,39 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "right_negative_any_of_branch_product_plan",
-            inspect.getsource(sat_module._prove_rhs_negative_any_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_any_of_difference
+            ),
         )
         self.assertIn(
             "right_negative_all_of_branch_product_plan",
-            inspect.getsource(sat_module._prove_rhs_negative_all_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_all_of_difference
+            ),
         )
         self.assertIn(
             "right_negative_any_of_branch_proof_choice",
-            inspect.getsource(sat_module._prove_rhs_negative_any_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_any_of_difference
+            ),
         )
         self.assertIn(
             "right_negative_all_of_branch_proof_choice",
-            inspect.getsource(sat_module._prove_rhs_negative_all_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_all_of_difference
+            ),
         )
         self.assertNotIn(
             'proof.status == "proved_true"',
-            inspect.getsource(sat_module._prove_rhs_negative_any_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_any_of_difference
+            ),
         )
         self.assertNotIn(
             'proof.status in {"unsupported", "resource_exhausted"}',
-            inspect.getsource(sat_module._prove_rhs_negative_all_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_all_of_difference
+            ),
         )
         self.assertNotIn("right-anyOf branch witness", inspect.getsource(sat_module))
         self.assertNotIn("right-allOf conjunct witness", inspect.getsource(sat_module))
@@ -2869,24 +3890,40 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn("nnf.operator", inspect.getsource(sat_module))
         self.assertNotIn("nnf.children", inspect.getsource(sat_module))
         self.assertIn(
+            "product.covering_term",
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_conditional_product_empty
+            ),
+        )
+        self.assertNotIn(
             "product.covering_schema",
-            inspect.getsource(sat_module._prove_rhs_conditional_product_empty),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_conditional_product_empty
+            ),
         )
         self.assertNotIn(
             "plan.side",
-            inspect.getsource(sat_module._prove_rhs_conditional_product_empty),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_conditional_product_empty
+            ),
         )
         self.assertNotIn(
             "plan.polarity",
-            inspect.getsource(sat_module._prove_rhs_conditional_product_empty),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_conditional_product_empty
+            ),
         )
         self.assertNotIn(
             "problem.lhs_schema",
-            inspect.getsource(sat_module._prove_rhs_conditional_product_empty),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_conditional_product_empty
+            ),
         )
         self.assertNotIn(
             "condition.node.source.schema",
-            inspect.getsource(sat_module._prove_rhs_conditional_product_empty),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_conditional_product_empty
+            ),
         )
         self.assertEqual(
             one_of_coverage_branch_proof_choice("proved_true"), "record_covering"
@@ -2905,44 +3942,68 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "one_of_cardinality_products",
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertIn(
             "one_of_coverage_branch_proof_choice",
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertIn(
             "one_of_covering_selection",
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertNotIn(
             'proof.status == "proved_true"',
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertNotIn(
             'proof.status == "unsupported"',
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertNotIn("one_of_overlap_product", inspect.getsource(sat_module))
         self.assertNotIn(
             "len(covering_indexes)",
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertIn(
             "one_of_overlap_witness_plan",
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertNotIn(
             "schema_witness_plan",
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertIn(
             "one_of_disjointness_products",
-            inspect.getsource(sat_module._one_of_disjointness_products),
+            inspect.getsource(applicator_rules_module._one_of_disjointness_products),
         )
         self.assertIn(
+            "terms_are_disjoint",
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_disjointness_product
+            ),
+        )
+        self.assertNotIn(
             "one_of_disjointness_complement_schema",
-            inspect.getsource(sat_module._prove_rhs_one_of_disjointness_product),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_disjointness_product
+            ),
         )
         self.assertEqual(
             one_of_disjointness_direct_proof_choice("proved_true"), "return_proof"
@@ -2973,134 +4034,177 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "one_of_disjointness_direct_proof_choice",
-            inspect.getsource(sat_module._prove_rhs_one_of_disjointness_product),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_disjointness_product
+            ),
         )
         self.assertIn(
             "one_of_disjointness_proof_choice", inspect.getsource(applicators_module)
         )
         self.assertIn(
             "one_of_disjointness_proof_choice",
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
-        )
-        self.assertIn(
-            "one_of_disjointness_proof_choice",
-            inspect.getsource(sat_module._prove_rhs_one_of_disjointness_product),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertNotIn(
             'disjoint.status == "proved_true"',
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertNotIn(
             'disjoint.status == "proved_false"',
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertNotIn(
             'complement.status == "proved_true"',
-            inspect.getsource(sat_module._prove_rhs_one_of_disjointness_product),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_disjointness_product
+            ),
         )
         self.assertNotIn(
             'complement.status == "proved_false"',
-            inspect.getsource(sat_module._prove_rhs_one_of_disjointness_product),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_disjointness_product
+            ),
         )
         self.assertNotIn(
             'disjoint.status != "unsupported"',
-            inspect.getsource(sat_module._prove_rhs_one_of_disjointness_product),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_disjointness_product
+            ),
         )
-        self.assertIn(
+        self.assertNotIn(
             "one_of_disjointness_resolved_branch_schema",
-            inspect.getsource(sat_module._prove_rhs_one_of_disjointness_product),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_disjointness_product
+            ),
         )
         self.assertNotIn(
             "product.branch_schema",
-            inspect.getsource(sat_module._prove_rhs_one_of_disjointness_product),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_disjointness_product
+            ),
         )
         self.assertIn(
-            "product.witness_missing_reason",
-            inspect.getsource(sat_module._prove_rhs_one_of_disjointness_product),
+            "product.branch_term",
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_disjointness_product
+            ),
         )
         self.assertIn(
             "product.witness_rejected_reason",
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertNotIn("right-oneOf branch witness", inspect.getsource(sat_module))
         self.assertNotIn("right-oneOf overlap witness", inspect.getsource(sat_module))
         self.assertNotIn(
             '{"not": resolved_branch_schema}',
-            inspect.getsource(sat_module._prove_rhs_one_of_disjointness_product),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_disjointness_product
+            ),
         )
         self.assertIn(
             "_prove_applicator_base_difference",
-            inspect.getsource(sat_module._run_right_applicator_base_first_flow),
+            inspect.getsource(
+                applicator_rules_module._run_right_applicator_base_first_flow
+            ),
         )
         self.assertIn(
             "ApplicatorProofFlow",
-            inspect.getsource(sat_module._prove_right_one_of_applicator_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_right_one_of_applicator_difference
+            ),
         )
         self.assertIn(
             "problem.formula.rhs.tagged_one_of",
-            inspect.getsource(sat_module._matching_tagged_rhs_one_of_branch),
+            inspect.getsource(
+                applicator_rules_module._matching_tagged_rhs_one_of_branch
+            ),
         )
         self.assertNotIn(
             "problem.rhs_schema",
-            inspect.getsource(sat_module._matching_tagged_rhs_one_of_branch),
+            inspect.getsource(
+                applicator_rules_module._matching_tagged_rhs_one_of_branch
+            ),
         )
         self.assertNotIn(
             "problem.lhs_schema",
-            inspect.getsource(sat_module._matching_tagged_rhs_one_of_branch),
+            inspect.getsource(
+                applicator_rules_module._matching_tagged_rhs_one_of_branch
+            ),
         )
-        self.assertIn(
+        self.assertNotIn(
             "subproof(product.lhs_schema",
-            inspect.getsource(sat_module._prove_rhs_one_of_disjointness_product),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_disjointness_product
+            ),
         )
         self.assertNotIn(
             "if product.index == covered_index",
-            inspect.getsource(sat_module._prove_rhs_one_of_cardinality_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_one_of_cardinality_difference
+            ),
         )
         self.assertFalse(hasattr(sat_module, "_rhs_nnf_branch_products"))
-        self.assertIn(
+        self.assertNotIn(
             "right_nnf_branch_resolved_rhs_schema",
-            inspect.getsource(sat_module._rhs_nnf_branch_subproof),
+            inspect.getsource(applicator_rules_module._rhs_nnf_branch_subproof),
         )
         self.assertNotIn(
-            "product.rhs_schema", inspect.getsource(sat_module._rhs_nnf_branch_subproof)
+            "product.rhs_schema",
+            inspect.getsource(applicator_rules_module._rhs_nnf_branch_subproof),
         )
-        self.assertIn(
+        self.assertNotIn(
             "one_of_branch_resolved_schema",
-            inspect.getsource(sat_module._rhs_one_of_branch_subproof),
+            inspect.getsource(applicator_rules_module._rhs_one_of_branch_subproof),
         )
         self.assertNotIn(
             "product.branch_schema",
-            inspect.getsource(sat_module._rhs_one_of_branch_subproof),
+            inspect.getsource(applicator_rules_module._rhs_one_of_branch_subproof),
         )
         self.assertNotIn(
             "child.node.source.schema",
-            inspect.getsource(sat_module._prove_rhs_negative_any_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_any_of_difference
+            ),
         )
         self.assertNotIn(
             "child.node.source.schema",
-            inspect.getsource(sat_module._prove_rhs_negative_all_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_all_of_difference
+            ),
         )
         self.assertFalse(hasattr(sat_module, "_prove_right_one_of_difference"))
         self.assertFalse(hasattr(sat_module, "_prove_rhs_one_of_overlap_difference"))
         self.assertIn(
             "ApplicatorNnfFragment",
-            inspect.getsource(sat_module._prove_rhs_negative_any_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_any_of_difference
+            ),
         )
         self.assertIn(
             "ApplicatorNnfFragment",
-            inspect.getsource(sat_module._prove_rhs_negative_all_of_difference),
+            inspect.getsource(
+                applicator_rules_module._prove_rhs_negative_all_of_difference
+            ),
         )
         self.assertIn("ApplicatorBranchPlan", inspect.getsource(applicators_module))
         self.assertEqual(
-            right_not_string_overlap_plan.__module__, "subschema.kernel.overlaps"
+            right_not_string_overlap_plan.__module__, "subschema.prover.overlaps"
         )
         self.assertEqual(
             right_not_string_overlap_plan_from_constraints.__module__,
-            "subschema.kernel.overlaps",
+            "subschema.prover.overlaps",
         )
         self.assertEqual(
             right_not_string_overlap_proof_choice.__module__,
-            "subschema.kernel.overlaps",
+            "subschema.prover.overlaps",
         )
         self.assertIn("RightNotStringOverlapPlan", inspect.getsource(overlaps_module))
         self.assertEqual(
@@ -3113,20 +4217,23 @@ class TestProofEngineRouting(unittest.TestCase):
             right_not_string_overlap_proof_choice("unsupported"), "continue"
         )
         self.assertFalse(hasattr(sat_module, "_prove_rhs_not_string_overlap"))
-        prove_rhs_not_source = inspect.getsource(sat_module._prove_rhs_not_difference)
-        plan_rhs_not_source = inspect.getsource(sat_module._plan_rhs_not_difference)
+        prove_rhs_not_source = inspect.getsource(
+            applicator_rules_module._prove_rhs_not_difference
+        )
+        plan_rhs_not_source = inspect.getsource(
+            applicator_rules_module._plan_rhs_not_difference
+        )
         realize_rhs_not_source = inspect.getsource(
-            sat_module._realize_right_not_decision
+            applicator_rules_module._realize_right_not_decision
         )
         realize_rhs_not_obligation_source = inspect.getsource(
-            sat_module._realize_right_not_witness_obligation
+            applicator_rules_module._realize_right_not_witness_obligation
         )
         realize_rhs_not_plan_source = inspect.getsource(
-            sat_module._realize_right_not_witness_plan
+            applicator_rules_module._realize_right_not_witness_plan
         )
         self.assertIn("_plan_rhs_not_difference", prove_rhs_not_source)
         self.assertIn("_realize_right_not_decision", prove_rhs_not_source)
-        self.assertNotIn("build_schema_witness", prove_rhs_not_source)
         self.assertNotIn("right_not_witness_plan", prove_rhs_not_source)
         self.assertNotIn("right_not_intersection_witness_plan", prove_rhs_not_source)
         self.assertNotIn("_validated_false", prove_rhs_not_source)
@@ -3142,62 +4249,29 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIn("lhs_constraint", plan_rhs_not_source)
         self.assertIn(
             "applicator_nnf_schema_product",
-            inspect.getsource(sat_module._rhs_nnf_schema_product),
+            inspect.getsource(applicator_rules_module._rhs_nnf_schema_product),
         )
-        self.assertIn("_rhs_not_product_schema", plan_rhs_not_source)
+        self.assertIn("_rhs_not_product_term", plan_rhs_not_source)
         self.assertIn(
             "product.rhs_string_language_constraint",
             plan_rhs_not_source,
         )
         self.assertIn("RightNotWitnessObligation", plan_rhs_not_source)
-        self.assertIn("RightNotCertificateObligation", plan_rhs_not_source)
+        self.assertNotIn("RightNotCertificateObligation", plan_rhs_not_source)
         self.assertIn("right_not_witness_plan", realize_rhs_not_obligation_source)
         self.assertIn(
             "right_not_intersection_witness_plan", realize_rhs_not_obligation_source
         )
-        self.assertNotIn("build_schema_witness", realize_rhs_not_plan_source)
-        self.assertIn("build_schema_witness", inspect.getsource(applicators_module))
         self.assertIn("_validated_false", realize_rhs_not_plan_source)
         self.assertIn("ProofResult.certified_false", realize_rhs_not_plan_source)
-        self.assertIn("_certified_false", realize_rhs_not_source)
-        self.assertIn(
-            "_realize_right_not_witness_obligation", realize_rhs_not_source
-        )
-        self.assertIn("right_not_complement_schema", plan_rhs_not_source)
-        self.assertIn(
+        self.assertNotIn("_certified_false", realize_rhs_not_source)
+        self.assertIn("_realize_right_not_witness_obligation", realize_rhs_not_source)
+        self.assertNotIn("right_not_complement_schema", plan_rhs_not_source)
+        self.assertNotIn(
             "right_not_complement_needs_subproof", inspect.getsource(applicators_module)
         )
-        self.assertIn(
-            "right_not_complement_needs_subproof",
-            plan_rhs_not_source,
-        )
-        self.assertEqual(
-            right_not_subproof_choice("proved_true"), "materialize_witness"
-        )
-        self.assertEqual(right_not_subproof_choice("proved_false"), "continue")
-        self.assertEqual(
-            right_not_subproof_choice("resource_exhausted"), "return_resource_exhausted"
-        )
-        self.assertEqual(right_not_subproof_choice("unsupported"), "continue")
-        self.assertEqual(
-            right_not_complement_proof_choice("proved_true"), "proved_true"
-        )
-        self.assertEqual(
-            right_not_complement_proof_choice("proved_false"), "validate_witness"
-        )
-        self.assertEqual(
-            right_not_complement_proof_choice("resource_exhausted"),
-            "return_resource_exhausted",
-        )
-        self.assertEqual(right_not_complement_proof_choice("unsupported"), "continue")
-        self.assertIn(
-            "right_not_subproof_choice", inspect.getsource(applicators_module)
-        )
-        self.assertIn(
-            "right_not_complement_proof_choice", inspect.getsource(applicators_module)
-        )
-        self.assertIn("right_not_subproof_choice", plan_rhs_not_source)
-        self.assertIn("right_not_complement_proof_choice", plan_rhs_not_source)
+        self.assertNotIn("right_not_subproof_choice", plan_rhs_not_source)
+        self.assertNotIn("right_not_complement_proof_choice", plan_rhs_not_source)
         self.assertNotIn(
             'string_overlap.status == "proved_true"',
             plan_rhs_not_source,
@@ -3207,16 +4281,11 @@ class TestProofEngineRouting(unittest.TestCase):
             plan_rhs_not_source,
         )
         self.assertNotIn("schemas_equal", plan_rhs_not_source)
-        self.assertIn(
-            "right_not_resolved_rhs_schema",
-            inspect.getsource(sat_module._rhs_not_product_schema),
-        )
         self.assertNotIn(
-            "product.rhs_schema", inspect.getsource(sat_module._rhs_not_product_schema)
+            "product.rhs_schema",
+            inspect.getsource(applicator_rules_module._rhs_not_product_term),
         )
-        self.assertIn(
-            "product.witness_rejected_reason", plan_rhs_not_source
-        )
+        self.assertIn("product.witness_rejected_reason", plan_rhs_not_source)
         self.assertIn(
             "product.complement_witness_missing_reason",
             plan_rhs_not_source,
@@ -3229,8 +4298,8 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn('{"not": rhs_schema}', plan_rhs_not_source)
         self.assertNotIn("_schema_node_constraint", inspect.getsource(sat_module))
         self.assertEqual(
-            disjointness_module.schemas_are_disjoint.__module__,
-            "subschema.kernel.disjointness",
+            public_api._schemas_are_disjoint.__module__,
+            "subschema.api",
         )
         self.assertFalse(hasattr(sat_module, "_prove_schema_disjoint"))
         self.assertNotIn(
@@ -3241,30 +4310,34 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertFalse(hasattr(sat_module, "WitnessSearchRule"))
         self.assertFalse(hasattr(sat_module, "_first_valid_value_for_schema"))
-        self.assertFalse(hasattr(sat_module, "_finite_projection_witness"))
         self.assertNotIn("NO_WITNESS", inspect.getsource(sat_module))
         self.assertNotIn("first_valid_value_for_schema", inspect.getsource(sat_module))
         self.assertNotIn("schema_witness_plan", inspect.getsource(sat_module))
         self.assertNotIn(
             "first_valid_value_for_schema", inspect.getsource(witnesses_module)
         )
-        self.assertEqual(SchemaAnalysis.__module__, "subschema.kernel.ir")
-        domain_facts_source = inspect.getsource(ir_module.DomainFacts)
-        schema_analysis_source = inspect.getsource(ir_module.SchemaAnalysis)
-        self.assertIn("finite_values_for_schema", schema_analysis_source)
-        self.assertIn("SchemaAnalysis.from_schema", domain_facts_source)
-        self.assertNotIn("finite_values_for_schema", domain_facts_source)
-        self.assertNotIn("cached_property", domain_facts_source)
+        self.assertEqual(SchemaSemantics.__module__, "subschema.ir")
+        schema_semantics_source = inspect.getsource(ir_module.SchemaSemantics)
+        compiler_semantics_source = inspect.getsource(semantics_module)
+        self.assertFalse(hasattr(ir_module, "SchemaAnalysis"))
+        self.assertNotIn("finite_values_for_schema", schema_semantics_source)
+        self.assertNotIn("schema_covers_type_atom", schema_semantics_source)
+        self.assertNotIn("schema_required_singleton_tags", schema_semantics_source)
+        self.assertIn("finite_values_for_schema", compiler_semantics_source)
+        self.assertIn("schema_covers_type_atom", compiler_semantics_source)
+        self.assertIn("schema_required_singleton_tags", compiler_semantics_source)
+        self.assertNotIn("cached_property", schema_semantics_source)
         self.assertIn("DomainFactInfo", inspect.getsource(ir_module))
-        self.assertIn("def fact_info", domain_facts_source)
+        self.assertIn("def fact_info", schema_semantics_source)
         self.assertIn("rhs_require_exact", inspect.getsource(sat_module))
         self.assertIn(
             "_rhs_exactness_unsupported_reason",
-            inspect.getsource(difference_module),
+            inspect.getsource(difference_arrays_module)
+            + inspect.getsource(difference_objects_module),
         )
-        self.assertIn("def assertion", domain_facts_source)
+        self.assertIn("def assertion", schema_semantics_source)
         self.assertIn(
-            "return self.facts.assertion(kind)",
+            "return self.semantics.assertion(kind)",
             inspect.getsource(ir_module.LogicalSchemaIR.assertion),
         )
         self.assertNotIn(
@@ -3272,23 +4345,24 @@ class TestProofEngineRouting(unittest.TestCase):
             inspect.getsource(ir_module.LogicalSchemaIR.assertion),
         )
         self.assertIn("FiniteConstraint", inspect.getsource(constraints_module))
-        self.assertIn("finite_constraint", domain_facts_source)
-        self.assertIn("type_constraint", domain_facts_source)
-        self.assertIn("numeric_constraint", domain_facts_source)
-        self.assertIn("string_length_constraint", domain_facts_source)
-        self.assertIn("string_language_constraint", domain_facts_source)
-        self.assertIn("array_length_lhs_constraint", domain_facts_source)
-        self.assertIn("array_uniqueness_lhs_constraint", domain_facts_source)
+        self.assertIn("finite_constraint", schema_semantics_source)
+        self.assertIn("type_constraint", schema_semantics_source)
+        self.assertIn("numeric_constraint", schema_semantics_source)
+        self.assertIn("string_length_constraint", schema_semantics_source)
+        self.assertIn("string_language_constraint", schema_semantics_source)
+        self.assertIn("array_length_lhs_constraint", schema_semantics_source)
+        self.assertIn("array_any_of_item_schemas_constraint", schema_semantics_source)
+        self.assertIn("array_uniqueness_lhs_constraint", schema_semantics_source)
+        self.assertIn("object_property_count_constraint", schema_semantics_source)
         self.assertIn(
-            "object_property_count_constraint", domain_facts_source
+            "object_property_count_bounds_constraint", schema_semantics_source
         )
         self.assertIn(
-            "object_property_names_constraint", domain_facts_source
+            "object_dependent_schema_properties_constraint", schema_semantics_source
         )
-        self.assertIn("object_property_values_constraint", domain_facts_source)
-        self.assertIn(
-            "object_closed_properties_constraint", domain_facts_source
-        )
+        self.assertIn("object_property_names_constraint", schema_semantics_source)
+        self.assertIn("object_property_values_constraint", schema_semantics_source)
+        self.assertIn("object_closed_properties_constraint", schema_semantics_source)
         self.assertIn(
             "array_length_lhs_constraint",
             inspect.getsource(difference_module.ArrayDifferenceModel),
@@ -3313,6 +4387,114 @@ class TestProofEngineRouting(unittest.TestCase):
             "object_closed_properties_constraint",
             inspect.getsource(difference_module.ObjectDifferenceModel),
         )
+
+    def test_ir_compiles_rhs_anyof_array_item_fact(self):
+        schema = {
+            "anyOf": [
+                {"type": "array", "items": {"type": "integer"}},
+                {"type": "array", "items": {"const": "a"}},
+            ]
+        }
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        constraint = ir.semantics.array_any_of_item_schemas_constraint
+        self.assertIsNotNone(constraint)
+        self.assertEqual(len(constraint.item_terms), 2)
+        self.assertEqual(
+            [
+                ir.node_for_ref(term.ref).source.pointer
+                for term in constraint.item_terms
+            ],
+            [("anyOf", "0", "items"), ("anyOf", "1", "items")],
+        )
+
+    def test_ir_compiles_object_property_count_bounds_fact(self):
+        schema = {"type": "object", "minProperties": 2, "maxProperties": 3}
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        constraint = ir.semantics.object_property_count_bounds_constraint
+        self.assertIsNotNone(constraint)
+        self.assertEqual(constraint.minimum, 2)
+        self.assertEqual(constraint.maximum, 3)
+        self.assertTrue(constraint.has_explicit_bound)
+
+    def test_ir_compiles_dependent_schema_property_value_fact(self):
+        schema = {
+            "type": "object",
+            "dependentSchemas": {
+                "a": {
+                    "properties": {
+                        "b": {"type": "integer"},
+                        "c": True,
+                    }
+                }
+            },
+        }
+
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+        constraint = ir.semantics.object_dependent_schema_properties_constraint
+        self.assertIsNotNone(constraint)
+        self.assertEqual(len(constraint.properties), 1)
+        dependent_property = constraint.properties[0]
+        self.assertEqual(dependent_property.trigger, "a")
+        self.assertEqual(dependent_property.name, "b")
+        self.assertTrue(
+            _term_targets_pointer(
+                dependent_property.term,
+                ir,
+                ("dependentSchemas", "a", "properties", "b"),
+            )
+        )
+
+    def test_ir_compiles_recursive_assertion_presence_facts(self):
+        schema = {
+            "allOf": [{"minimum": 0}],
+            "anyOf": [{"maxLength": 2}],
+            "not": {"required": ["a"]},
+        }
+
+        semantics = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema).semantics
+
+        self.assertTrue(semantics.has_numeric_assertions)
+        self.assertTrue(semantics.has_string_assertions)
+        self.assertTrue(semantics.has_non_numeric_assertions)
+        self.assertTrue(semantics.has_object_or_array_assertions)
+
+    def test_ir_compiles_tuple_anyof_distribution_branches(self):
+        schema = {
+            "type": "array",
+            "items": [
+                {"anyOf": [{"type": "string"}, {"type": "integer"}]},
+                {"type": "boolean"},
+            ],
+        }
+
+        semantics = SchemaIRCompiler(Dialect.DRAFT4).compile(schema).semantics
+
+        constraint = semantics.array_tuple_anyof_distribution_constraint
+        self.assertIsNotNone(constraint)
+        assert constraint is not None
+
+        self.assertEqual(len(constraint.branch_terms), 2)
+
+    def test_rhs_anyof_array_item_certificate_uses_compiled_fact(self):
+        lhs = {"type": "array", "minItems": 1, "items": {"type": "string"}}
+        rhs = {
+            "anyOf": [
+                {"type": "array", "items": {"type": "integer"}},
+                {"type": "array", "items": {"const": "a"}},
+            ]
+        }
+
+        proof = proof_engine_for_schemas(
+            lhs, rhs, dialect=Dialect.DRAFT202012
+        ).is_subschema(lhs, rhs)
+
+        self.assertEqual(proof.status, "proved_false")
+        assert_witness_validates(lhs, rhs, Dialect.DRAFT202012, proof.witness)
         self.assertIn(
             "from_problem", inspect.getsource(difference_module.ArrayDifferenceModel)
         )
@@ -3335,10 +4517,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "rhs_constraint(",
             inspect.getsource(difference_module.ObjectDifferenceModel.from_problem),
         )
-        self.assertNotIn(
-            "unevaluatedProperties", inspect.getsource(ir_module.DomainFacts)
-        )
-        self.assertNotIn("unevaluatedItems", inspect.getsource(ir_module.DomainFacts))
+        self.assertNotIn("class DomainFacts", inspect.getsource(ir_module))
         self.assertNotIn(
             "finite_values_for_schema", inspect.getsource(sat_module.EmptinessSolver)
         )
@@ -3406,21 +4585,22 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "problem.array_model",
-            inspect.getsource(sat_module._prove_array_length_difference),
+            inspect.getsource(array_rules_module._prove_array_length_difference),
         )
         self.assertIn(
             "finite_constraint",
-            inspect.getsource(sat_module._prove_finite_lhs_difference),
+            inspect.getsource(scalar_rules_module._prove_finite_lhs_difference),
         )
         self.assertIn(
-            "lhs_constraint", inspect.getsource(sat_module._prove_finite_lhs_difference)
+            "lhs_constraint",
+            inspect.getsource(scalar_rules_module._prove_finite_lhs_difference),
         )
         self.assertNotIn(
             "formula.lhs.finite_values",
-            inspect.getsource(sat_module._prove_finite_lhs_difference),
+            inspect.getsource(scalar_rules_module._prove_finite_lhs_difference),
         )
         self.assertIn(
-            "occurrence_assertion_formula",
+            "_side_formula_assertion",
             inspect.getsource(sat_module.DifferenceProblem),
         )
         self.assertFalse(hasattr(sat_module, "_FINITE_RHS_WITNESS_VALUES"))
@@ -3429,83 +4609,94 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertFalse(hasattr(sat_module, "_json_values_equal"))
         self.assertIn(
             "finite_rhs_difference_plan",
-            inspect.getsource(sat_module._prove_finite_rhs_difference),
+            inspect.getsource(scalar_rules_module._prove_finite_rhs_difference),
         )
         self.assertIn(
-            "lhs_constraint", inspect.getsource(sat_module._prove_finite_rhs_difference)
+            "lhs_constraint",
+            inspect.getsource(scalar_rules_module._prove_finite_rhs_difference),
         )
         self.assertIn(
-            "rhs_constraint", inspect.getsource(sat_module._prove_finite_rhs_difference)
-        )
-        self.assertNotIn(
-            "witness_not_in", inspect.getsource(sat_module._prove_type_difference)
-        )
-        self.assertNotIn(
-            "witness_not_in", inspect.getsource(sat_module._prove_numeric_difference)
+            "rhs_constraint",
+            inspect.getsource(scalar_rules_module._prove_finite_rhs_difference),
         )
         self.assertNotIn(
             "witness_not_in",
-            inspect.getsource(sat_module._prove_string_length_difference),
+            inspect.getsource(scalar_rules_module._prove_type_difference),
         )
         self.assertNotIn(
             "witness_not_in",
-            inspect.getsource(sat_module._prove_string_language_difference),
+            inspect.getsource(scalar_rules_module._prove_numeric_difference),
+        )
+        self.assertNotIn(
+            "witness_not_in",
+            inspect.getsource(scalar_rules_module._prove_string_length_difference),
+        )
+        self.assertNotIn(
+            "witness_not_in",
+            inspect.getsource(scalar_rules_module._prove_string_language_difference),
         )
         self.assertIn(
-            "type_difference_plan", inspect.getsource(sat_module._prove_type_difference)
+            "type_difference_plan",
+            inspect.getsource(scalar_rules_module._prove_type_difference),
         )
         self.assertIn(
             "numeric_difference_plan",
-            inspect.getsource(sat_module._prove_numeric_difference),
+            inspect.getsource(scalar_rules_module._prove_numeric_difference),
         )
         self.assertIn(
             "string_length_difference_plan",
-            inspect.getsource(sat_module._prove_string_length_difference),
+            inspect.getsource(scalar_rules_module._prove_string_length_difference),
         )
         self.assertIn(
             "string_language_difference_plan",
-            inspect.getsource(sat_module._prove_string_language_difference),
+            inspect.getsource(scalar_rules_module._prove_string_language_difference),
         )
         self.assertIn(
-            "lhs_constraint", inspect.getsource(sat_module._prove_type_difference)
+            "lhs_constraint",
+            inspect.getsource(scalar_rules_module._prove_type_difference),
         )
         self.assertIn(
-            "rhs_constraint", inspect.getsource(sat_module._prove_type_difference)
+            "rhs_constraint",
+            inspect.getsource(scalar_rules_module._prove_type_difference),
         )
         self.assertIn(
-            "lhs_constraint", inspect.getsource(sat_module._prove_numeric_difference)
+            "lhs_constraint",
+            inspect.getsource(scalar_rules_module._prove_numeric_difference),
         )
         self.assertIn(
-            "rhs_constraint", inspect.getsource(sat_module._prove_numeric_difference)
+            "rhs_constraint",
+            inspect.getsource(scalar_rules_module._prove_numeric_difference),
         )
         self.assertIn("ScalarDifferencePlan", inspect.getsource(scalars_module))
         self.assertIn("FiniteRhsDifferencePlan", inspect.getsource(scalars_module))
         self.assertNotIn(
-            "lhs_length", inspect.getsource(sat_module._prove_array_length_difference)
+            "lhs_length",
+            inspect.getsource(array_rules_module._prove_array_length_difference),
         )
         self.assertNotIn(
-            "rhs_length", inspect.getsource(sat_module._prove_array_length_difference)
+            "rhs_length",
+            inspect.getsource(array_rules_module._prove_array_length_difference),
         )
         self.assertNotIn(
             "witness_not_in",
-            inspect.getsource(sat_module._prove_array_length_difference),
+            inspect.getsource(array_rules_module._prove_array_length_difference),
         )
         self.assertNotIn("_schema_type_is_array_only", inspect.getsource(sat_module))
         self.assertNotIn(
             "contains_empty_min_violation_possible(",
-            inspect.getsource(sat_module._prove_array_contains_difference),
+            inspect.getsource(array_rules_module._prove_array_contains_difference),
         )
         self.assertNotIn(
             "minimum_contains_matches_guaranteed(",
-            inspect.getsource(sat_module._prove_array_contains_difference),
+            inspect.getsource(array_rules_module._prove_array_contains_difference),
         )
         self.assertNotIn(
             "contains_min_violation_witness_plan(",
-            inspect.getsource(sat_module._prove_array_contains_difference),
+            inspect.getsource(array_rules_module._prove_array_contains_difference),
         )
         self.assertNotIn(
             "maximum_contains_matches_possible(",
-            inspect.getsource(sat_module._prove_array_contains_difference),
+            inspect.getsource(array_rules_module._prove_array_contains_difference),
         )
         self.assertNotIn(
             "_rhs_all_of_evaluated_item_sources", inspect.getsource(sat_module)
@@ -3518,15 +4709,21 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertNotIn(
             "lhs_length",
-            inspect.getsource(sat_module._prove_array_unevaluated_items_difference),
+            inspect.getsource(
+                array_rules_module._prove_array_unevaluated_items_difference
+            ),
         )
         self.assertNotIn(
             "_array_static_reference_unsupported",
-            inspect.getsource(sat_module._prove_array_unevaluated_items_difference),
+            inspect.getsource(
+                array_rules_module._prove_array_unevaluated_items_difference
+            ),
         )
         self.assertIn(
             "_lhs_static_reference_unsupported",
-            inspect.getsource(sat_module._prove_array_unevaluated_items_difference),
+            inspect.getsource(
+                array_rules_module._prove_array_unevaluated_items_difference
+            ),
         )
         self.assertNotIn(
             "_rhs_all_of_evaluated_property_sources", inspect.getsource(sat_module)
@@ -3538,59 +4735,63 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn(
             "lhs_key_values",
             inspect.getsource(
-                sat_module._prove_object_unevaluated_properties_difference
+                object_rules_module._prove_object_unevaluated_properties_difference
             ),
         )
         self.assertNotIn(
             "_object_static_reference_unsupported",
             inspect.getsource(
-                sat_module._prove_object_unevaluated_properties_difference
+                object_rules_module._prove_object_unevaluated_properties_difference
             ),
         )
         self.assertIn(
             "_lhs_static_reference_unsupported",
             inspect.getsource(
-                sat_module._prove_object_unevaluated_properties_difference
+                object_rules_module._prove_object_unevaluated_properties_difference
             ),
         )
+        difference_model_sources = inspect.getsource(
+            difference_arrays_module
+        ) + inspect.getsource(difference_objects_module)
+        self.assertIn("evaluation_trace_for_node", difference_model_sources)
+        self.assertNotIn(".to_expression(", difference_model_sources)
+        self.assertNotIn("EvaluationExpression", difference_model_sources)
         self.assertIn(
-            "evaluation_trace_for_source", inspect.getsource(difference_module)
+            "evaluated_item_sources", inspect.getsource(difference_arrays_module)
         )
-        self.assertNotIn(".to_expression(", inspect.getsource(difference_module))
-        self.assertNotIn("EvaluationExpression", inspect.getsource(difference_module))
-        self.assertIn("evaluated_item_sources", inspect.getsource(difference_module))
         self.assertIn(
-            "evaluated_property_sources", inspect.getsource(difference_module)
+            "evaluated_property_sources", inspect.getsource(difference_objects_module)
         )
         self.assertNotIn(
-            "def _all_of_evaluated_item_sources", inspect.getsource(difference_module)
+            "def _all_of_evaluated_item_sources",
+            inspect.getsource(difference_arrays_module),
         )
         self.assertNotIn(
             "def _all_of_evaluated_property_sources",
-            inspect.getsource(difference_module),
+            inspect.getsource(difference_objects_module),
         )
         self.assertNotIn(
             "lhs_uniqueness",
-            inspect.getsource(sat_module._prove_array_uniqueness_difference),
+            inspect.getsource(array_rules_module._prove_array_uniqueness_difference),
         )
         self.assertNotIn(
             "rhs_uniqueness",
-            inspect.getsource(sat_module._prove_array_uniqueness_difference),
+            inspect.getsource(array_rules_module._prove_array_uniqueness_difference),
         )
         self.assertNotIn(
             "uniqueness_duplicate_witness_plan(",
-            inspect.getsource(sat_module._prove_array_uniqueness_difference),
+            inspect.getsource(array_rules_module._prove_array_uniqueness_difference),
         )
         self.assertNotIn(
             "_is_array_item_values_fragment_schema", inspect.getsource(sat_module)
         )
         self.assertNotIn(
             "has_rhs_item_value_constraints(",
-            inspect.getsource(sat_module._prove_array_item_values_difference),
+            inspect.getsource(array_rules_module._prove_array_item_values_difference),
         )
         self.assertNotIn(
             "item_value_obligations(",
-            inspect.getsource(sat_module._prove_array_item_values_difference),
+            inspect.getsource(array_rules_module._prove_array_item_values_difference),
         )
         self.assertNotIn(
             "object_property_count_shape_for_schema",
@@ -3598,19 +4799,27 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "problem.object_model",
-            inspect.getsource(sat_module._prove_object_property_count_difference),
+            inspect.getsource(
+                object_rules_module._prove_object_property_count_difference
+            ),
         )
         self.assertNotIn(
             "lhs_property_count",
-            inspect.getsource(sat_module._prove_object_property_count_difference),
+            inspect.getsource(
+                object_rules_module._prove_object_property_count_difference
+            ),
         )
         self.assertNotIn(
             "rhs_property_count",
-            inspect.getsource(sat_module._prove_object_property_count_difference),
+            inspect.getsource(
+                object_rules_module._prove_object_property_count_difference
+            ),
         )
         self.assertNotIn(
             "witness_not_in",
-            inspect.getsource(sat_module._prove_object_property_count_difference),
+            inspect.getsource(
+                object_rules_module._prove_object_property_count_difference
+            ),
         )
         self.assertFalse(hasattr(sat_module, "object_key_value_shape_for_schema"))
         self.assertFalse(hasattr(sat_module, "_object_key_value_shape_for_schema"))
@@ -3625,58 +4834,74 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertFalse(hasattr(sat_module, "_repair_object_property_names_witness"))
         self.assertNotIn(
             "lhs_key_values",
-            inspect.getsource(sat_module._prove_object_key_value_difference),
+            inspect.getsource(object_rules_module._prove_object_key_value_difference),
         )
         self.assertNotIn(
             "rhs_key_values",
-            inspect.getsource(sat_module._prove_object_key_value_difference),
+            inspect.getsource(object_rules_module._prove_object_key_value_difference),
         )
         self.assertNotIn(
             "key_value_product_supported(",
-            inspect.getsource(sat_module._prove_object_key_value_difference),
+            inspect.getsource(object_rules_module._prove_object_key_value_difference),
         )
         self.assertNotIn(
             "key_value_obligations(",
-            inspect.getsource(sat_module._prove_object_key_value_difference),
+            inspect.getsource(object_rules_module._prove_object_key_value_difference),
         )
         self.assertIn(
             "materialize_object_key_value_witness_skeleton",
-            inspect.getsource(sat_module._prove_object_key_value_difference),
+            inspect.getsource(object_rules_module._prove_object_key_value_difference),
         )
         self.assertNotIn(
             "lhs_property_values",
-            inspect.getsource(sat_module._prove_object_property_values_difference),
+            inspect.getsource(
+                object_rules_module._prove_object_property_values_difference
+            ),
         )
         self.assertNotIn(
             "rhs_property_values",
-            inspect.getsource(sat_module._prove_object_property_values_difference),
+            inspect.getsource(
+                object_rules_module._prove_object_property_values_difference
+            ),
         )
         self.assertNotIn(
             "property_value_obligations(",
-            inspect.getsource(sat_module._prove_object_property_values_difference),
+            inspect.getsource(
+                object_rules_module._prove_object_property_values_difference
+            ),
         )
         self.assertFalse(hasattr(sat_module, "_object_property_values_witness"))
         self.assertIn(
             "materialize_object_property_value_witness_skeleton",
-            inspect.getsource(sat_module._prove_object_property_values_difference),
+            inspect.getsource(
+                object_rules_module._prove_object_property_values_difference
+            ),
         )
         self.assertNotIn(
             "lhs_closed_properties",
-            inspect.getsource(sat_module._prove_closed_object_properties_difference),
+            inspect.getsource(
+                object_rules_module._prove_closed_object_properties_difference
+            ),
         )
         self.assertNotIn(
             "rhs_closed_properties",
-            inspect.getsource(sat_module._prove_closed_object_properties_difference),
+            inspect.getsource(
+                object_rules_module._prove_closed_object_properties_difference
+            ),
         )
         self.assertNotIn(
             "closed_object_value_obligations(",
-            inspect.getsource(sat_module._prove_closed_object_properties_difference),
+            inspect.getsource(
+                object_rules_module._prove_closed_object_properties_difference
+            ),
         )
         self.assertFalse(hasattr(sat_module, "_closed_object_witness"))
         self.assertFalse(hasattr(sat_module, "_closed_object_witness_from_skeleton"))
         self.assertIn(
             "materialize_closed_object_witness_skeleton",
-            inspect.getsource(sat_module._prove_closed_object_properties_difference),
+            inspect.getsource(
+                object_rules_module._prove_closed_object_properties_difference
+            ),
         )
         self.assertNotIn(
             "_rhs_object_property_names_has_value_constraints",
@@ -3691,7 +4916,9 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertFalse(hasattr(sat_module, "_object_property_names_repair_witness"))
         self.assertIn(
             "materialize_object_property_names_repair_skeleton",
-            inspect.getsource(sat_module._prove_object_property_names_difference),
+            inspect.getsource(
+                object_rules_module._prove_object_property_names_difference
+            ),
         )
         self.assertFalse(hasattr(sat_module, "_rhs_has_array_item_value_constraints"))
         self.assertFalse(
@@ -3710,51 +4937,57 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertFalse(hasattr(sat_module, "_array_witness_from_plan"))
         self.assertFalse(hasattr(sat_module, "_array_duplicate_witness"))
         self.assertIn(
-            "materialize_array_witness_skeleton", inspect.getsource(difference_module)
+            "materialize_array_witness_skeleton",
+            inspect.getsource(difference_arrays_module),
         )
         self.assertIn(
             "materialize_array_witness_plan",
-            inspect.getsource(sat_module._prove_array_contains_difference),
+            inspect.getsource(array_rules_module._prove_array_contains_difference),
         )
         self.assertFalse(hasattr(sat_module, "_array_length_shape_allows"))
         self.assertNotIn(
             "[None, None]",
-            inspect.getsource(sat_module._prove_array_uniqueness_difference),
+            inspect.getsource(array_rules_module._prove_array_uniqueness_difference),
         )
         self.assertNotIn("presence_property_sets(", inspect.getsource(sat_module))
         self.assertNotIn(
             "multi_fresh_presence_property_sets(", inspect.getsource(sat_module)
         )
         self.assertNotIn("presence_accepts(", inspect.getsource(sat_module))
+        self.assertFalse(hasattr(engine_module.ProofEngine, "_bounded_ir_proof"))
         self.assertIn(
-            "bounded_ir_proof",
-            inspect.getsource(engine_module.ProofEngine._bounded_ir_proof),
+            "prove_ir_subschema_with_context",
+            inspect.getsource(engine_module.ProofEngine.is_ir_subschema),
         )
         self.assertIn(
-            "EmptinessSolver", inspect.getsource(driver_module.bounded_ir_proof)
+            "EmptinessSolver",
+            inspect.getsource(public_api._bounded_ir_proof),
         )
+        self.assertFalse(hasattr(driver_module, "bounded_ir_proof"))
+        self.assertFalse(hasattr(driver_module, "prove_subschema_with_context"))
+        self.assertFalse(hasattr(sat_module.EmptinessSolver, "prove_difference_empty"))
         self.assertNotIn("find_counterexample(", inspect.getsource(sat_module))
         self.assertNotIn(
             "find_counterexample(", inspect.getsource(sat_module.EmptinessSolver)
         )
-        disjoint_proof = disjointness_module.schemas_are_disjoint(
+        disjoint_proof = schemas_are_disjoint(
             {"type": "string"},
             {"type": "number"},
-            ProofContext(Dialect.DRAFT7),
+            proof_engine(Dialect.DRAFT7).context,
         )
         self.assertEqual(disjoint_proof.status, "proved_true")
-        object_value_disjoint = disjointness_module.schemas_are_disjoint(
+        object_value_disjoint = schemas_are_disjoint(
             {
                 "type": "object",
                 "properties": {"a": {"type": "integer"}},
                 "required": ["a"],
             },
             {"required": ["a"], "properties": {"a": {"type": "string"}}},
-            ProofContext(Dialect.DRAFT7),
+            proof_engine(Dialect.DRAFT7).context,
         )
         self.assertEqual(object_value_disjoint.status, "proved_true")
 
-        rhs_not_witness_formula = DifferenceFormula.from_schemas(
+        rhs_not_witness_formula = difference_formula_from_schemas(
             {"type": "string", "pattern": "^ab$"},
             {"not": {"type": "string", "pattern": "^a"}},
             Dialect.DRAFT7,
@@ -3763,17 +4996,13 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs_not_witness_plan = right_not_string_overlap_plan(
             rhs_not_witness_formula.lhs,
             rhs_not_witness_nnf.children[0].node,
-            Dialect.DRAFT7,
         )
         rhs_not_witness_constraint_plan = (
             right_not_string_overlap_plan_from_constraints(
                 rhs_not_witness_formula.lhs.string_language_constraint,
                 rhs_not_witness_nnf.children[0]
-                .node.facts.assertion("string-language")
+                .node.semantics.assertion("string-language")
                 .value,
-                rhs_not_witness_formula.lhs.schema,
-                rhs_not_witness_nnf.children[0].node.source.schema,
-                Dialect.DRAFT7,
             )
         )
         self.assertEqual(rhs_not_witness_plan.status, "witness")
@@ -3811,13 +5040,11 @@ class TestProofEngineRouting(unittest.TestCase):
         default_solver.rules = (FakeRule(endeavor_spec, ProofResult.true()),)
         unreliable_solver = EmptinessSolver(ProofContext(Dialect.DRAFT7))
         unreliable_solver.rules = (FakeRule(unreliable_spec, ProofResult.false("x")),)
+        lhs_ir = SchemaIRCompiler(Dialect.DRAFT7).compile({"type": "string"})
+        rhs_ir = SchemaIRCompiler(Dialect.DRAFT7).compile({"type": "number"})
 
-        endeavor_proof = default_solver.prove_difference_empty(
-            {"type": "string"}, {"type": "number"}
-        )
-        unreliable_proof = unreliable_solver.prove_difference_empty(
-            {"type": "string"}, {"type": "number"}
-        )
+        endeavor_proof = default_solver.prove_ir_difference_empty(lhs_ir, rhs_ir)
+        unreliable_proof = unreliable_solver.prove_ir_difference_empty(lhs_ir, rhs_ir)
 
         self.assertEqual(endeavor_proof.status, "unsupported")
         self.assertEqual(endeavor_proof.reason, "fake-endeavor requires endeavor proof")
@@ -3831,9 +5058,7 @@ class TestProofEngineRouting(unittest.TestCase):
             ProofContext(Dialect.DRAFT7, ProofOptions(endeavor=True)),
         )
         endeavor_solver.rules = (FakeRule(endeavor_spec, ProofResult.true()),)
-        endeavor_allowed = endeavor_solver.prove_difference_empty(
-            {"type": "string"}, {"type": "number"}
-        )
+        endeavor_allowed = endeavor_solver.prove_ir_difference_empty(lhs_ir, rhs_ir)
         self.assertEqual(endeavor_allowed.status, "proved_true")
 
     def test_counterexample_certificates_are_verified_before_proved_false(self):
@@ -3869,7 +5094,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertFalse(certificate_is_verifiable(invalid_child))
 
     def test_finite_rhs_witnesses_are_constructed_by_witness_builder(self):
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             {"type": "array"}, {"const": []}, dialect=Dialect.DRAFT7
         )
 
@@ -3881,7 +5106,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_finite_rhs_numeric_witness_uses_numeric_shape(self):
         lhs = {"type": "integer", "minimum": 1}
         rhs = {"enum": [1, 2]}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -3901,7 +5126,7 @@ class TestProofEngineRouting(unittest.TestCase):
         assert_witness_validates(lhs, rhs, Dialect.DRAFT202012, proof.witness)
 
     def test_scalar_difference_plans_capture_sat_domain_decisions(self):
-        type_formula = DifferenceFormula.from_schemas(
+        type_formula = difference_formula_from_schemas(
             {"type": "null"}, {"type": "string"}, Dialect.DRAFT7
         )
         self.assertIsInstance(type_formula.lhs.type_constraint, TypeConstraint)
@@ -3916,12 +5141,12 @@ class TestProofEngineRouting(unittest.TestCase):
             type_problem.rhs_constraint("type"),
         )
         self.assertEqual(type_constraint_plan, type_plan)
-        type_engine = ProofEngine.for_schemas({"type": "null"}, {"type": "string"})
+        type_engine = proof_engine_for_schemas({"type": "null"}, {"type": "string"})
         type_proof = type_engine._bounded_ir_proof({"type": "null"}, {"type": "string"})
         self.assertEqual(type_proof.status, "proved_false")
         self.assertIsNone(type_proof.witness)
 
-        numeric_formula = DifferenceFormula.from_schemas(
+        numeric_formula = difference_formula_from_schemas(
             {"type": "integer"}, {"type": "number"}, Dialect.DRAFT7
         )
         self.assertIsInstance(numeric_formula.lhs.numeric_constraint, NumericConstraint)
@@ -3936,7 +5161,7 @@ class TestProofEngineRouting(unittest.TestCase):
             ).status,
             "proved_true",
         )
-        numeric_witness_formula = DifferenceFormula.from_schemas(
+        numeric_witness_formula = difference_formula_from_schemas(
             {"type": "number", "minimum": 5},
             {"type": "number", "minimum": 6},
             Dialect.DRAFT7,
@@ -3961,7 +5186,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertGreaterEqual(numeric_plan.witness, 5)
         self.assertLess(numeric_plan.witness, 6)
 
-        constructive_numeric_formula = DifferenceFormula.from_schemas(
+        constructive_numeric_formula = difference_formula_from_schemas(
             {"type": "number", "multipleOf": 10},
             {"type": "integer", "minimum": 5},
             Dialect.DRAFT7,
@@ -4007,7 +5232,7 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertEqual(symbolic_solver.check_with_work(), scalars_module.UNSAT)
 
-        length_formula = DifferenceFormula.from_schemas(
+        length_formula = difference_formula_from_schemas(
             {"type": "string", "minLength": 2},
             {"type": "string", "minLength": 3},
             Dialect.DRAFT7,
@@ -4029,7 +5254,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "aa",
         )
 
-        language_formula = DifferenceFormula.from_schemas(
+        language_formula = difference_formula_from_schemas(
             {"type": "string", "pattern": "^a$"},
             {"type": "string", "pattern": "^b$"},
             Dialect.DRAFT7,
@@ -4051,7 +5276,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "witness",
         )
 
-        finite_formula = DifferenceFormula.from_schemas(
+        finite_formula = difference_formula_from_schemas(
             {"type": "array"}, {"const": []}, Dialect.DRAFT7
         )
         self.assertIsInstance(finite_formula.rhs.finite_constraint, FiniteConstraint)
@@ -4122,27 +5347,97 @@ class TestProofEngineRouting(unittest.TestCase):
             inspect.getsource(scalars_module.string_language_difference_plan),
         )
 
-    def test_schema_inhabitant_witness_helpers_live_outside_sat(self):
-        self.assertEqual(build_schema_witness.__module__, "subschema.kernel.witnesses")
-        self.assertEqual(
-            finite_projection_witness.__module__, "subschema.kernel.witnesses"
-        )
-        false_witness = build_schema_witness(False, Dialect.DRAFT7)
+    def test_ir_inhabitant_witness_helpers_live_outside_sat(self):
+        self.assertEqual(build_ir_witness.__module__, "subschema.prover.witnesses")
+
+        false_witness = self._ir_witness(False)
         self.assertEqual(false_witness.status, "unsupported")
-        string_witness = build_schema_witness({"type": "string"}, Dialect.DRAFT7)
+
+        string_witness = self._ir_witness({"type": "string"})
         self.assertTrue(string_witness.has_witness)
         self.assertEqual(string_witness.witness, "")
-        const_witness = finite_projection_witness({"const": None}, Dialect.DRAFT7)
+
+        const_witness = self._ir_witness({"const": None})
         self.assertTrue(const_witness.has_witness)
         self.assertIsNone(const_witness.witness)
-        self.assertEqual(
-            finite_projection_witness({"const": None}, Dialect.DRAFT4).status,
-            "unsupported",
+
+    def test_ir_witness_cache_returns_fresh_mutable_values(self):
+        context = proof_engine(Dialect.DRAFT202012).context
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(
+            {
+                "type": "object",
+                "properties": {"x": {"const": 1}},
+                "required": ["x"],
+            }
         )
-        self.assertEqual(
-            finite_projection_witness({"type": "string"}, Dialect.DRAFT7).status,
-            "unsupported",
+
+        first = build_ir_witness(ir, context)
+        self.assertEqual(first.witness, {"x": 1})
+        first.witness["x"] = 2
+        second = build_ir_witness(ir, context)
+
+        self.assertEqual(second.witness, {"x": 1})
+
+    def test_term_witness_cache_returns_fresh_mutable_values(self):
+        context = proof_engine(Dialect.DRAFT202012).context
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(
+            {
+                "type": "array",
+                "prefixItems": [{"const": 1}],
+                "items": False,
+                "minItems": 1,
+            }
         )
+        term = SchemaTerm.node(ir.root_ref)
+
+        first = build_term_witness(term, ir, context)
+        self.assertEqual(first.witness, [1])
+        first.witness[0] = 2
+        second = build_term_witness(term, ir, context)
+
+        self.assertEqual(second.witness, [1])
+
+    def test_ir_witness_cache_does_not_store_unsupported_results(self):
+        context = proof_engine(Dialect.DRAFT202012).context
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile({"type": "string"})
+        results = [
+            WitnessBuildResult.unsupported("first"),
+            WitnessBuildResult.concrete("second"),
+        ]
+
+        with patch.object(
+            witnesses_module,
+            "_build_ir_witness_uncached",
+            side_effect=results,
+        ):
+            self.assertEqual(build_ir_witness(ir, context).status, "unsupported")
+            second = build_ir_witness(ir, context)
+
+        self.assertEqual(second.status, "witness")
+        self.assertEqual(second.witness, "second")
+
+    def test_term_witness_cache_does_not_store_unsupported_results(self):
+        context = proof_engine(Dialect.DRAFT202012).context
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile({"type": "string"})
+        term = SchemaTerm.node(ir.root_ref)
+        results = [
+            WitnessBuildResult.unsupported("first"),
+            WitnessBuildResult.concrete("second"),
+        ]
+
+        with patch.object(
+            witnesses_module,
+            "_term_witness_uncached",
+            side_effect=results,
+        ):
+            self.assertEqual(
+                build_term_witness(term, ir, context).status,
+                "unsupported",
+            )
+            second = build_term_witness(term, ir, context)
+
+        self.assertEqual(second.status, "witness")
+        self.assertEqual(second.witness, "second")
 
     def test_domain_fragments_reject_boolean_integer_keywords(self):
         self.assertIsNone(
@@ -4166,15 +5461,14 @@ class TestProofEngineRouting(unittest.TestCase):
             )
         )
 
-    def test_schema_inhabitant_exclusions_use_json_semantics(self):
-        true_not_number = build_schema_witness(
+    def test_ir_inhabitant_exclusions_use_json_semantics(self):
+        true_not_number = self._ir_witness(
             {"allOf": [{"const": True}, {"not": {"const": 1}}]},
-            Dialect.DRAFT7,
         )
         self.assertTrue(true_not_number.has_witness)
         self.assertIs(true_not_number.witness, True)
 
-        object_not_numeric_object = build_schema_witness(
+        object_not_numeric_object = self._ir_witness(
             {
                 "allOf": [
                     {
@@ -4185,13 +5479,12 @@ class TestProofEngineRouting(unittest.TestCase):
                     {"not": {"enum": [{"x": 1}]}},
                 ]
             },
-            Dialect.DRAFT7,
         )
         self.assertTrue(object_not_numeric_object.has_witness)
         self.assertEqual(object_not_numeric_object.witness, {"x": True})
 
-    def test_schema_inhabitant_negated_object_branch_keeps_dialect(self):
-        object_not_array = build_schema_witness(
+    def test_ir_inhabitant_negated_object_branch_keeps_dialect(self):
+        object_not_array = self._ir_witness(
             {
                 "allOf": [
                     {
@@ -4202,10 +5495,16 @@ class TestProofEngineRouting(unittest.TestCase):
                     {"not": {"type": "array"}},
                 ]
             },
-            Dialect.DRAFT7,
         )
         self.assertTrue(object_not_array.has_witness)
         self.assertEqual(object_not_array.witness, {"x": True})
+
+    def _ir_witness(
+        self, schema: Any, dialect: Dialect = Dialect.DRAFT7
+    ) -> WitnessBuildResult:
+        context = proof_engine(dialect).context
+        ir = SchemaIRCompiler(dialect).compile(schema, resources=context.resources)
+        return build_ir_witness(ir, context)
 
     def test_composite_difference_models_capture_object_and_array_search_space(self):
         lhs_array = {
@@ -4222,11 +5521,11 @@ class TestProofEngineRouting(unittest.TestCase):
             "prefixItems": [{"type": "integer"}, {"type": "string"}],
             "items": False,
         }
-        array_formula = DifferenceFormula.from_schemas(
+        array_formula = difference_formula_from_schemas(
             lhs_array, rhs_array, Dialect.DRAFT202012
         )
         array_problem = DifferenceProblem(
-            array_formula, ProofEngine(Dialect.DRAFT202012).context
+            array_formula, proof_engine(Dialect.DRAFT202012).context
         )
         array_model = ArrayDifferenceModel.from_problem(array_problem)
 
@@ -4252,17 +5551,20 @@ class TestProofEngineRouting(unittest.TestCase):
             "prefixItems": [{"type": "integer"}, {"type": "string"}],
             "items": False,
         }
-        tail_formula = DifferenceFormula.from_schemas(
+        tail_formula = difference_formula_from_schemas(
             tail_lhs, tail_rhs, Dialect.DRAFT202012
         )
-        tail_model = ArrayDifferenceModel.from_irs(tail_formula.lhs, tail_formula.rhs)
-        length_formula = DifferenceFormula.from_schemas(
+        tail_problem = DifferenceProblem(
+            tail_formula, proof_engine(Dialect.DRAFT202012).context
+        )
+        tail_model = ArrayDifferenceModel.from_problem(tail_problem)
+        length_formula = difference_formula_from_schemas(
             {"type": "array", "minItems": 3},
             {"type": "array", "maxItems": 2},
             Dialect.DRAFT202012,
         )
         length_problem = DifferenceProblem(
-            length_formula, ProofEngine(Dialect.DRAFT202012).context
+            length_formula, proof_engine(Dialect.DRAFT202012).context
         )
         length_model = ArrayDifferenceModel.from_problem(length_problem)
         self.assertIs(length_model.problem, length_problem)
@@ -4274,12 +5576,14 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(length_plan.status, "witness")
         self.assertEqual(
             materialize_array_witness_skeleton(
-                length_plan.witness_skeleton, Dialect.DRAFT202012
+                length_plan.witness_skeleton,
+                Dialect.DRAFT202012,
+                context=length_problem.context,
             ),
             [None, None, None],
         )
         with patch.object(
-            difference_module.SymbolicSolver,
+            difference_arrays_module.SymbolicSolver,
             "check_with_work",
             return_value=ProofResult.unsupported(
                 "array symbolic solver returned unknown"
@@ -4288,7 +5592,7 @@ class TestProofEngineRouting(unittest.TestCase):
             length_plan = length_model.length_difference_plan()
         self.assertEqual(length_plan.status, "witness")
         contains_constraint = ArrayContainsConstraint(
-            {"type": "string"}, 1, 3, marks_evaluated=True
+            1, 3, marks_evaluated=True, term=SchemaTerm.true()
         )
         contains_min_plan = tail_model.contains_min_violation_plan(contains_constraint)
         contains_max_plan = tail_model.contains_max_violation_plan(contains_constraint)
@@ -4302,9 +5606,25 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertEqual(contains_min_plan.length, 3)
         self.assertEqual(contains_max_plan.target_matches, 4)
-        contains_min_witness_plan = tail_model.contains_min_violation_witness_plan(
-            ArrayContainsConstraint({"type": "number"}, 2, 3, marks_evaluated=True),
-            ProofEngine(Dialect.DRAFT202012).context,
+        contains_min_formula = difference_formula_from_schemas(
+            tail_lhs,
+            {
+                "type": "array",
+                "contains": {"type": "number"},
+                "minContains": 2,
+                "maxContains": 3,
+            },
+            Dialect.DRAFT202012,
+        )
+        contains_min_problem = DifferenceProblem(
+            contains_min_formula, proof_engine(Dialect.DRAFT202012).context
+        )
+        contains_min_model = ArrayDifferenceModel.from_problem(contains_min_problem)
+        contains_min_witness_plan = (
+            contains_min_model.contains_min_violation_witness_plan(
+                contains_min_model.rhs_contains,
+                contains_min_problem.context,
+            )
         )
         self.assertIsInstance(contains_min_witness_plan, ArrayWitnessPlan)
         self.assertIsInstance(contains_min_witness_plan.skeleton, ArrayWitnessSkeleton)
@@ -4314,13 +5634,29 @@ class TestProofEngineRouting(unittest.TestCase):
                 for override in contains_min_witness_plan.overrides
             )
         )
-        contains_max_witness_plan = tail_model.contains_max_violation_witness_plan(
-            ArrayContainsConstraint(True, 0, 1, marks_evaluated=True),
-            ProofEngine(Dialect.DRAFT202012).context,
+        contains_max_formula = difference_formula_from_schemas(
+            tail_lhs,
+            {
+                "type": "array",
+                "contains": True,
+                "minContains": 0,
+                "maxContains": 1,
+            },
+            Dialect.DRAFT202012,
+        )
+        contains_max_problem = DifferenceProblem(
+            contains_max_formula, proof_engine(Dialect.DRAFT202012).context
+        )
+        contains_max_model = ArrayDifferenceModel.from_problem(contains_max_problem)
+        contains_max_witness_plan = (
+            contains_max_model.contains_max_violation_witness_plan(
+                contains_max_model.rhs_contains,
+                contains_max_problem.context,
+            )
         )
         self.assertIsInstance(contains_max_witness_plan, ArrayWitnessPlan)
         self.assertIsInstance(contains_max_witness_plan.skeleton, ArrayWitnessSkeleton)
-        contains_difference_formula = DifferenceFormula.from_schemas(
+        contains_difference_formula = difference_formula_from_schemas(
             {"type": "array", "maxItems": 0},
             {"type": "array", "contains": True, "minContains": 1},
             Dialect.DRAFT202012,
@@ -4330,12 +5666,12 @@ class TestProofEngineRouting(unittest.TestCase):
             contains_difference_formula.rhs,
         )
         contains_difference_plan = contains_difference_model.contains_difference_plan(
-            ProofEngine(Dialect.DRAFT202012).context,
+            proof_engine(Dialect.DRAFT202012).context,
         )
         self.assertIsInstance(contains_difference_plan, ArrayContainsDifferencePlan)
         self.assertEqual(contains_difference_plan.status, "witness")
         self.assertEqual(contains_difference_plan.witness, [])
-        unevaluated_witness_formula = DifferenceFormula.from_schemas(
+        unevaluated_witness_formula = difference_formula_from_schemas(
             {"type": "array", "minItems": 1},
             {"type": "array", "unevaluatedItems": False},
             Dialect.DRAFT202012,
@@ -4354,7 +5690,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIsInstance(
             unevaluated_witness_plan.witness_skeleton, ArrayWitnessSkeleton
         )
-        unevaluated_obligation_formula = DifferenceFormula.from_schemas(
+        unevaluated_obligation_formula = difference_formula_from_schemas(
             {"type": "array", "prefixItems": [{"type": "integer"}], "maxItems": 1},
             {
                 "type": "array",
@@ -4383,15 +5719,17 @@ class TestProofEngineRouting(unittest.TestCase):
             all(isinstance(slot, ArrayWitnessSlot) for slot in array_skeleton.slots)
         )
         self.assertEqual(
-            [(slot.index, slot.schema) for slot in array_skeleton.slots],
+            [(slot.index, slot.term) for slot in array_skeleton.slots],
             [
-                (0, {"type": "integer"}),
-                (1, {"type": "string"}),
-                (2, {"type": "string"}),
+                (0, tail_model.lhs_item_term_at(0)),
+                (1, tail_model.lhs_item_term_at(1)),
+                (2, tail_model.lhs_item_term_at(2)),
             ],
         )
         materialized_array = materialize_array_witness_skeleton(
-            array_skeleton, Dialect.DRAFT202012
+            array_skeleton,
+            Dialect.DRAFT202012,
+            context=length_problem.context,
         )
         self.assertEqual(len(materialized_array), 3)
         self.assertIs(type(materialized_array[0]), int)
@@ -4399,24 +5737,9 @@ class TestProofEngineRouting(unittest.TestCase):
         materialized_plan = materialize_array_witness_plan(
             ArrayWitnessPlan(array_skeleton, (ArrayWitnessOverride(1, "override"),)),
             Dialect.DRAFT202012,
+            context=length_problem.context,
         )
         self.assertEqual(materialized_plan[1], "override")
-        materialized_duplicate = materialize_array_duplicate_witness_plan(
-            ArrayDuplicateWitnessPlan(
-                ArrayWitnessSkeleton(
-                    2,
-                    (
-                        ArrayWitnessSlot(0, True),
-                        ArrayWitnessSlot(1, True),
-                    ),
-                ),
-                0,
-                1,
-                {"const": "duplicate"},
-            ),
-            Dialect.DRAFT202012,
-        )
-        self.assertEqual(materialized_duplicate, ["duplicate", "duplicate"])
         self.assertEqual(tail_model.first_lhs_array_length(), 3)
         self.assertTrue(tail_model.lhs_allows_length(3))
         self.assertFalse(tail_model.lhs_allows_length(2))
@@ -4436,11 +5759,15 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(
             (duplicate_plan.first_index, duplicate_plan.second_index), (1, 2)
         )
-        self.assertEqual(
-            duplicate_plan.duplicate_schema,
-            {"type": "string"},
+        self.assertEqual(duplicate_plan.duplicate_term, tail_model.lhs_tail.term)
+        materialized_duplicate = materialize_array_duplicate_witness_plan(
+            duplicate_plan,
+            Dialect.DRAFT202012,
+            context=length_problem.context,
         )
-        uniqueness_formula = DifferenceFormula.from_schemas(
+        self.assertIsNotNone(materialized_duplicate)
+        self.assertEqual(materialized_duplicate[1], materialized_duplicate[2])
+        uniqueness_formula = difference_formula_from_schemas(
             {"type": "array", "minItems": 2},
             {"type": "array", "uniqueItems": True},
             Dialect.DRAFT202012,
@@ -4469,12 +5796,12 @@ class TestProofEngineRouting(unittest.TestCase):
             [(obligation.index, obligation.source) for obligation in array_obligations],
             [(0, "rhs-slot"), (1, "rhs-slot")],
         )
-        item_values_plan = tail_model.item_values_difference_plan(Dialect.DRAFT202012)
+        item_values_plan = tail_model.item_values_difference_plan()
         self.assertIsInstance(item_values_plan, ArrayItemValuesDifferencePlan)
         self.assertEqual(item_values_plan.status, "witness")
         self.assertIsInstance(item_values_plan.witness_skeleton, ArrayWitnessSkeleton)
 
-        item_values_formula = DifferenceFormula.from_schemas(
+        item_values_formula = difference_formula_from_schemas(
             {"type": "array", "items": {"type": "integer"}},
             {"type": "array", "items": {"type": "number"}},
             Dialect.DRAFT202012,
@@ -4483,9 +5810,7 @@ class TestProofEngineRouting(unittest.TestCase):
             item_values_formula.lhs,
             item_values_formula.rhs,
         )
-        item_values_plan = item_values_model.item_values_difference_plan(
-            Dialect.DRAFT202012
-        )
+        item_values_plan = item_values_model.item_values_difference_plan()
         self.assertEqual(item_values_plan.status, "obligations")
         self.assertTrue(
             all(
@@ -4506,11 +5831,11 @@ class TestProofEngineRouting(unittest.TestCase):
             "patternProperties": {"^x": {"type": "string"}},
             "dependentSchemas": {"gamma": {"required": ["delta"]}},
         }
-        object_formula = DifferenceFormula.from_schemas(
+        object_formula = difference_formula_from_schemas(
             lhs_object, rhs_object, Dialect.DRAFT202012
         )
         object_problem = DifferenceProblem(
-            object_formula, ProofEngine(Dialect.DRAFT202012).context
+            object_formula, proof_engine(Dialect.DRAFT202012).context
         )
         object_model = ObjectDifferenceModel.from_problem(object_problem)
 
@@ -4526,11 +5851,16 @@ class TestProofEngineRouting(unittest.TestCase):
             object_model.universe.fresh.representative,
             object_model.universe.explicit_names,
         )
-        self.assertIsInstance(object_model.lhs_key_values, ObjectKeyValueShape)
-        self.assertEqual(
-            object_model.lhs_key_values.properties["alpha"], {"type": "integer"}
+        self.assertIsInstance(object_model.lhs_key_values, ObjectKeyValueConstraint)
+        self.assertIn("alpha", object_model.lhs_key_values.properties)
+        self.assertTrue(
+            _term_targets_pointer(
+                object_model.lhs_key_values.value_term_for("alpha"),
+                object_formula.lhs,
+                ("properties", "alpha"),
+            )
         )
-        self.assertFalse(object_model.lhs_key_values.additional_schema)
+        self.assertEqual(object_model.lhs_key_values.additional_term.kind, "false")
         object_skeleton = object_model.lhs_key_values.witness_skeleton("alpha")
         self.assertIsInstance(object_skeleton, ObjectKeyValueWitnessSkeleton)
         self.assertTrue(
@@ -4540,13 +5870,16 @@ class TestProofEngineRouting(unittest.TestCase):
             )
         )
         self.assertEqual(
-            [(slot.name, slot.schema) for slot in object_skeleton.slots],
+            [(slot.name, slot.term) for slot in object_skeleton.slots],
             [
-                ("alpha", {"type": "integer"}),
+                ("alpha", object_model.lhs_key_values.value_term_for("alpha")),
             ],
         )
         materialized_object = materialize_object_key_value_witness_skeleton(
-            object_skeleton, Dialect.DRAFT202012
+            object_skeleton,
+            Dialect.DRAFT202012,
+            context=object_problem.context,
+            ir=object_model.lhs,
         )
         self.assertEqual(set(materialized_object), {"alpha"})
         self.assertIs(type(materialized_object["alpha"]), int)
@@ -4554,15 +5887,17 @@ class TestProofEngineRouting(unittest.TestCase):
             object_skeleton,
             Dialect.DRAFT202012,
             override=("alpha", 42),
+            context=object_problem.context,
+            ir=object_model.lhs,
         )
         self.assertEqual(materialized_object_override, {"alpha": 42})
-        count_formula = DifferenceFormula.from_schemas(
+        count_formula = difference_formula_from_schemas(
             {"type": "object", "minProperties": 3},
             {"type": "object", "maxProperties": 2},
             Dialect.DRAFT202012,
         )
         count_problem = DifferenceProblem(
-            count_formula, ProofEngine(Dialect.DRAFT202012).context
+            count_formula, proof_engine(Dialect.DRAFT202012).context
         )
         count_model = ObjectDifferenceModel.from_problem(count_problem)
         self.assertIs(count_model.problem, count_problem)
@@ -4573,7 +5908,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(count_plan.status, "witness")
         self.assertEqual(count_plan.witness, {"k0": None, "k1": None, "k2": None})
         with patch.object(
-            difference_module.SymbolicSolver,
+            difference_objects_module.SymbolicSolver,
             "check_with_work",
             return_value=ProofResult.unsupported(
                 "object symbolic solver returned unknown"
@@ -4582,7 +5917,7 @@ class TestProofEngineRouting(unittest.TestCase):
             count_plan = count_model.property_count_difference_plan()
         self.assertEqual(count_plan.status, "witness")
         self.assertEqual(count_plan.witness, {"k0": None, "k1": None, "k2": None})
-        unevaluated_property_witness_formula = DifferenceFormula.from_schemas(
+        unevaluated_property_witness_formula = difference_formula_from_schemas(
             {"type": "object"},
             {"type": "object", "unevaluatedProperties": False},
             Dialect.DRAFT202012,
@@ -4599,7 +5934,7 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertEqual(unevaluated_property_witness_plan.status, "witness")
         self.assertTrue(unevaluated_property_witness_plan.witness_skeletons)
-        unevaluated_property_obligation_formula = DifferenceFormula.from_schemas(
+        unevaluated_property_obligation_formula = difference_formula_from_schemas(
             {
                 "type": "object",
                 "properties": {"foo": {"type": "number"}},
@@ -4632,10 +5967,12 @@ class TestProofEngineRouting(unittest.TestCase):
             "type": "object",
             "patternProperties": {"^x": {"type": "string"}},
         }
-        kv_formula = DifferenceFormula.from_schemas(kv_lhs, kv_rhs, Dialect.DRAFT202012)
+        kv_formula = difference_formula_from_schemas(
+            kv_lhs, kv_rhs, Dialect.DRAFT202012
+        )
         kv_model = ObjectDifferenceModel.from_irs(kv_formula.lhs, kv_formula.rhs)
-        self.assertIsInstance(kv_model.lhs_key_values, ObjectKeyValueShape)
-        self.assertIsInstance(kv_model.rhs_key_values, ObjectKeyValueShape)
+        self.assertIsInstance(kv_model.lhs_key_values, ObjectKeyValueConstraint)
+        self.assertIsInstance(kv_model.rhs_key_values, ObjectKeyValueConstraint)
         self.assertEqual(kv_model.rhs_key_values.pattern_texts(), frozenset({"^x"}))
         self.assertTrue(
             kv_model.rhs_key_values.allows_key(kv_model.universe.fresh.representative)
@@ -4656,7 +5993,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(kv_plan.status, "obligations")
         self.assertEqual(kv_plan.obligations, obligations)
 
-        kv_witness_formula = DifferenceFormula.from_schemas(
+        kv_witness_formula = difference_formula_from_schemas(
             {
                 "type": "object",
                 "properties": {"x": {"type": "integer"}},
@@ -4681,11 +6018,11 @@ class TestProofEngineRouting(unittest.TestCase):
             "dependentRequired": {"alpha": ["beta"]},
             "maxProperties": 2,
         }
-        presence_formula = DifferenceFormula.from_schemas(
+        presence_formula = difference_formula_from_schemas(
             presence_lhs, presence_rhs, Dialect.DRAFT202012
         )
         presence_problem = DifferenceProblem(
-            presence_formula, ProofEngine(Dialect.DRAFT202012).context
+            presence_formula, proof_engine(Dialect.DRAFT202012).context
         )
         presence_model = ObjectDifferenceModel.from_problem(presence_problem)
         presence_plan = presence_model.presence_product_plan(budget=12)
@@ -4713,11 +6050,11 @@ class TestProofEngineRouting(unittest.TestCase):
             "type": "object",
             "properties": {"foo": {"type": "number"}, "bar": True},
         }
-        value_formula = DifferenceFormula.from_schemas(
+        value_formula = difference_formula_from_schemas(
             value_lhs, value_rhs, Dialect.DRAFT202012
         )
         value_problem = DifferenceProblem(
-            value_formula, ProofEngine(Dialect.DRAFT202012).context
+            value_formula, proof_engine(Dialect.DRAFT202012).context
         )
         value_model = ObjectDifferenceModel.from_problem(value_problem)
         self.assertIsNotNone(value_model.lhs_property_values)
@@ -4731,10 +6068,16 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertEqual(
             [
-                (obligation.name, obligation.lhs_schema, obligation.rhs_schema)
+                (obligation.name, obligation.lhs_term, obligation.rhs_term)
                 for obligation in value_obligations
             ],
-            [("foo", {"type": "integer"}, {"type": "number"})],
+            [
+                (
+                    "foo",
+                    value_model.lhs_property_values.property_term_for("foo"),
+                    value_model.rhs_property_values.property_term_for("foo"),
+                )
+            ],
         )
         value_skeleton = value_model.property_values_witness_skeleton("foo")
         self.assertIsInstance(value_skeleton, ObjectPropertyValueWitnessSkeleton)
@@ -4745,12 +6088,13 @@ class TestProofEngineRouting(unittest.TestCase):
             )
         )
         self.assertEqual(
-            [(slot.name, slot.schema) for slot in value_skeleton.slots],
-            [("foo", {"type": "integer"})],
+            [(slot.name, slot.term) for slot in value_skeleton.slots],
+            [("foo", value_model.lhs_property_values.property_term_for("foo"))],
         )
         materialized_value = materialize_object_property_value_witness_skeleton(
             value_skeleton,
             Dialect.DRAFT202012,
+            context=value_problem.context,
         )
         self.assertEqual(set(materialized_value), {"foo"})
         self.assertIs(type(materialized_value["foo"]), int)
@@ -4759,6 +6103,7 @@ class TestProofEngineRouting(unittest.TestCase):
                 value_skeleton,
                 Dialect.DRAFT202012,
                 override=("foo", 7),
+                context=value_problem.context,
             )
         )
         self.assertEqual(materialized_value_override, {"foo": 7})
@@ -4767,7 +6112,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(value_plan.status, "obligations")
         self.assertEqual(value_plan.obligations, value_obligations)
 
-        value_witness_formula = DifferenceFormula.from_schemas(
+        value_witness_formula = difference_formula_from_schemas(
             value_lhs,
             {"type": "string"},
             Dialect.DRAFT202012,
@@ -4796,11 +6141,11 @@ class TestProofEngineRouting(unittest.TestCase):
             "properties": {"foo": {"type": "number"}},
             "additionalProperties": False,
         }
-        closed_formula = DifferenceFormula.from_schemas(
+        closed_formula = difference_formula_from_schemas(
             closed_lhs, closed_rhs, Dialect.DRAFT202012
         )
         closed_problem = DifferenceProblem(
-            closed_formula, ProofEngine(Dialect.DRAFT202012).context
+            closed_formula, proof_engine(Dialect.DRAFT202012).context
         )
         closed_model = ObjectDifferenceModel.from_problem(closed_problem)
         self.assertIsNotNone(closed_model.lhs_closed_properties)
@@ -4814,10 +6159,16 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertEqual(
             [
-                (obligation.name, obligation.lhs_schema, obligation.rhs_schema)
+                (obligation.name, obligation.lhs_term, obligation.rhs_term)
                 for obligation in closed_obligations
             ],
-            [("foo", {"type": "integer"}, {"type": "number"})],
+            [
+                (
+                    "foo",
+                    closed_model.lhs_closed_properties.property_term_for("foo"),
+                    closed_model.rhs_closed_properties.property_term_for("foo"),
+                )
+            ],
         )
         closed_skeleton = closed_model.closed_object_witness_skeleton("foo")
         self.assertIsInstance(closed_skeleton, ClosedObjectWitnessSkeleton)
@@ -4828,11 +6179,13 @@ class TestProofEngineRouting(unittest.TestCase):
             )
         )
         self.assertEqual(
-            [(slot.name, slot.schema) for slot in closed_skeleton.slots],
-            [("foo", {"type": "integer"})],
+            [(slot.name, slot.term) for slot in closed_skeleton.slots],
+            [("foo", closed_model.lhs_closed_properties.property_term_for("foo"))],
         )
         materialized_closed = materialize_closed_object_witness_skeleton(
-            closed_skeleton, Dialect.DRAFT202012
+            closed_skeleton,
+            Dialect.DRAFT202012,
+            context=closed_problem.context,
         )
         self.assertEqual(set(materialized_closed), {"foo"})
         self.assertIs(type(materialized_closed["foo"]), int)
@@ -4840,15 +6193,16 @@ class TestProofEngineRouting(unittest.TestCase):
             closed_skeleton,
             Dialect.DRAFT202012,
             override=("foo", 11),
+            context=closed_problem.context,
         )
         self.assertEqual(materialized_closed_override, {"foo": 11})
         keyspace_skeleton = closed_model.closed_object_keyspace_witness_skeleton()
         self.assertIsInstance(keyspace_skeleton, ClosedObjectWitnessSkeleton)
         self.assertEqual(
-            [(slot.name, slot.schema) for slot in keyspace_skeleton.slots],
+            [(slot.name, slot.term) for slot in keyspace_skeleton.slots],
             [
-                ("bar", {"type": "string"}),
-                ("foo", {"type": "integer"}),
+                ("bar", closed_model.lhs_closed_properties.property_term_for("bar")),
+                ("foo", closed_model.lhs_closed_properties.property_term_for("foo")),
             ],
         )
         closed_plan = closed_model.closed_object_difference_plan()
@@ -4856,7 +6210,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(closed_plan.status, "witness")
         self.assertIsInstance(closed_plan.witness_skeleton, ClosedObjectWitnessSkeleton)
 
-        closed_obligation_formula = DifferenceFormula.from_schemas(
+        closed_obligation_formula = difference_formula_from_schemas(
             {
                 "type": "object",
                 "properties": {"foo": {"type": "integer"}},
@@ -4893,7 +6247,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "type": "object",
             "propertyNames": {"pattern": "^b"},
         }
-        names_repair_formula = DifferenceFormula.from_schemas(
+        names_repair_formula = difference_formula_from_schemas(
             names_repair_lhs,
             names_repair_rhs,
             Dialect.DRAFT202012,
@@ -4912,10 +6266,10 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertEqual(
             [
-                (slot.name, slot.schema, slot.original_value)
+                (slot.name, slot.term, slot.original_value)
                 for slot in repair_skeleton.slots
             ],
-            [("a", {"type": "integer"}, None)],
+            [("a", names_repair_model.lhs_key_values.value_term_for("a"), None)],
         )
         names_plan = names_repair_model.property_names_difference_plan()
         self.assertIsInstance(names_plan, ObjectPropertyNamesDifferencePlan)
@@ -4927,17 +6281,18 @@ class TestProofEngineRouting(unittest.TestCase):
         materialized_repair = materialize_object_property_names_repair_skeleton(
             names_plan.repair_skeleton,
             Dialect.DRAFT202012,
+            context=proof_engine(Dialect.DRAFT202012).context,
         )
         self.assertEqual(set(materialized_repair), {"a"})
         self.assertIs(type(materialized_repair["a"]), int)
 
-        names_true_formula = DifferenceFormula.from_schemas(
+        names_true_formula = difference_formula_from_schemas(
             {"type": "object", "propertyNames": {"pattern": "^a"}},
             {"type": "object", "propertyNames": {"pattern": "^a"}},
             Dialect.DRAFT202012,
         )
         names_true_problem = DifferenceProblem(
-            names_true_formula, ProofEngine(Dialect.DRAFT202012).context
+            names_true_formula, proof_engine(Dialect.DRAFT202012).context
         )
         names_true_model = ObjectDifferenceModel.from_problem(names_true_problem)
         self.assertIsNotNone(names_true_model.lhs_property_names)
@@ -4951,7 +6306,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "array", "minItems": 2}
         rhs = {"type": "array", "minItems": 1}
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -4976,7 +6331,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "$ref": "#/definitions/name",
         }
         rhs = {"type": "string"}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5002,7 +6357,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "$defs": {"positive": {"type": "integer", "minimum": 0}},
             "$ref": "#/$defs/positive",
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         proof = engine.is_subschema(lhs, rhs)
 
@@ -5020,7 +6375,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "$ref": "#/definitions/alias",
         }
         rhs = {"type": "string"}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5037,7 +6392,7 @@ class TestProofEngineRouting(unittest.TestCase):
 
         self.assertEqual(proof.status, "proved_true")
 
-        formula = DifferenceFormula.from_schemas(lhs, rhs, Dialect.DRAFT7)
+        formula = difference_formula_from_schemas(lhs, rhs, Dialect.DRAFT7)
         resolution = references_module.root_static_reference_resolution(
             formula.lhs, side="lhs"
         )
@@ -5053,7 +6408,7 @@ class TestProofEngineRouting(unittest.TestCase):
             },
             "$ref": "#/definitions/alias",
         }
-        formula = DifferenceFormula.from_schemas(
+        formula = difference_formula_from_schemas(
             lhs, {"type": "string"}, Dialect.DRAFT7
         )
 
@@ -5065,6 +6420,55 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIn("recursive lhs $ref", resolution.reason)
         self.assertEqual(resolution.category, "recursive-reference")
         self.assertEqual(resolution.path, ("definitions", "alias", "$ref"))
+
+    def test_static_reference_target_reports_guarded_recursive_object_boundary(self):
+        lhs = {
+            "$defs": {
+                "node": {
+                    "type": "object",
+                    "properties": {"child": {"$ref": "#/$defs/node"}},
+                },
+            },
+            "$ref": "#/$defs/node",
+        }
+        formula = difference_formula_from_schemas(
+            lhs, {"type": "object"}, Dialect.DRAFT202012
+        )
+
+        resolution = references_module.root_static_reference_resolution(
+            formula.lhs, side="lhs"
+        )
+
+        self.assertIsInstance(resolution, references_module.StaticReferenceUnsupported)
+        self.assertIn("object-guarded recursive lhs $ref", resolution.reason)
+        self.assertEqual(resolution.category, "recursive-reference")
+        self.assertEqual(
+            resolution.path,
+            ("$defs", "node", "properties", "child", "$ref"),
+        )
+
+    def test_static_reference_target_reports_guarded_recursive_array_boundary(self):
+        lhs = {
+            "$defs": {
+                "node": {
+                    "type": "array",
+                    "items": {"$ref": "#/$defs/node"},
+                },
+            },
+            "$ref": "#/$defs/node",
+        }
+        formula = difference_formula_from_schemas(
+            lhs, {"type": "array"}, Dialect.DRAFT202012
+        )
+
+        resolution = references_module.root_static_reference_resolution(
+            formula.lhs, side="lhs"
+        )
+
+        self.assertIsInstance(resolution, references_module.StaticReferenceUnsupported)
+        self.assertIn("array-guarded recursive lhs $ref", resolution.reason)
+        self.assertEqual(resolution.category, "recursive-reference")
+        self.assertEqual(resolution.path, ("$defs", "node", "items", "$ref"))
 
     def test_static_reference_rule_rejects_dialect_transition_before_subproof(self):
         lhs = {
@@ -5078,7 +6482,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "$ref": "#/definitions/target",
         }
         rhs = {"type": "string"}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -5100,7 +6504,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "$ref": "#/$defs/draft7_tuple",
         }
         rhs = {"type": "array", "maxItems": 1}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         proof = engine.is_subschema(lhs, rhs)
 
@@ -5121,7 +6525,7 @@ class TestProofEngineRouting(unittest.TestCase):
             },
             "$ref": "#/$defs/target",
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -5138,7 +6542,7 @@ class TestProofEngineRouting(unittest.TestCase):
             },
             "$ref": "#/definitions/alias",
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs, {"type": "string"}, dialect=Dialect.DRAFT7
         )
 
@@ -5157,7 +6561,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "allOf": [{"$ref": "#/definitions/name"}],
         }
         rhs = {"type": "string"}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5185,7 +6589,7 @@ class TestProofEngineRouting(unittest.TestCase):
             },
             "allOf": [{"$ref": "#/definitions/target"}],
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs, {"type": "string"}, dialect=Dialect.DRAFT7
         )
 
@@ -5200,7 +6604,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "string", "anyOf": [{"maxLength": 3}, {"pattern": "^a"}]}
         rhs = {"type": "string"}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5222,7 +6626,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "string", "oneOf": [{"maxLength": 3}, {"pattern": "^a"}]}
         rhs = {"type": "string"}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5246,7 +6650,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "anyOf": [{"$ref": "#/definitions/name"}],
         }
         rhs = {"type": "string"}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5270,7 +6674,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "allOf": [{"$ref": "#/definitions/name"}],
         }
         rhs = {"type": "string"}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5292,7 +6696,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "integer", "anyOf": [{"type": "number"}]}
         rhs = {"type": "string"}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5326,7 +6730,7 @@ class TestProofEngineRouting(unittest.TestCase):
 
         for rhs in schemas:
             with self.subTest(rhs=rhs):
-                engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+                engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
                 proof = engine.is_subschema(lhs, rhs)
 
@@ -5344,7 +6748,7 @@ class TestProofEngineRouting(unittest.TestCase):
             },
             "allOf": [{"$ref": "#/definitions/target"}],
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         proof = engine.is_subschema(lhs, rhs)
 
@@ -5358,7 +6762,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "string", "maxLength": 3}
         rhs = {"type": "string", "anyOf": [{"maxLength": 5}, {"pattern": "^a"}]}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5380,7 +6784,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "integer"}
         rhs = {"type": "string", "anyOf": [{"type": "integer"}]}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5407,7 +6811,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "definitions": {"bad": {"const": "a"}},
             "not": {"$ref": "#/definitions/bad"},
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5433,7 +6837,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "definitions": {"bad": {"const": "a"}},
             "not": {"$ref": "#/definitions/bad"},
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5456,7 +6860,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "integer"}
         rhs = {"type": "string", "not": {"type": "number"}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5479,7 +6883,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "string", "minLength": 1}
         rhs = {"type": "string", "oneOf": [{"minLength": 1}, {"maxLength": 0}]}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5501,7 +6905,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "integer"}
         rhs = {"type": "string", "oneOf": [{"type": "integer"}, {"type": "number"}]}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5528,7 +6932,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "definitions": {"name": {"type": "string"}},
             "allOf": [{"$ref": "#/definitions/name"}],
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5554,7 +6958,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "definitions": {"num": {"type": "integer"}},
             "allOf": [{"$ref": "#/definitions/num"}],
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5585,7 +6989,7 @@ class TestProofEngineRouting(unittest.TestCase):
             },
             "allOf": [{"$ref": "#/definitions/target"}],
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         proof = engine.is_subschema(lhs, rhs)
 
@@ -5599,7 +7003,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "string", "if": {"type": "string"}, "then": {"minLength": 1}}
         rhs = {"type": "string"}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5621,7 +7025,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "string", "minLength": 2}
         rhs = {"type": "string", "if": {"type": "string"}, "then": {"minLength": 1}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5643,7 +7047,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "integer"}
         rhs = {"type": "string", "if": {"type": "integer"}, "then": {"type": "number"}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5664,7 +7068,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_array_contains_difference_rule_runs_before_array_contains_tactic(self):
         lhs = {"type": "array", "contains": {"type": "integer"}}
         rhs = {"type": "array", "contains": {"type": "number"}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT6)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT6)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5697,7 +7101,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "minContains": 0,
             "maxContains": 1,
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5727,7 +7131,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "minContains": 0,
             "maxContains": 1,
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5748,7 +7152,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_right_not_with_left_pure_not_uses_complement_subproof(self):
         lhs = {"not": {"const": 1}}
         rhs = {"not": {"type": "integer", "minimum": 1}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5771,7 +7175,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_right_not_array_items_uses_constructive_intersection_witness(self):
         lhs = {"type": "array", "minItems": 1}
         rhs = {"not": {"type": "array", "items": {"type": "integer"}}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5801,7 +7205,7 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {
             "not": {"type": "array", "contains": {"type": "integer"}, "minContains": 1}
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5868,7 +7272,7 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         for lhs, rhs in cases:
             with self.subTest(lhs=lhs, rhs=rhs):
-                engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+                engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
                 def fail_unexpected_proof_path(*_args, **_kwargs):
                     raise AssertionError(
@@ -5897,7 +7301,7 @@ class TestProofEngineRouting(unittest.TestCase):
                 "items": False,
             }
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -5957,7 +7361,7 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         for lhs, rhs in cases:
             with self.subTest(lhs=lhs, rhs=rhs):
-                engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+                engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
                 def fail_unexpected_proof_path(*_args, **_kwargs):
                     raise AssertionError(
@@ -5985,7 +7389,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "required": ["a"],
             "properties": {"a": {"type": "integer"}},
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6015,7 +7419,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "required": ["a"],
             "properties": {"a": {"type": "integer"}},
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6037,7 +7441,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_object_property_names_do_not_imply_specific_required_property(self):
         lhs = {"type": "object", "propertyNames": {"pattern": "^a"}, "minProperties": 1}
         rhs = {"type": "object", "required": ["a"]}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6059,7 +7463,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_array_item_values_rule_runs_before_array_exact_tactics(self):
         lhs = {"type": "array", "items": {"type": "integer"}}
         rhs = {"type": "array", "items": {"type": "number"}}
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6079,7 +7483,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_array_item_values_rule_constructs_unconstrained_tail_witness(self):
         lhs = {"type": "array", "items": [{"type": "string"}]}
         rhs = {"type": "array", "items": {"type": "string"}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT4)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT4)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6101,7 +7505,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_unique_items_does_not_block_item_value_witness(self):
         lhs = {"type": "array", "uniqueItems": True, "minItems": 2, "maxItems": 2}
         rhs = {"type": "array", "items": {"type": "integer"}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6123,7 +7527,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_array_length_does_not_mask_rhs_unique_items(self):
         lhs = {"type": "array", "minItems": 2, "maxItems": 2}
         rhs = {"type": "array", "uniqueItems": True, "minItems": 2, "maxItems": 2}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6152,7 +7556,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "maxContains": 1,
         }
         rhs = {"type": "array", "prefixItems": [{"type": "integer"}], "items": False}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6179,7 +7583,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "minContains": 1,
             "maxContains": 1,
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6207,7 +7611,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "minContains": 1,
             "maxContains": 1,
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6241,7 +7645,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "maxContains": 1,
         }
         rhs = {"type": "array", "uniqueItems": True}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6271,7 +7675,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "maxContains": 1,
         }
         rhs = {"type": "array", "items": {"type": "integer"}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6303,7 +7707,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "maxContains": 1,
         }
         rhs = {"type": "array", "items": {"not": {"type": "integer"}}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6338,7 +7742,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "minContains": 1,
             "maxContains": 1,
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6366,7 +7770,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "array", "minItems": 1, "items": {"type": "number"}}
         rhs = {"type": "string"}
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6389,7 +7793,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "object", "minProperties": 2}
         rhs = {"type": "object", "maxProperties": 1}
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6418,7 +7822,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "properties": {"age": {"type": "number"}},
             "additionalProperties": False,
         }
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6438,7 +7842,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_object_presence_product_rule_runs_before_presence_tactic(self):
         lhs = {"type": "object", "required": ["a", "b"]}
         rhs = {"type": "object", "required": ["a"]}
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6462,7 +7866,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "dependentRequired": {"credit_card": ["billing_address"]},
         }
         rhs = {"type": "object", "minProperties": 2}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT201909)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT201909)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6482,7 +7886,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_dependent_required_constructs_rhs_property_value_witness(self):
         lhs = {"type": "object", "dependentRequired": {"a": ["b"]}}
         rhs = {"type": "object", "properties": {"a": {"type": "integer"}}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6508,7 +7912,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_dependent_required_constructs_rhs_not_property_value_witness(self):
         lhs = {"type": "object", "dependentRequired": {"a": ["b"]}}
         rhs = {"type": "object", "properties": {"a": {"not": {"type": "integer"}}}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6534,7 +7938,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_dependent_schemas_construct_rhs_property_value_witness(self):
         lhs = {"type": "object", "dependentSchemas": {"a": {"required": ["b"]}}}
         rhs = {"type": "object", "properties": {"a": {"type": "integer"}}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6560,7 +7964,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_pattern_property_can_violate_rhs_dependent_schema_required(self):
         lhs = {"type": "object", "patternProperties": {"^a": {"type": "integer"}}}
         rhs = {"type": "object", "dependentSchemas": {"a": {"required": ["b"]}}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6582,7 +7986,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_property_names_can_violate_rhs_dependent_schema_required(self):
         lhs = {"type": "object", "propertyNames": {"pattern": "^a"}}
         rhs = {"type": "object", "dependentSchemas": {"a": {"required": ["b"]}}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6604,7 +8008,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_dependent_schema_key_can_violate_rhs_property_names(self):
         lhs = {"type": "object", "dependentSchemas": {"a": {"required": ["b"]}}}
         rhs = {"type": "object", "propertyNames": {"pattern": "^a"}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6625,7 +8029,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_dependent_required_constructs_rhs_pattern_value_witness(self):
         lhs = {"type": "object", "dependentRequired": {"a": ["b"]}}
         rhs = {"type": "object", "patternProperties": {"^a": {"type": "integer"}}}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6653,7 +8057,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "object", "required": ["a"]}
         rhs = {"type": "object", "maxProperties": 2}
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6675,7 +8079,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_object_property_values_rule_runs_before_property_values_tactic(self):
         lhs = {"type": "object", "properties": {"age": {"type": "integer"}}}
         rhs = {"type": "object", "properties": {"age": {"type": "number"}}}
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6701,7 +8105,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "properties": {"age": {"type": "integer"}},
             "required": ["age"],
         }
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6724,7 +8128,7 @@ class TestProofEngineRouting(unittest.TestCase):
     ):
         lhs = {"type": "object", "additionalProperties": {"type": "integer"}}
         rhs = {"type": "object", "additionalProperties": {"type": "number"}}
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6754,7 +8158,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "propertyNames": {"pattern": "^a"},
             "additionalProperties": {"type": "number"},
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT6)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT6)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6782,7 +8186,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "propertyNames": {"pattern": "^a"},
             "additionalProperties": {"type": "integer"},
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT6)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT6)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6811,7 +8215,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "propertyNames": {"pattern": "^b"},
             "additionalProperties": {"type": "integer"},
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT6)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT6)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6832,7 +8236,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_object_pattern_properties_value_rule_constructs_witness(self):
         lhs = {"type": "object", "patternProperties": {"^a": {"type": "number"}}}
         rhs = {"type": "object", "patternProperties": {"^a": {"type": "integer"}}}
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6853,7 +8257,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_object_overlapping_pattern_product_runs_before_object_exact_tactics(self):
         lhs = {"type": "object", "patternProperties": {"b.*b": {"type": "integer"}}}
         rhs = {"type": "object", "patternProperties": {"^ba+b$": {"type": "number"}}}
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6873,7 +8277,7 @@ class TestProofEngineRouting(unittest.TestCase):
     def test_object_overlapping_pattern_product_constructs_witness(self):
         lhs = {"type": "object", "patternProperties": {"^ba+b$": {"type": "number"}}}
         rhs = {"type": "object", "patternProperties": {"b.*b": {"type": "integer"}}}
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6905,7 +8309,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "properties": {"email": {"type": "number"}},
             "patternProperties": {"^e": {"type": "number"}},
         }
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -6933,7 +8337,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "properties": {"email": {"type": "number"}},
             "patternProperties": {"^e": {"type": "integer"}},
         }
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -7008,7 +8412,7 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertFalse(child.evaluation.requires_evaluation_tracking)
 
-    def test_ir_collects_nested_unsupported_evaluation_reasons(self):
+    def test_ir_collects_nested_evaluation_capability_boundaries(self):
         schema = {
             "allOf": [
                 {
@@ -7075,7 +8479,7 @@ class TestProofEngineRouting(unittest.TestCase):
                 "https://example.com/custom-assertion-vocabulary": True,
             },
         }
-        engine = ProofEngine.for_schemas(schema, {})
+        engine = proof_engine_for_schemas(schema, {})
 
         proof = engine.is_subschema(schema, {})
 
@@ -7104,7 +8508,7 @@ class TestProofEngineRouting(unittest.TestCase):
             },
         }
 
-        proof = ProofEngine.for_schemas({}, schema).is_subschema({}, schema)
+        proof = proof_engine_for_schemas({}, schema).is_subschema({}, schema)
 
         self.assertEqual(proof.status, "unsupported")
         self.assertEqual(proof.diagnostics[0].category, "format-assertion")
@@ -7112,7 +8516,7 @@ class TestProofEngineRouting(unittest.TestCase):
         with self.assertRaises(UnsupportedKeywordError):
             is_subschema({}, schema)
 
-    def test_acyclic_dynamic_ref_is_no_longer_semantic_unsupported(self):
+    def test_acyclic_dynamic_ref_is_not_a_capability_boundary(self):
         dynamic_ref = {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "$defs": {
@@ -7123,7 +8527,7 @@ class TestProofEngineRouting(unittest.TestCase):
             },
             "$dynamicRef": "#node",
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             {"type": "string"}, dynamic_ref, dialect=Dialect.DRAFT202012
         )
 
@@ -7132,10 +8536,22 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(proof.status, "proved_true")
         self.assertFalse(proof.diagnostics)
 
-    def test_non_regular_regex_is_reported_as_semantic_unsupported(self):
+    def test_non_regular_regex_lhs_can_still_prove_broader_type_rhs(self):
         lhs = {"type": "string", "pattern": "(?=a)a"}
         rhs = {"type": "string"}
-        engine = ProofEngine.for_schemas(lhs, rhs)
+        engine = proof_engine_for_schemas(lhs, rhs)
+
+        proof = engine._bounded_ir_proof(lhs, rhs)
+
+        self.assertEqual(proof.status, "proved_true")
+        self.assertFalse(proof.diagnostics)
+
+    def test_non_regular_regex_rhs_is_reported_as_proof_capability_diagnostic(
+        self,
+    ):
+        lhs = {"type": "string"}
+        rhs = {"type": "string", "pattern": "(?=a)a"}
+        engine = proof_engine_for_schemas(lhs, rhs)
 
         proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -7144,7 +8560,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(proof.diagnostics[0].keyword, "pattern")
         self.assertEqual(proof.diagnostics[0].path, ("pattern",))
 
-    def test_reference_graph_and_ref_normalization_live_in_kernel_package(self):
+    def test_reference_graph_and_ref_normalization_live_in_compiler_package(self):
         schema = {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "$defs": {
@@ -7281,10 +8697,10 @@ class TestProofEngineRouting(unittest.TestCase):
             anchor_resolution.source_resource_uri, "https://example.com/child"
         )
         self.assertEqual(
-            references_module.ResourceGraph.__module__, "subschema.kernel.references"
+            references_module.ResourceGraph.__module__, "subschema.compiler.resources"
         )
 
-    def test_embedded_resource_static_reference_proves_with_modern_kernel(self):
+    def test_embedded_resource_static_reference_proves_with_current_prover(self):
         lhs = {
             "$id": "https://example.com/root",
             "$defs": {
@@ -7302,7 +8718,7 @@ class TestProofEngineRouting(unittest.TestCase):
             "$ref": "child",
         }
         rhs = {"type": "string"}
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -7324,7 +8740,7 @@ class TestProofEngineRouting(unittest.TestCase):
 
         self.assertEqual(proof.status, "proved_true")
 
-    def test_draft4_id_static_reference_proves_with_modern_kernel(self):
+    def test_draft4_id_static_reference_proves_with_current_prover(self):
         rhs = {
             "$schema": "http://json-schema.org/draft-04/schema#",
             "id": "https://example.com/root",
@@ -7336,7 +8752,7 @@ class TestProofEngineRouting(unittest.TestCase):
             },
             "$ref": "number",
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             {"type": "integer"}, rhs, dialect=Dialect.DRAFT4
         )
 
@@ -7369,13 +8785,16 @@ class TestProofEngineRouting(unittest.TestCase):
             "allOf": [{"$ref": "child"}],
         }
 
-        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
-        child_resource = compiled.graph.schema_ir_for_pointer(
+        graph = references_module.ResourceGraph.build(
+            schema, dialect=Dialect.DRAFT202012
+        )
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile_graph(graph)
+        child_resource = graph.schema_ir_for_pointer(
             ("$defs", "child"), schema["$defs"]["child"]
         )
         nested_child = (
             SchemaIRCompiler(Dialect.DRAFT202012)
-            .compile_graph(compiled.graph)
+            .compile_graph(graph)
             .root.applicators[0]
             .children[0]
         )
@@ -7463,6 +8882,160 @@ class TestProofEngineRouting(unittest.TestCase):
             anchor_resolution.document_pointer, pointer_resolution.document_pointer
         )
 
+    def test_compiled_static_reference_fact_points_to_target_term(self):
+        schema = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$ref": "https://example.com/schemas/root.json",
+        }
+        resources = {
+            "https://example.com/schemas/root.json": {
+                "$id": "https://example.com/schemas/root.json",
+                "$defs": {
+                    "name": {
+                        "$id": "defs/name.json",
+                        "type": "string",
+                        "pattern": "^a$",
+                    }
+                },
+                "$ref": "defs/name.json",
+            }
+        }
+
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(
+            schema,
+            resources=resources,
+        )
+        static_ref = compiled.root.semantics.reference.static_reference
+
+        self.assertIsNotNone(static_ref.target)
+        assert static_ref.target is not None
+        self.assertEqual(static_ref.target.kind, "node")
+        target = compiled.node_for_ref(static_ref.target.ref)
+        self.assertIsNotNone(target)
+        assert target is not None
+        self.assertEqual(
+            target.ref.resource_uri,
+            "https://example.com/schemas/defs/name.json",
+        )
+        self.assertEqual(target.source.schema["pattern"], "^a$")
+
+    def test_compiled_dynamic_reference_fact_points_to_target_term(self):
+        schema = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$defs": {
+                "node": {
+                    "$dynamicAnchor": "node",
+                    "type": "string",
+                }
+            },
+            "$dynamicRef": "#node",
+        }
+
+        compiled = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+        dynamic_ref = compiled.root.semantics.reference.dynamic_reference
+
+        self.assertIsNotNone(dynamic_ref.target)
+        assert dynamic_ref.target is not None
+        self.assertEqual(dynamic_ref.target.kind, "node")
+        target = compiled.node_for_ref(dynamic_ref.target.ref)
+        self.assertIsNotNone(target)
+        assert target is not None
+        self.assertEqual(target.source.pointer, ("$defs", "node"))
+        self.assertEqual(target.source.schema["type"], "string")
+
+    def test_external_resource_registry_resolves_registered_resources_only(self):
+        root = {
+            "$id": "https://example.com/root",
+            "$ref": "https://example.com/external#/$defs/name",
+        }
+        external = {
+            "$id": "https://example.com/external",
+            "$defs": {
+                "name": {
+                    "$anchor": "name",
+                    "type": "string",
+                    "pattern": "^a$",
+                }
+            },
+        }
+
+        unregistered = references_module.ResourceGraph.build(
+            root, dialect=Dialect.DRAFT202012
+        )
+        registered = references_module.ResourceGraph.build(
+            root,
+            dialect=Dialect.DRAFT202012,
+            resources={"https://example.com/external": external},
+        )
+
+        self.assertIsNone(
+            unregistered.resolve_ref_info("https://example.com/external#/$defs/name")
+        )
+        pointer_resolution = registered.resolve_ref_info(
+            "https://example.com/external#/$defs/name"
+        )
+        anchor_resolution = registered.resolve_ref_info(
+            "https://example.com/external#name"
+        )
+
+        self.assertIsInstance(pointer_resolution, references_module.ReferenceResolution)
+        self.assertEqual(
+            pointer_resolution.resource_uri, "https://example.com/external"
+        )
+        self.assertEqual(pointer_resolution.pointer, ("$defs", "name"))
+        self.assertEqual(pointer_resolution.document_pointer, ("$defs", "name"))
+        self.assertEqual(pointer_resolution.schema, external["$defs"]["name"])
+        self.assertIsInstance(anchor_resolution, references_module.ReferenceResolution)
+        self.assertEqual(anchor_resolution.pointer, ("$defs", "name"))
+
+    def test_registered_external_static_reference_can_prove_internally(self):
+        lhs = {
+            "$id": "https://example.com/root",
+            "$ref": "https://example.com/external#/$defs/name",
+        }
+        external = {
+            "$id": "https://example.com/external",
+            "$defs": {
+                "name": {
+                    "type": "string",
+                    "pattern": "^a$",
+                }
+            },
+        }
+        engine = proof_engine_for_schemas(
+            lhs,
+            dialect=Dialect.DRAFT202012,
+            resources={"https://example.com/external": external},
+        )
+
+        proof = engine.is_subschema(lhs, {"type": "string"})
+
+        self.assertEqual(proof.status, "proved_true")
+
+    def test_external_resource_registry_is_snapshotted_by_context(self):
+        lhs = {
+            "$id": "https://example.com/root",
+            "$ref": "https://example.com/external#/$defs/name",
+        }
+        external = {
+            "$id": "https://example.com/external",
+            "$defs": {
+                "name": {
+                    "type": "string",
+                }
+            },
+        }
+        engine = proof_engine_for_schemas(
+            lhs,
+            dialect=Dialect.DRAFT202012,
+            resources={"https://example.com/external": external},
+        )
+        external["$defs"]["name"]["type"] = "integer"
+
+        proof = engine.is_subschema(lhs, {"type": "string"})
+
+        self.assertEqual(proof.status, "proved_true")
+
     def test_dynamic_scope_resolves_nearest_dynamic_anchor(self):
         schema = {
             "$id": "https://example.com/root",
@@ -7494,7 +9067,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(resolution.source_resource_uri, "https://example.com/root")
         self.assertEqual(resolution.source_resource_pointer, ())
 
-    def test_acyclic_root_dynamic_ref_proves_with_modern_kernel(self):
+    def test_acyclic_root_dynamic_ref_proves_with_current_prover(self):
         lhs = {"type": "string"}
         rhs = {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -7506,7 +9079,7 @@ class TestProofEngineRouting(unittest.TestCase):
             },
             "$dynamicRef": "#node",
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -7530,14 +9103,14 @@ class TestProofEngineRouting(unittest.TestCase):
 
         self.assertEqual(proof.status, "proved_true")
 
-    def test_unregistered_external_static_ref_stays_unsupported_with_modern_kernel(
+    def test_unregistered_external_static_ref_stays_unsupported_with_current_prover(
         self,
     ):
         lhs = {
             "$id": "https://example.com/root",
             "$ref": "https://example.com/external",
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             {"type": "string"},
             dialect=Dialect.DRAFT202012,
@@ -7551,7 +9124,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(proof.diagnostics[0].category, "static-reference")
         self.assertEqual(proof.diagnostics[0].path, ("$ref",))
 
-    def test_schema_position_normalization_lives_in_kernel_package(self):
+    def test_schema_position_normalization_lives_in_validator_package(self):
         schema = {
             "properties": {"a": True},
             "items": [True, False],
@@ -7568,11 +9141,21 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertEqual(
             normalization_module.normalize_boolean_schemas(schema), expected
         )
-        self.assertIn(
-            "normalize_simple_lhs_unevaluated_for_proof",
-            inspect.getsource(driver_module),
+        self.assertTrue(
+            hasattr(
+                compiler_normalization_module,
+                "normalize_simple_lhs_unevaluated_for_proof",
+            )
         )
-        self.assertIn("kernel.normalization", inspect.getsource(validation_module))
+        public_api_source = inspect.getsource(public_api)
+        self.assertIn("prepare_for_proof", public_api_source)
+        self.assertNotIn("compiler.normalization", public_api_source)
+        self.assertNotIn("inline_static_refs_for_proof", public_api_source)
+        self.assertNotIn(
+            "normalize_simple_lhs_unevaluated_for_proof",
+            public_api_source,
+        )
+        self.assertIn("validator.normalization", inspect.getsource(validation_module))
 
     def test_difference_rule_specs_replace_exact_tactic_registry(self):
         names = [spec.name for spec in difference_rule_specs()]
@@ -7581,9 +9164,10 @@ class TestProofEngineRouting(unittest.TestCase):
             names,
             [
                 "trivial-difference",
-                "finite-domain-ir",
                 "static-reference-ir",
                 "dynamic-reference-ir",
+                "recursive-reference-boundary",
+                "finite-domain-ir",
                 "finite-rhs-domain-ir",
                 "finite-complement-ir",
                 "applicator-left-anyof-ir",
@@ -7707,6 +9291,47 @@ class TestFiniteDomainProof(unittest.TestCase):
         rhs = {"type": "integer"}
 
         self.assertTrue(is_subschema(lhs, rhs))
+
+    def test_inhabited_finite_values_are_cached_per_context(self):
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile({"enum": [1, 2]})
+        context = context_module.ProofContext(Dialect.DRAFT202012)
+        calls: list[int] = []
+
+        def fake_confirm_valid(source, value, proof_context):
+            calls.append(value)
+            if value == 1:
+                return confirmation_module.ConfirmationResult.confirmed()
+            return confirmation_module.ConfirmationResult.rejected()
+
+        with patch.object(finite_module, "confirm_valid", fake_confirm_valid):
+            self.assertEqual(
+                finite_module.inhabited_finite_values_for_ir(ir, context),
+                [1],
+            )
+            self.assertEqual(
+                finite_module.inhabited_finite_values_for_ir(ir, context),
+                [1],
+            )
+
+        self.assertEqual(calls, [1, 2])
+
+    def test_inhabited_finite_values_do_not_cache_unsupported_confirmation(self):
+        ir = SchemaIRCompiler(Dialect.DRAFT202012).compile({"enum": [1]})
+        context = context_module.ProofContext(Dialect.DRAFT202012)
+        results = [
+            confirmation_module.ConfirmationResult.unsupported("first"),
+            confirmation_module.ConfirmationResult.confirmed(),
+        ]
+
+        def fake_confirm_valid(source, value, proof_context):
+            return results.pop(0)
+
+        with patch.object(finite_module, "confirm_valid", fake_confirm_valid):
+            self.assertIsNone(finite_module.inhabited_finite_values_for_ir(ir, context))
+            self.assertEqual(
+                finite_module.inhabited_finite_values_for_ir(ir, context),
+                [1],
+            )
 
 
 class TestApplicatorCompositionProof(unittest.TestCase):
@@ -8028,7 +9653,7 @@ class TestNumericDomainProof(unittest.TestCase):
     def test_numeric_rule_does_not_prove_incomplete_non_numeric_rhs_language(self):
         lhs = True
         rhs = {"not": {"type": "array", "contains": {"type": "string"}}}
-        proof = engine_module.ProofEngine.for_schemas(
+        proof = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -8231,7 +9856,7 @@ class TestArrayLengthDomainProof(unittest.TestCase):
     def test_array_length_rule_does_not_prove_incomplete_non_array_left_language(self):
         lhs = {"not": {"type": "array", "items": {"type": "integer"}}}
         rhs = {"type": "string"}
-        proof = engine_module.ProofEngine.for_schemas(
+        proof = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -8261,7 +9886,7 @@ class TestArrayUniquenessDomainProof(unittest.TestCase):
             "uniqueItems": False,
         }
         rhs = {"type": "array", "uniqueItems": True}
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -8468,7 +10093,7 @@ class TestObjectPresenceDomainProof(unittest.TestCase):
     ):
         lhs = {"oneOf": [True, {"type": "object", "maxProperties": 1}]}
         rhs = {"not": {"type": "object"}}
-        proof = engine_module.ProofEngine.for_schemas(
+        proof = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -8486,7 +10111,7 @@ class TestObjectPresenceDomainProof(unittest.TestCase):
             ]
         }
         rhs = {"oneOf": [True, {"type": "object"}]}
-        proof = engine_module.ProofEngine.for_schemas(
+        proof = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -8497,7 +10122,7 @@ class TestObjectPresenceDomainProof(unittest.TestCase):
     def test_presence_product_does_not_ignore_negated_property_value_constraints(self):
         lhs = {"not": {"type": "object", "properties": {"a": {"type": "integer"}}}}
         rhs = {"not": {"type": "object"}}
-        proof = engine_module.ProofEngine.for_schemas(
+        proof = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9015,7 +10640,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "properties": {"foo": {"type": "string"}},
             "unevaluatedProperties": False,
         }
-        engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
         def fail_unexpected_proof_path(*_args, **_kwargs):
             raise AssertionError(
@@ -9046,7 +10671,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "allOf": [{"properties": {"foo": {"type": "string"}}}],
             "unevaluatedProperties": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9081,7 +10706,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "allOf": [{"properties": {"foo": {"type": "string"}}}],
             "unevaluatedProperties": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9121,7 +10746,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             ],
             "unevaluatedProperties": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9130,8 +10755,8 @@ class TestIREngineHardFeatures(unittest.TestCase):
 
         proof = engine._bounded_ir_proof(lhs, rhs)
 
-        self.assertEqual(proof.status, "unsupported")
-        self.assertIn("unevaluatedProperties", proof.reason)
+        self.assertEqual(proof.status, "proved_false")
+        self.assertNotIn("bar", proof.witness)
 
     def test_all_of_unevaluated_items_uses_child_evaluation_frontier(self):
         lhs = {
@@ -9144,7 +10769,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "allOf": [{"prefixItems": [{"type": "number"}, {"type": "string"}]}],
             "unevaluatedItems": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9179,7 +10804,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "allOf": [{"prefixItems": [{"type": "string"}]}],
             "unevaluatedItems": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9215,7 +10840,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "allOf": [{"prefixItems": [{"type": "integer"}]}],
             "unevaluatedItems": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9254,7 +10879,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             ],
             "unevaluatedItems": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9263,8 +10888,8 @@ class TestIREngineHardFeatures(unittest.TestCase):
 
         proof = engine._bounded_ir_proof(lhs, rhs)
 
-        self.assertEqual(proof.status, "unsupported")
-        self.assertIn("unevaluatedItems", proof.reason)
+        self.assertEqual(proof.status, "proved_false")
+        self.assertLess(len(proof.witness), 2)
 
     def test_static_ref_unevaluated_properties_uses_referenced_evaluation_effect(self):
         lhs = {
@@ -9283,7 +10908,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "allOf": [{"$ref": "#/$defs/object"}],
             "unevaluatedProperties": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9319,7 +10944,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "allOf": [{"$ref": "#/$defs/object"}],
             "unevaluatedProperties": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9360,7 +10985,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "allOf": [{"$ref": "#/$defs/array"}],
             "unevaluatedItems": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9397,18 +11022,19 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "anyOf": [{"properties": {"foo": {"type": "string"}}}, False],
             "unevaluatedProperties": False,
         }
-        formula = DifferenceFormula.from_schemas(lhs, rhs, Dialect.DRAFT202012)
-        engine = ProofEngine.for_schemas(
+        formula = difference_formula_from_schemas(lhs, rhs, Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
             options=ProofOptions(),
         )
 
-        expression = evaluation_traces_module.evaluation_expression_for_source(
-            formula.rhs.source,
-            formula.rhs.graph,
-            lhs_schema=lhs,
+        expression = evaluation_traces_module.evaluation_expression_for_node(
+            formula.rhs.root,
+            formula.rhs,
+            lhs_term=formula.lhs.root_term,
+            lhs_ir=formula.lhs,
             context=engine.context,
         )
 
@@ -9437,8 +11063,8 @@ class TestIREngineHardFeatures(unittest.TestCase):
             ],
             "unevaluatedProperties": False,
         }
-        formula = DifferenceFormula.from_schemas(lhs, rhs, Dialect.DRAFT202012)
-        engine = ProofEngine.for_schemas(
+        formula = difference_formula_from_schemas(lhs, rhs, Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9446,19 +11072,21 @@ class TestIREngineHardFeatures(unittest.TestCase):
         )
 
         with patch.object(
-            engine.context, "subproof", wraps=engine.context.subproof
+            engine.context, "subproof_terms", wraps=engine.context.subproof_terms
         ) as subproof:
-            first = evaluation_traces_module.evaluation_expression_for_source(
-                formula.rhs.source,
-                formula.rhs.graph,
-                lhs_schema=lhs,
+            first = evaluation_traces_module.evaluation_expression_for_node(
+                formula.rhs.root,
+                formula.rhs,
+                lhs_term=formula.lhs.root_term,
+                lhs_ir=formula.lhs,
                 context=engine.context,
             )
             first_call_count = subproof.call_count
-            second = evaluation_traces_module.evaluation_expression_for_source(
-                formula.rhs.source,
-                formula.rhs.graph,
-                lhs_schema=lhs,
+            second = evaluation_traces_module.evaluation_expression_for_node(
+                formula.rhs.root,
+                formula.rhs,
+                lhs_term=formula.lhs.root_term,
+                lhs_ir=formula.lhs,
                 context=engine.context,
             )
 
@@ -9478,18 +11106,19 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "anyOf": [{"properties": {"foo": {"type": "string"}}}, False],
             "unevaluatedProperties": False,
         }
-        formula = DifferenceFormula.from_schemas(lhs, rhs, Dialect.DRAFT202012)
-        engine = ProofEngine.for_schemas(
+        formula = difference_formula_from_schemas(lhs, rhs, Dialect.DRAFT202012)
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
             options=ProofOptions(),
         )
 
-        trace = evaluation_trace_for_source(
-            formula.rhs.source,
-            formula.rhs.graph,
-            lhs_schema=lhs,
+        trace = evaluation_trace_for_node(
+            formula.rhs.root,
+            formula.rhs,
+            lhs_term=formula.lhs.root_term,
+            lhs_ir=formula.lhs,
             context=engine.context,
         )
         expression = trace.to_expression()
@@ -9504,6 +11133,207 @@ class TestIREngineHardFeatures(unittest.TestCase):
         self.assertEqual(expression.property_sources[0].key, "foo")
         self.assertIn("anyOf", {origin.kind for origin in expression.origins})
 
+    def test_any_of_evaluation_trace_preserves_branch_conditions(self):
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "anyOf": [
+                {"properties": {"foo": {"type": "string"}}},
+                {"properties": {"bar": {"type": "number"}}},
+            ],
+            "unevaluatedProperties": False,
+        }
+        formula = difference_formula_from_schemas({}, rhs, Dialect.DRAFT202012)
+
+        trace = evaluation_trace_for_node(formula.rhs.root, formula.rhs)
+
+        any_of = formula.rhs.root.applicators[0]
+        self.assertTrue(trace.is_supported)
+        self.assertTrue(trace.has_conditioned_paths)
+        self.assertEqual(
+            [path.condition for path in trace.paths],
+            [SchemaTerm.node(child.ref) for child in any_of.children],
+        )
+        self.assertEqual(
+            [path.property_sources[0].key for path in trace.paths],
+            ["foo", "bar"],
+        )
+        self.assertTrue(all(path.condition.kind == "node" for path in trace.paths))
+
+    def test_one_of_evaluation_trace_preserves_branch_conditions(self):
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "oneOf": [
+                {"properties": {"kind": {"const": "cat"}, "name": True}},
+                {"properties": {"kind": {"const": "dog"}, "age": True}},
+            ],
+            "unevaluatedProperties": False,
+        }
+        formula = difference_formula_from_schemas({}, rhs, Dialect.DRAFT202012)
+
+        trace = evaluation_trace_for_node(formula.rhs.root, formula.rhs)
+
+        one_of = formula.rhs.root.applicators[0]
+        self.assertTrue(trace.is_supported)
+        self.assertTrue(trace.has_conditioned_paths)
+        self.assertEqual(
+            [path.condition for path in trace.paths],
+            [SchemaTerm.node(child.ref) for child in one_of.children],
+        )
+        self.assertEqual(
+            [
+                [source.key for source in path.property_sources]
+                for path in trace.paths
+            ],
+            [["kind", "name"], ["age", "kind"]],
+        )
+
+    def test_conditional_evaluation_trace_preserves_then_else_conditions(self):
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "if": {"prefixItems": [{"const": "cat"}]},
+            "then": {"prefixItems": [{"const": "cat"}, {"type": "string"}]},
+            "else": {"prefixItems": [{"const": "dog"}, {"type": "integer"}]},
+            "unevaluatedItems": False,
+        }
+        formula = difference_formula_from_schemas([], rhs, Dialect.DRAFT202012)
+
+        trace = evaluation_trace_for_node(formula.rhs.root, formula.rhs)
+
+        if_child = formula.rhs.root.applicators[0].children[0]
+        self.assertTrue(trace.is_supported)
+        self.assertTrue(trace.has_conditioned_paths)
+        self.assertEqual(
+            [path.condition for path in trace.paths],
+            [
+                SchemaTerm.node(if_child.ref),
+                SchemaTerm.not_(SchemaTerm.node(if_child.ref)),
+            ],
+        )
+        self.assertEqual(
+            [
+                [(source.kind, source.index) for source in path.item_sources]
+                for path in trace.paths
+            ],
+            [
+                [("prefixItems", 0), ("prefixItems", 1)],
+                [("prefixItems", 0), ("prefixItems", 1)],
+            ],
+        )
+
+    def test_ambiguous_object_unevaluated_plan_preserves_conditioned_trace_paths(
+        self,
+    ):
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "anyOf": [
+                {"properties": {"foo": {"type": "string"}}},
+                {"properties": {"bar": {"type": "number"}}},
+            ],
+            "unevaluatedProperties": False,
+        }
+        formula = difference_formula_from_schemas(
+            {"type": "object"}, rhs, Dialect.DRAFT202012
+        )
+        model = ObjectDifferenceModel.from_irs(formula.lhs, formula.rhs)
+
+        plan = model.unevaluated_properties_difference_plan()
+
+        any_of = formula.rhs.root.applicators[0]
+        self.assertEqual(plan.status, "conditioned_obligations")
+        self.assertIn("branch-conditioned evaluation trace paths", plan.reason)
+        self.assertEqual(
+            [path.condition for path in plan.conditioned_paths],
+            [SchemaTerm.node(child.ref) for child in any_of.children],
+        )
+
+    def test_ambiguous_array_unevaluated_plan_preserves_conditioned_trace_paths(self):
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "anyOf": [
+                {"prefixItems": [{"const": "cat"}, {"type": "string"}]},
+                {"prefixItems": [{"const": "dog"}, {"type": "integer"}]},
+            ],
+            "unevaluatedItems": False,
+        }
+        formula = difference_formula_from_schemas(
+            {"type": "array"}, rhs, Dialect.DRAFT202012
+        )
+        model = ArrayDifferenceModel.from_irs(formula.lhs, formula.rhs)
+
+        plan = model.unevaluated_items_difference_plan()
+
+        any_of = formula.rhs.root.applicators[0]
+        self.assertEqual(plan.status, "conditioned_obligations")
+        self.assertIn("branch-conditioned evaluation trace paths", plan.reason)
+        self.assertEqual(
+            [path.condition for path in plan.conditioned_paths],
+            [SchemaTerm.node(child.ref) for child in any_of.children],
+        )
+
+    def test_conditioned_object_selector_product_spends_evaluation_trace_work(self):
+        lhs = {
+            "type": "object",
+            "properties": {
+                "kind": {"enum": ["cat", "dog"]},
+                "extra": {"type": "integer"},
+            },
+            "required": ["kind", "extra"],
+            "additionalProperties": False,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "anyOf": [
+                {
+                    "required": ["kind"],
+                    "properties": {"kind": {"const": "cat"}},
+                },
+                {
+                    "required": ["kind"],
+                    "properties": {"kind": {"const": "dog"}},
+                },
+            ],
+            "unevaluatedProperties": {"type": "integer"},
+        }
+        formula = difference_formula_from_schemas(lhs, rhs, Dialect.DRAFT202012)
+        context = ProofContext(
+            Dialect.DRAFT202012,
+            ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=12)),
+        )
+        problem = DifferenceProblem(formula, context)
+
+        plan = problem.object_model.unevaluated_properties_difference_plan()
+
+        self.assertEqual(plan.status, "resource_exhausted")
+        self.assertEqual(plan.reason, "evaluation trace exceeded proof work budget")
+
+    def test_conditioned_array_selector_product_spends_evaluation_trace_work(self):
+        lhs = {
+            "type": "array",
+            "prefixItems": [{"enum": ["cat", "dog"]}, {"type": "integer"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "anyOf": [
+                {"prefixItems": [{"const": "cat"}]},
+                {"prefixItems": [{"const": "dog"}]},
+            ],
+            "unevaluatedItems": {"type": "integer"},
+        }
+        formula = difference_formula_from_schemas(lhs, rhs, Dialect.DRAFT202012)
+        context = ProofContext(
+            Dialect.DRAFT202012,
+            ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=4)),
+        )
+        problem = DifferenceProblem(formula, context)
+
+        plan = problem.array_model.unevaluated_items_difference_plan(expanded=True)
+
+        self.assertEqual(plan.status, "resource_exhausted")
+        self.assertEqual(plan.reason, "evaluation trace exceeded proof work budget")
+
     def test_schema_valued_unevaluated_properties_creates_value_obligations(self):
         lhs = {
             "type": "object",
@@ -9514,7 +11344,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "unevaluatedProperties": {"type": "number"},
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9548,7 +11378,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "unevaluatedProperties": {"type": "number"},
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9582,7 +11412,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "unevaluatedItems": {"type": "number"},
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9616,7 +11446,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "unevaluatedItems": {"type": "number"},
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9640,6 +11470,214 @@ class TestIREngineHardFeatures(unittest.TestCase):
         self.assertEqual(len(proof.witness), 1)
         self.assertIsInstance(proof.witness[0], str)
 
+    def test_all_of_schema_valued_unevaluated_properties_requires_child_success(
+        self,
+    ):
+        lhs = {
+            "type": "object",
+            "required": ["kind", "extra"],
+            "properties": {
+                "kind": {"const": "cat"},
+                "extra": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "allOf": [
+                {
+                    "required": ["kind"],
+                    "properties": {"kind": {"const": "cat"}},
+                }
+            ],
+            "unevaluatedProperties": {"type": "integer"},
+        }
+        engine = proof_engine_for_schemas(
+            lhs,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        def fail_unexpected_proof_path(*_args, **_kwargs):
+            raise AssertionError(
+                "allOf schema-valued unevaluatedProperties proof must not use "
+                "bounded search"
+            )
+
+        with patch.object(
+            engine.context,
+            "unexpected_proof_path",
+            fail_unexpected_proof_path,
+            create=True,
+        ):
+            proof = engine._bounded_ir_proof(lhs, rhs)
+
+        self.assertEqual(proof.status, "proved_true")
+
+    def test_all_of_schema_valued_unevaluated_properties_refutes_value_mismatch(
+        self,
+    ):
+        lhs = {
+            "type": "object",
+            "required": ["kind", "extra"],
+            "properties": {
+                "kind": {"const": "cat"},
+                "extra": {"type": "string"},
+            },
+            "additionalProperties": False,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "allOf": [
+                {
+                    "required": ["kind"],
+                    "properties": {"kind": {"const": "cat"}},
+                }
+            ],
+            "unevaluatedProperties": {"type": "integer"},
+        }
+        engine = proof_engine_for_schemas(
+            lhs,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        proof = engine._bounded_ir_proof(lhs, rhs)
+
+        self.assertEqual(proof.status, "proved_false")
+        self.assertEqual(set(proof.witness), {"extra", "kind"})
+        self.assertIsInstance(proof.witness["extra"], str)
+
+    def test_all_of_with_unevaluated_properties_refutes_failed_child(self):
+        lhs = {
+            "type": "object",
+            "required": ["extra"],
+            "properties": {"extra": {"type": "integer"}},
+            "additionalProperties": False,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "allOf": [
+                {
+                    "required": ["kind"],
+                    "properties": {"kind": {"const": "cat"}},
+                }
+            ],
+            "unevaluatedProperties": {"type": "integer"},
+        }
+        engine = proof_engine_for_schemas(
+            lhs,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        proof = engine._bounded_ir_proof(lhs, rhs)
+
+        self.assertEqual(proof.status, "proved_false")
+        self.assertNotIn("kind", proof.witness)
+
+    def test_all_of_schema_valued_unevaluated_items_requires_child_success(self):
+        lhs = {
+            "type": "array",
+            "prefixItems": [{"const": "cat"}, {"type": "integer"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "allOf": [
+                {
+                    "prefixItems": [{"const": "cat"}],
+                    "minItems": 1,
+                }
+            ],
+            "unevaluatedItems": {"type": "integer"},
+        }
+        engine = proof_engine_for_schemas(
+            lhs,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        def fail_unexpected_proof_path(*_args, **_kwargs):
+            raise AssertionError(
+                "allOf schema-valued unevaluatedItems proof must not use bounded search"
+            )
+
+        with patch.object(
+            engine.context,
+            "unexpected_proof_path",
+            fail_unexpected_proof_path,
+            create=True,
+        ):
+            proof = engine._bounded_ir_proof(lhs, rhs)
+
+        self.assertEqual(proof.status, "proved_true")
+
+    def test_all_of_schema_valued_unevaluated_items_refutes_value_mismatch(self):
+        lhs = {
+            "type": "array",
+            "prefixItems": [{"const": "cat"}, {"type": "string"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "allOf": [
+                {
+                    "prefixItems": [{"const": "cat"}],
+                    "minItems": 1,
+                }
+            ],
+            "unevaluatedItems": {"type": "integer"},
+        }
+        engine = proof_engine_for_schemas(
+            lhs,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        proof = engine._bounded_ir_proof(lhs, rhs)
+
+        self.assertEqual(proof.status, "proved_false")
+        self.assertEqual(len(proof.witness), 2)
+        self.assertIsInstance(proof.witness[1], str)
+
+    def test_all_of_with_unevaluated_items_refutes_failed_child(self):
+        lhs = {
+            "type": "array",
+            "prefixItems": [{"type": "integer"}],
+            "items": False,
+            "maxItems": 1,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "allOf": [
+                {
+                    "prefixItems": [{"const": "cat"}],
+                    "minItems": 1,
+                }
+            ],
+            "unevaluatedItems": {"type": "integer"},
+        }
+        engine = proof_engine_for_schemas(
+            lhs,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        proof = engine._bounded_ir_proof(lhs, rhs)
+
+        self.assertEqual(proof.status, "proved_false")
+
     def test_any_of_unevaluated_properties_uses_proved_successful_branch_effect(self):
         lhs = {
             "type": "object",
@@ -9659,7 +11697,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             ],
             "unevaluatedProperties": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9681,6 +11719,224 @@ class TestIREngineHardFeatures(unittest.TestCase):
 
         self.assertEqual(proof.status, "proved_true")
 
+    def test_any_of_unevaluated_properties_ignores_closed_branch_rejection_effect(
+        self,
+    ):
+        cat = {
+            "type": "object",
+            "required": ["kind", "name"],
+            "properties": {
+                "kind": {"const": "cat"},
+                "name": {"type": "string"},
+            },
+            "additionalProperties": False,
+        }
+        dog = {
+            "type": "object",
+            "required": ["kind", "age"],
+            "properties": {
+                "kind": {"const": "dog"},
+                "age": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "anyOf": [cat, dog],
+            "unevaluatedProperties": False,
+        }
+        engine = proof_engine_for_schemas(
+            cat,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        def fail_unexpected_proof_path(*_args, **_kwargs):
+            raise AssertionError(
+                "closed anyOf unevaluatedProperties proof must not use bounded search"
+            )
+
+        with patch.object(
+            engine.context,
+            "unexpected_proof_path",
+            fail_unexpected_proof_path,
+            create=True,
+        ):
+            proof = engine._bounded_ir_proof(cat, rhs)
+
+        self.assertEqual(proof.status, "proved_true")
+
+    def test_any_of_unevaluated_items_uses_closed_tuple_branch_effect(self):
+        cat = {
+            "type": "array",
+            "prefixItems": [{"const": "cat"}, {"type": "string"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        dog = {
+            "type": "array",
+            "prefixItems": [{"const": "dog"}, {"type": "integer"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "anyOf": [cat, dog],
+            "unevaluatedItems": False,
+        }
+        engine = proof_engine_for_schemas(
+            cat,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        def fail_unexpected_proof_path(*_args, **_kwargs):
+            raise AssertionError(
+                "closed anyOf unevaluatedItems proof must not use bounded search"
+            )
+
+        with patch.object(
+            engine.context,
+            "unexpected_proof_path",
+            fail_unexpected_proof_path,
+            create=True,
+        ):
+            proof = engine._bounded_ir_proof(cat, rhs)
+
+        self.assertEqual(proof.status, "proved_true")
+
+    def test_one_of_unevaluated_items_uses_unique_closed_tuple_branch_effect(self):
+        cat = {
+            "type": "array",
+            "prefixItems": [{"const": "cat"}, {"type": "string"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        dog = {
+            "type": "array",
+            "prefixItems": [{"const": "dog"}, {"type": "integer"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "oneOf": [cat, dog],
+            "unevaluatedItems": False,
+        }
+        engine = proof_engine_for_schemas(
+            cat,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        def fail_unexpected_proof_path(*_args, **_kwargs):
+            raise AssertionError(
+                "closed oneOf unevaluatedItems proof must not use bounded search"
+            )
+
+        with patch.object(
+            engine.context,
+            "unexpected_proof_path",
+            fail_unexpected_proof_path,
+            create=True,
+        ):
+            proof = engine._bounded_ir_proof(cat, rhs)
+
+        self.assertEqual(proof.status, "proved_true")
+
+    def test_schema_valued_unevaluated_items_uses_closed_tuple_branch_effect(self):
+        cat = {
+            "type": "array",
+            "prefixItems": [{"const": "cat"}, {"type": "string"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        dog = {
+            "type": "array",
+            "prefixItems": [{"const": "dog"}, {"type": "integer"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "anyOf": [cat, dog],
+            "unevaluatedItems": {"type": "number"},
+        }
+        engine = proof_engine_for_schemas(
+            cat,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        def fail_unexpected_proof_path(*_args, **_kwargs):
+            raise AssertionError(
+                "closed branch schema-valued unevaluatedItems proof must not use "
+                "bounded search"
+            )
+
+        with patch.object(
+            engine.context,
+            "unexpected_proof_path",
+            fail_unexpected_proof_path,
+            create=True,
+        ):
+            proof = engine._bounded_ir_proof(cat, rhs)
+
+        self.assertEqual(proof.status, "proved_true")
+
+    def test_any_of_unevaluated_items_does_not_guess_failed_branch_effect(self):
+        cat = {
+            "type": "array",
+            "prefixItems": [{"const": "cat"}, {"type": "string"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        dog = {
+            "type": "array",
+            "prefixItems": [{"const": "dog"}, {"type": "integer"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        lhs = {
+            "type": "array",
+            "prefixItems": [
+                {"const": "cat"},
+                {"type": "string"},
+                {"type": "integer"},
+            ],
+            "items": False,
+            "minItems": 3,
+            "maxItems": 3,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "anyOf": [cat, dog],
+            "unevaluatedItems": False,
+        }
+        engine = proof_engine_for_schemas(
+            lhs,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        proof = engine._bounded_ir_proof(lhs, rhs)
+
+        self.assertEqual(proof.status, "unsupported")
+        self.assertIn("branch-conditioned evaluation trace paths", proof.reason)
+
     def test_one_of_unevaluated_properties_uses_unique_successful_branch_effect(self):
         lhs = {
             "type": "object",
@@ -9699,7 +11955,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             ],
             "unevaluatedProperties": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9721,6 +11977,53 @@ class TestIREngineHardFeatures(unittest.TestCase):
 
         self.assertEqual(proof.status, "proved_true")
 
+    def test_tagged_one_of_schema_valued_unevaluated_properties_checks_extra_value(
+        self,
+    ):
+        cat = {
+            "type": "object",
+            "required": ["kind", "name"],
+            "properties": {
+                "kind": {"const": "cat"},
+                "name": {"type": "string"},
+            },
+        }
+        dog = {
+            "type": "object",
+            "required": ["kind", "age"],
+            "properties": {
+                "kind": {"const": "dog"},
+                "age": {"type": "integer"},
+            },
+        }
+        lhs = {
+            "type": "object",
+            "required": ["kind", "name", "extra"],
+            "properties": {
+                "kind": {"const": "cat"},
+                "name": {"type": "string"},
+                "extra": {"type": "string"},
+            },
+            "additionalProperties": False,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "oneOf": [cat, dog],
+            "unevaluatedProperties": {"type": "integer"},
+        }
+        engine = proof_engine_for_schemas(
+            lhs,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        proof = engine._bounded_ir_proof(lhs, rhs)
+
+        self.assertEqual(proof.status, "proved_false")
+        self.assertEqual(set(proof.witness), {"extra", "kind", "name"})
+        self.assertIsInstance(proof.witness["extra"], str)
+
     def test_conditional_unevaluated_items_uses_proved_then_branch_effect(self):
         lhs = {
             "type": "array",
@@ -9735,7 +12038,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "else": {"prefixItems": [{"type": "string"}]},
             "unevaluatedItems": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9757,6 +12060,281 @@ class TestIREngineHardFeatures(unittest.TestCase):
 
         self.assertEqual(proof.status, "proved_true")
 
+    def test_conditional_unevaluated_properties_uses_proved_closed_then_branch_effect(
+        self,
+    ):
+        cat = {
+            "type": "object",
+            "required": ["kind", "name"],
+            "properties": {
+                "kind": {"const": "cat"},
+                "name": {"type": "string"},
+            },
+            "additionalProperties": False,
+        }
+        dog = {
+            "type": "object",
+            "required": ["kind", "age"],
+            "properties": {
+                "kind": {"const": "dog"},
+                "age": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "if": {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {"kind": {"const": "cat"}},
+            },
+            "then": cat,
+            "else": dog,
+            "unevaluatedProperties": False,
+        }
+        engine = proof_engine_for_schemas(
+            cat,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        def fail_unexpected_proof_path(*_args, **_kwargs):
+            raise AssertionError(
+                "closed conditional unevaluatedProperties proof must not use "
+                "bounded search"
+            )
+
+        with patch.object(
+            engine.context,
+            "unexpected_proof_path",
+            fail_unexpected_proof_path,
+            create=True,
+        ):
+            proof = engine._bounded_ir_proof(cat, rhs)
+
+        self.assertEqual(proof.status, "proved_true")
+
+    def test_conditional_unevaluated_properties_uses_proved_closed_else_branch_effect(
+        self,
+    ):
+        cat = {
+            "type": "object",
+            "required": ["kind", "name"],
+            "properties": {
+                "kind": {"const": "cat"},
+                "name": {"type": "string"},
+            },
+            "additionalProperties": False,
+        }
+        dog = {
+            "type": "object",
+            "required": ["kind", "age"],
+            "properties": {
+                "kind": {"const": "dog"},
+                "age": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "if": {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {"kind": {"const": "cat"}},
+            },
+            "then": cat,
+            "else": dog,
+            "unevaluatedProperties": False,
+        }
+        engine = proof_engine_for_schemas(
+            dog,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        def fail_unexpected_proof_path(*_args, **_kwargs):
+            raise AssertionError(
+                "closed conditional else unevaluatedProperties proof must not use "
+                "bounded search"
+            )
+
+        with patch.object(
+            engine.context,
+            "unexpected_proof_path",
+            fail_unexpected_proof_path,
+            create=True,
+        ):
+            proof = engine._bounded_ir_proof(dog, rhs)
+
+        self.assertEqual(proof.status, "proved_true")
+
+    def test_conditional_with_unevaluated_properties_refutes_failed_then_branch(
+        self,
+    ):
+        cat = {
+            "type": "object",
+            "required": ["kind", "name"],
+            "properties": {
+                "kind": {"const": "cat"},
+                "name": {"type": "string"},
+            },
+            "additionalProperties": False,
+        }
+        dog = {
+            "type": "object",
+            "required": ["kind", "age"],
+            "properties": {
+                "kind": {"const": "dog"},
+                "age": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        }
+        cat_with_extra = {
+            "type": "object",
+            "required": ["kind", "name", "extra"],
+            "properties": {
+                "kind": {"const": "cat"},
+                "name": {"type": "string"},
+                "extra": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "if": {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {"kind": {"const": "cat"}},
+            },
+            "then": cat,
+            "else": dog,
+            "unevaluatedProperties": False,
+        }
+        engine = proof_engine_for_schemas(
+            cat_with_extra,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        def fail_unexpected_proof_path(*_args, **_kwargs):
+            raise AssertionError(
+                "failed conditional branch proof must not use bounded search"
+            )
+
+        with patch.object(
+            engine.context,
+            "unexpected_proof_path",
+            fail_unexpected_proof_path,
+            create=True,
+        ):
+            proof = engine._bounded_ir_proof(cat_with_extra, rhs)
+
+        self.assertEqual(proof.status, "proved_false")
+
+    def test_conditional_unevaluated_items_uses_proved_closed_then_branch_effect(
+        self,
+    ):
+        cat = {
+            "type": "array",
+            "prefixItems": [{"const": "cat"}, {"type": "string"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        dog = {
+            "type": "array",
+            "prefixItems": [{"const": "dog"}, {"type": "integer"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "if": {"prefixItems": [{"const": "cat"}]},
+            "then": cat,
+            "else": dog,
+            "unevaluatedItems": False,
+        }
+        engine = proof_engine_for_schemas(
+            cat,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        def fail_unexpected_proof_path(*_args, **_kwargs):
+            raise AssertionError(
+                "closed conditional unevaluatedItems proof must not use bounded search"
+            )
+
+        with patch.object(
+            engine.context,
+            "unexpected_proof_path",
+            fail_unexpected_proof_path,
+            create=True,
+        ):
+            proof = engine._bounded_ir_proof(cat, rhs)
+
+        self.assertEqual(proof.status, "proved_true")
+
+    def test_conditional_with_unevaluated_items_refutes_failed_then_branch(self):
+        cat = {
+            "type": "array",
+            "prefixItems": [{"const": "cat"}, {"type": "string"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        dog = {
+            "type": "array",
+            "prefixItems": [{"const": "dog"}, {"type": "integer"}],
+            "items": False,
+            "minItems": 2,
+            "maxItems": 2,
+        }
+        cat_with_extra = {
+            "type": "array",
+            "prefixItems": [
+                {"const": "cat"},
+                {"type": "string"},
+                {"type": "integer"},
+            ],
+            "items": False,
+            "minItems": 3,
+            "maxItems": 3,
+        }
+        rhs = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "if": {"prefixItems": [{"const": "cat"}]},
+            "then": cat,
+            "else": dog,
+            "unevaluatedItems": False,
+        }
+        engine = proof_engine_for_schemas(
+            cat_with_extra,
+            rhs,
+            dialect=Dialect.DRAFT202012,
+            options=ProofOptions(),
+        )
+
+        def fail_unexpected_proof_path(*_args, **_kwargs):
+            raise AssertionError(
+                "failed conditional array branch proof must not use bounded search"
+            )
+
+        with patch.object(
+            engine.context,
+            "unexpected_proof_path",
+            fail_unexpected_proof_path,
+            create=True,
+        ):
+            proof = engine._bounded_ir_proof(cat_with_extra, rhs)
+
+        self.assertEqual(proof.status, "proved_false")
+
     def test_dynamic_ref_evaluation_effect_boundary_stays_unsupported(self):
         lhs = {
             "type": "object",
@@ -9769,7 +12347,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "allOf": [{"$dynamicRef": "#node"}],
             "unevaluatedProperties": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,
@@ -9810,7 +12388,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             "contains": {"type": "number"},
             "unevaluatedItems": False,
         }
-        engine = ProofEngine.for_schemas(
+        engine = proof_engine_for_schemas(
             lhs,
             rhs,
             dialect=Dialect.DRAFT202012,

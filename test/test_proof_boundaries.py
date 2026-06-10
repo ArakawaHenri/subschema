@@ -1,17 +1,20 @@
 from math import inf, nan
 import pytest
 
+from subschema.api import _difference_formula_from_schemas as difference_formula_from_schemas
+from test.proof_oracle import proof_engine_for_schemas
+from subschema.compiler.resources import ResourceGraph
 from subschema.dialects import Dialect
-from subschema.kernel import ProofBudgets, ProofContext, ProofEngine, ProofOptions
-from subschema.kernel.domains.objects import (
+from subschema.prover import ProofBudgets, ProofContext, ProofEngine, ProofOptions
+from subschema.compiler.domains.objects import (
     object_property_count_shape_for_schema,
     object_property_names_shape_for_schema,
     object_property_values_shape_for_schema,
 )
-from subschema.kernel.domains.types import type_shape_for_schema
-from subschema.kernel.finite import finite_values_for_schema
-from subschema.kernel.references import ResourceGraph
-from subschema.kernel.formulas import (
+from subschema.compiler.domains.types import type_shape_for_schema
+from subschema.compiler.finite_values import finite_values_for_schema
+from subschema.compiler.ir import SchemaIRCompiler
+from subschema.prover.formulas import (
     AndFormula,
     AssertionFormula,
     DifferenceFormula,
@@ -21,10 +24,11 @@ from subschema.kernel.formulas import (
     ReferenceFormula,
     TopFormula,
 )
+from subschema.prover.witnesses import build_ir_witness
 from test.semantic_oracle import ConcreteEvaluator
-from subschema.kernel.sat import EmptinessSolver, difference_rule_specs
-from subschema.kernel.schemas import schema_is_false, schema_is_true, schemas_equal
-from subschema.kernel.values import dedupe, json_values_equal
+from subschema.prover.sat import EmptinessSolver, difference_rule_specs
+from subschema.compiler.schemas import schema_is_false, schema_is_true, schemas_equal
+from subschema.values import dedupe, json_values_equal
 from test.proof_oracle import (
     ConcreteEvaluatorCase,
     SMALL_JSON_UNIVERSE,
@@ -298,7 +302,7 @@ MODERN_UNSUPPORTED_LEGACY_DISABLED_CASES = (
             "allOf": [{"$dynamicRef": "#node"}],
         },
         "unsupported",
-        "could not resolve rhs $dynamicRef",
+        "$dynamicRef requires dynamic-scope reference proof support",
         "dynamic-reference",
     ),
     (
@@ -313,7 +317,7 @@ MODERN_UNSUPPORTED_LEGACY_DISABLED_CASES = (
             "unevaluatedProperties": False,
         },
         "unsupported",
-        "branch-aware anyOf effects",
+        "branch-conditioned evaluation trace paths",
         "",
     ),
     (
@@ -659,7 +663,7 @@ def test_keyword_modern_unsupported_cases_return_solver_boundary(
 ):
     assert name
 
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT202012,
@@ -678,20 +682,20 @@ def test_keyword_modern_unsupported_cases_return_solver_boundary(
 
 
 def test_proof_contract_types_live_in_kernel_package():
-    assert ProofEngine.__module__ == "subschema.kernel.engine"
-    assert ProofContext.__module__ == "subschema.kernel.context"
-    assert type_shape_for_schema.__module__ == "subschema.kernel.domains.types"
+    assert ProofEngine.__module__ == "subschema.prover.engine"
+    assert ProofContext.__module__ == "subschema.prover.context"
+    assert type_shape_for_schema.__module__ == "subschema.compiler.domains.types"
     assert (
         object_property_count_shape_for_schema.__module__
-        == "subschema.kernel.domains.objects"
+        == "subschema.compiler.domains.objects"
     )
     assert (
         object_property_names_shape_for_schema.__module__
-        == "subschema.kernel.domains.objects"
+        == "subschema.compiler.domains.objects"
     )
     assert (
         object_property_values_shape_for_schema.__module__
-        == "subschema.kernel.domains.objects"
+        == "subschema.compiler.domains.objects"
     )
 
 
@@ -702,7 +706,7 @@ def test_kernel_value_and_validation_helpers_live_in_kernel_modules():
     assert oracle_validator({"type": "integer"}, Dialect.DRAFT7).is_valid(1)
 
 
-def test_schema_predicates_and_finite_values_live_in_kernel_package():
+def test_schema_predicates_and_finite_candidates_live_in_compiler_package():
     draft4_graph = ResourceGraph.build(True, dialect=Dialect.DRAFT4)
     draft7_graph = ResourceGraph.build(True, dialect=Dialect.DRAFT7)
     assert schema_is_true(True)
@@ -735,7 +739,7 @@ def test_schema_predicates_and_finite_values_live_in_kernel_package():
     assert finite_values_for_schema(
         {"oneOf": [{"enum": [1, 2]}, {"enum": [2, 3]}]},
         draft7_graph,
-    ) == [1, 3]
+    ) == [1, 2, 3]
     assert (
         finite_values_for_schema({"type": "string", "pattern": "[0-9a-f]{64}"}) is None
     )
@@ -766,11 +770,23 @@ def test_schema_predicates_and_finite_values_live_in_kernel_package():
     )
 
 
+def test_finite_witness_builder_confirms_compiled_candidates():
+    schema = {"const": 1, "type": "string"}
+    engine = proof_engine_for_schemas(schema, False, dialect=Dialect.DRAFT202012)
+    ir = SchemaIRCompiler(Dialect.DRAFT202012).compile(schema)
+
+    witness = build_ir_witness(ir, engine.context)
+    proof = engine.is_subschema(schema, False)
+
+    assert witness.status == "unsupported"
+    assert proof.status == "proved_true"
+
+
 def test_double_negated_finite_schema_is_proved_by_default():
     lhs = {"not": {"not": {"const": "a"}}}
     rhs = {"anyOf": [{"type": "string"}, {"type": "number"}]}
 
-    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
+    proof = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
         lhs, rhs
     )
 
@@ -783,19 +799,19 @@ def test_json_number_semantic_equality_is_used_by_finite_proof():
     unique_items_rhs = {"type": "array", "uniqueItems": True}
     duplicate_number_lhs = {"enum": [[1, 1.0]]}
 
-    forward = ProofEngine.for_schemas(
+    forward = proof_engine_for_schemas(
         equal_number_lhs, equal_number_rhs, dialect=Dialect.DRAFT7
     ).is_subschema(
         equal_number_lhs,
         equal_number_rhs,
     )
-    reverse = ProofEngine.for_schemas(
+    reverse = proof_engine_for_schemas(
         equal_number_rhs, equal_number_lhs, dialect=Dialect.DRAFT7
     ).is_subschema(
         equal_number_rhs,
         equal_number_lhs,
     )
-    duplicate = ProofEngine.for_schemas(
+    duplicate = proof_engine_for_schemas(
         duplicate_number_lhs, unique_items_rhs, dialect=Dialect.DRAFT7
     ).is_subschema(
         duplicate_number_lhs,
@@ -812,7 +828,7 @@ def test_uninhabited_required_array_slot_is_finite_empty():
     rhs = {"type": "integer", "minimum": 1}
 
     assert finite_values_for_schema(lhs) == []
-    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
+    proof = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
         lhs, rhs
     )
 
@@ -834,7 +850,7 @@ def test_finite_rhs_uses_constructive_lhs_object_witness():
     lhs = {"type": "object", "required": ["b"], "propertyNames": {"pattern": "^b"}}
     rhs = {"enum": [[], 0, [0], {"a": {"b": 1}}]}
 
-    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
+    proof = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
         lhs, rhs
     )
 
@@ -856,7 +872,7 @@ def test_uninhabited_required_object_property_is_finite_empty(lhs):
     rhs = {"type": "string"}
 
     assert finite_values_for_schema(lhs) == []
-    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
+    proof = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
         lhs, rhs
     )
 
@@ -880,7 +896,7 @@ def test_empty_property_name_keyspace_with_min_properties_is_finite_empty(
     rhs = {"type": "string"}
 
     assert finite_values_for_schema(lhs) == []
-    proof = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
+    proof = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012).is_subschema(
         lhs, rhs
     )
 
@@ -980,7 +996,7 @@ def test_empty_property_name_keyspace_with_min_properties_is_finite_empty(
     ],
 )
 def test_finite_model_oracle_for_representative_exact_fragments(lhs, rhs, dialect):
-    proof = ProofEngine.for_schemas(lhs, rhs, dialect=dialect).is_subschema(
+    proof = proof_engine_for_schemas(lhs, rhs, dialect=dialect).is_subschema(
         lhs,
         rhs,
     )
@@ -1114,7 +1130,7 @@ def test_applicator_exact_fragments_have_finite_model_oracle(
     ],
 )
 def test_false_witnesses_validate_for_representative_fragments(lhs, rhs, dialect):
-    proof = ProofEngine.for_schemas(lhs, rhs, dialect=dialect).is_subschema(
+    proof = proof_engine_for_schemas(lhs, rhs, dialect=dialect).is_subschema(
         lhs,
         rhs,
     )
@@ -1130,7 +1146,7 @@ def test_grouped_false_witnesses_validate_by_generator_family(
     fragment, lhs, rhs, dialect, options
 ):
     assert fragment
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=dialect, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, dialect=dialect, options=options)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1229,7 +1245,7 @@ def test_transitivity_smoke_invariant_for_representative_fragments(
     ],
 )
 def test_meet_and_join_projection_invariants(lhs, rhs, dialect):
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=dialect,
@@ -1248,7 +1264,7 @@ def test_meet_and_join_projection_invariants(lhs, rhs, dialect):
 def test_default_proof_options_preserve_existing_behavior():
     lhs = {"type": "integer"}
     rhs = {"type": "number"}
-    engine = ProofEngine.for_schemas(lhs, rhs, options=ProofOptions())
+    engine = proof_engine_for_schemas(lhs, rhs, options=ProofOptions())
 
     proof = engine.is_subschema(lhs, rhs)
 
@@ -1270,7 +1286,7 @@ def test_default_proof_options_preserve_existing_behavior():
 )
 def test_non_regular_regex_fragments_are_structured_unsupported(rhs, reason):
     lhs = {"type": "object"} if "patternProperties" in rhs else {"type": "string"}
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT202012,
@@ -1296,7 +1312,7 @@ def test_meet_and_join_use_modern_projection():
         "minProperties": 1,
         "patternProperties": {"^a+": {"type": "number"}},
     }
-    engine = ProofEngine.for_schemas(lhs, rhs, options=ProofOptions())
+    engine = proof_engine_for_schemas(lhs, rhs, options=ProofOptions())
 
     assert engine.meet(lhs, rhs) == lhs
     assert engine.join(lhs, rhs) == rhs
@@ -1314,7 +1330,7 @@ def test_endeavor_object_product_reports_resource_exhausted_when_work_is_exceede
         "patternProperties": {"^a+": {"type": "integer"}},
     }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(lhs, rhs, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1326,7 +1342,7 @@ def test_array_length_witness_reports_resource_exhausted_when_array_budget_is_ex
     lhs = {"type": "array", "minItems": 3}
     rhs = {"type": "array", "maxItems": 2}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=2))
-    engine = ProofEngine.for_schemas(lhs, rhs, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1338,7 +1354,7 @@ def test_array_uniqueness_witness_reports_resource_exhausted_when_array_budget_i
     lhs = {"type": "array", "minItems": 2}
     rhs = {"type": "array", "uniqueItems": True}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
-    engine = ProofEngine.for_schemas(lhs, rhs, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1350,7 +1366,7 @@ def test_array_contains_witness_reports_resource_exhausted_when_array_budget_is_
     lhs = {"type": "array", "items": True, "minItems": 3}
     rhs = {"type": "array", "contains": True, "minContains": 0, "maxContains": 2}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=2))
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs, rhs, dialect=Dialect.DRAFT201909, options=options
     )
 
@@ -1373,7 +1389,7 @@ def test_array_contains_structural_max_violation_reports_resource_exhausted_when
         "maxContains": 1,
     }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs, rhs, dialect=Dialect.DRAFT202012, options=options
     )
 
@@ -1387,7 +1403,7 @@ def test_array_contains_min_violation_reports_resource_exhausted_when_array_budg
     lhs = {"type": "array", "items": {"type": "string"}, "minItems": 3}
     rhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 1}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=2))
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs, rhs, dialect=Dialect.DRAFT201909, options=options
     )
 
@@ -1401,7 +1417,7 @@ def test_array_item_values_preserve_resource_exhausted_from_subproofs():
     lhs = {"type": "array", "items": {"anyOf": [{"type": "integer"}]}, "minItems": 1}
     rhs = {"type": "array", "items": {"type": "number"}}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs, rhs, dialect=Dialect.DRAFT202012, options=options
     )
 
@@ -1424,7 +1440,7 @@ def test_array_item_values_reports_resource_exhausted_when_length_witness_exceed
         "items": False,
     }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=2))
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs, rhs, dialect=Dialect.DRAFT202012, options=options
     )
 
@@ -1438,7 +1454,7 @@ def test_array_item_values_reports_resource_exhausted_when_obligation_witness_ex
     lhs = {"type": "array", "items": [{"type": "string"}]}
     rhs = {"type": "array", "items": {"type": "string"}}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT4,
@@ -1451,7 +1467,7 @@ def test_array_item_values_reports_resource_exhausted_when_obligation_witness_ex
     assert proof.reason == "branch expansion exceeded proof work budget"
 
 
-def test_unevaluated_items_reports_resource_exhausted_when_extra_item_witness_exceeds_array_budget():
+def test_unevaluated_items_reports_resource_exhausted_when_all_of_child_proof_exceeds_budget():
     lhs = {
         "type": "array",
         "prefixItems": [{"type": "integer"}, {"type": "integer"}],
@@ -1464,14 +1480,14 @@ def test_unevaluated_items_reports_resource_exhausted_when_extra_item_witness_ex
         "unevaluatedItems": False,
     }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs, rhs, dialect=Dialect.DRAFT202012, options=options
     )
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
-    assert proof.reason == "array witness exceeded proof work budget"
+    assert proof.reason == "branch expansion exceeded proof work budget"
 
 
 def test_unevaluated_items_reports_resource_exhausted_when_value_witness_exceeds_array_budget():
@@ -1486,7 +1502,7 @@ def test_unevaluated_items_reports_resource_exhausted_when_value_witness_exceeds
         "unevaluatedItems": False,
     }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs, rhs, dialect=Dialect.DRAFT202012, options=options
     )
 
@@ -1511,7 +1527,7 @@ def test_unevaluated_properties_branch_effect_budget_exhaustion_returns_resource
         endeavor=True,
         budgets=ProofBudgets(max_work=0),
     )
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs, rhs, dialect=Dialect.DRAFT202012, options=options
     )
 
@@ -1537,7 +1553,7 @@ def test_unevaluated_items_branch_effect_budget_exhaustion_returns_resource_exha
         endeavor=True,
         budgets=ProofBudgets(max_work=0),
     )
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs, rhs, dialect=Dialect.DRAFT202012, options=options
     )
 
@@ -1545,6 +1561,87 @@ def test_unevaluated_items_branch_effect_budget_exhaustion_returns_resource_exha
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "branch expansion exceeded proof work budget"
+
+
+def test_any_of_evaluation_effects_use_lhs_branch_proof_for_closed_object():
+    lhs = {
+        "type": "object",
+        "properties": {"foo": {"type": "string"}},
+        "required": ["foo"],
+        "additionalProperties": False,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+            {"required": ["foo"], "properties": {"foo": {"type": "string"}}},
+            {"required": ["bar"], "properties": {"bar": {"type": "number"}}},
+        ],
+        "unevaluatedProperties": False,
+    }
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_true"
+
+
+def test_conditional_then_evaluation_effects_use_lhs_condition_proof():
+    lhs = {
+        "type": "array",
+        "prefixItems": [{"const": "cat"}, {"type": "string"}],
+        "items": False,
+        "minItems": 2,
+        "maxItems": 2,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "if": {"prefixItems": [{"const": "cat"}]},
+        "then": {"prefixItems": [{"const": "cat"}, {"type": "string"}]},
+        "else": {"prefixItems": [{"const": "dog"}, {"type": "integer"}]},
+        "unevaluatedItems": False,
+    }
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_true"
+
+
+def test_conditional_else_evaluation_effects_use_lhs_disjointness_proof():
+    lhs = {
+        "type": "array",
+        "prefixItems": [{"const": "dog"}, {"type": "integer"}],
+        "items": False,
+        "minItems": 2,
+        "maxItems": 2,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "if": {"prefixItems": [{"const": "cat"}]},
+        "then": {"prefixItems": [{"const": "cat"}, {"type": "string"}]},
+        "else": {"prefixItems": [{"const": "dog"}, {"type": "integer"}]},
+        "unevaluatedItems": False,
+    }
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_true"
 
 
 def test_ambiguous_any_of_evaluation_effects_stay_unsupported_with_modern_kernel():
@@ -1557,7 +1654,7 @@ def test_ambiguous_any_of_evaluation_effects_stay_unsupported_with_modern_kernel
         ],
         "unevaluatedProperties": False,
     }
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT202012,
@@ -1567,7 +1664,577 @@ def test_ambiguous_any_of_evaluation_effects_stay_unsupported_with_modern_kernel
     proof = engine.is_subschema(lhs, rhs)
 
     assert proof.status == "unsupported"
-    assert "branch-aware anyOf effects" in proof.reason
+    assert "branch-conditioned evaluation trace paths" in proof.reason
+
+
+def test_one_of_evaluation_effects_use_lhs_disjointness_for_fixed_tuple():
+    lhs = {
+        "type": "array",
+        "prefixItems": [{"const": "tag"}, {"type": "integer"}],
+        "items": False,
+        "minItems": 2,
+        "maxItems": 2,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "array",
+        "oneOf": [
+            {"prefixItems": [{"const": "tag"}, {"type": "number"}]},
+            {"prefixItems": [{"const": "other"}, {"type": "string"}]},
+        ],
+        "unevaluatedItems": False,
+    }
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_true"
+
+
+def test_overlapping_one_of_evaluation_effects_stay_unsupported():
+    lhs = {
+        "type": "array",
+        "prefixItems": [{"const": "tag"}, {"type": "integer"}],
+        "items": False,
+        "minItems": 2,
+        "maxItems": 2,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "array",
+        "oneOf": [
+            {"prefixItems": [{"const": "tag"}, {"type": "number"}]},
+            {"prefixItems": [{"const": "tag"}, {"type": "integer"}]},
+        ],
+        "unevaluatedItems": False,
+    }
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "unsupported"
+    assert "branch-conditioned evaluation trace paths" in proof.reason
+
+
+def test_conditioned_object_selector_correlation_uses_typed_ir_facts():
+    lhs = {
+        "type": "object",
+        "properties": {
+            "kind": {"enum": ["cat", "dog"]},
+            "name": {"type": "string"},
+        },
+        "required": ["kind", "name"],
+        "additionalProperties": False,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+            {
+                "required": ["kind"],
+                "properties": {
+                    "kind": {"const": "cat"},
+                    "name": {"type": "string"},
+                },
+            },
+            {
+                "required": ["kind"],
+                "properties": {
+                    "kind": {"const": "dog"},
+                    "name": {"type": "string"},
+                },
+            },
+        ],
+        "unevaluatedProperties": False,
+    }
+    default_engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(),
+    )
+    default_proof = default_engine.is_subschema(lhs, rhs)
+
+    assert default_proof.status == "unsupported"
+    assert "branch-conditioned evaluation trace paths" in default_proof.reason
+
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(
+            endeavor=True,
+            budgets=ProofBudgets(max_work=1000),
+        ),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_true"
+
+
+def test_conditioned_array_selector_correlation_uses_typed_ir_facts():
+    lhs = {
+        "type": "array",
+        "prefixItems": [{"enum": ["cat", "dog"]}, {"type": "string"}],
+        "items": False,
+        "minItems": 2,
+        "maxItems": 2,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+            {"prefixItems": [{"const": "cat"}, {"type": "string"}]},
+            {"prefixItems": [{"const": "dog"}, {"type": "string"}]},
+        ],
+        "unevaluatedItems": False,
+    }
+    default_engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(),
+    )
+    default_proof = default_engine.is_subschema(lhs, rhs)
+
+    assert default_proof.status == "unsupported"
+    assert "branch-conditioned evaluation trace paths" in default_proof.reason
+
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(
+            endeavor=True,
+            budgets=ProofBudgets(max_work=1000),
+        ),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_true"
+
+
+def test_conditioned_object_selector_correlation_checks_schema_valued_unevaluated():
+    lhs = {
+        "type": "object",
+        "properties": {
+            "kind": {"enum": ["cat", "dog"]},
+            "extra": {"type": "integer"},
+        },
+        "required": ["kind", "extra"],
+        "additionalProperties": False,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+            {
+                "required": ["kind"],
+                "properties": {"kind": {"const": "cat"}},
+            },
+            {
+                "required": ["kind"],
+                "properties": {"kind": {"const": "dog"}},
+            },
+        ],
+        "unevaluatedProperties": {"type": "integer"},
+    }
+    default_engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(),
+    )
+    default_proof = default_engine.is_subschema(lhs, rhs)
+
+    assert default_proof.status == "unsupported"
+    assert "branch-conditioned evaluation trace paths" in default_proof.reason
+
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(
+            endeavor=True,
+            budgets=ProofBudgets(max_work=1000),
+        ),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_true"
+
+
+def test_conditioned_array_selector_correlation_checks_schema_valued_unevaluated():
+    lhs = {
+        "type": "array",
+        "prefixItems": [{"enum": ["cat", "dog"]}, {"type": "integer"}],
+        "items": False,
+        "minItems": 2,
+        "maxItems": 2,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+            {"prefixItems": [{"const": "cat"}]},
+            {"prefixItems": [{"const": "dog"}]},
+        ],
+        "unevaluatedItems": {"type": "integer"},
+    }
+    default_engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(),
+    )
+    default_proof = default_engine.is_subschema(lhs, rhs)
+
+    assert default_proof.status == "unsupported"
+    assert "branch-conditioned evaluation trace paths" in default_proof.reason
+
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(
+            endeavor=True,
+            budgets=ProofBudgets(max_work=1000),
+        ),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_true"
+
+
+def test_conditioned_object_conditional_selector_correlation_uses_typed_ir_facts():
+    lhs = {
+        "type": "object",
+        "properties": {
+            "kind": {"enum": ["cat", "dog"]},
+            "name": {"type": "string"},
+            "age": {"type": "integer"},
+        },
+        "required": ["kind", "name", "age"],
+        "additionalProperties": False,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "if": {
+            "required": ["kind"],
+            "properties": {"kind": {"const": "cat"}},
+        },
+        "then": {
+            "properties": {
+                "kind": {"const": "cat"},
+                "name": {"type": "string"},
+                "age": {"type": "integer"},
+            },
+        },
+        "else": {
+            "properties": {
+                "kind": {"const": "dog"},
+                "name": {"type": "string"},
+                "age": {"type": "integer"},
+            },
+        },
+        "unevaluatedProperties": False,
+    }
+    default_engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(),
+    )
+    default_proof = default_engine.is_subschema(lhs, rhs)
+
+    assert default_proof.status == "unsupported"
+    assert "branch-conditioned evaluation trace paths" in default_proof.reason
+
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(
+            endeavor=True,
+            budgets=ProofBudgets(max_work=1000),
+        ),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_true"
+
+
+def test_conditioned_object_conditional_selector_schema_valued_unevaluated():
+    lhs = {
+        "type": "object",
+        "properties": {
+            "kind": {"enum": ["cat", "dog"]},
+            "extra": {"type": "integer"},
+        },
+        "required": ["kind", "extra"],
+        "additionalProperties": False,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "if": {
+            "required": ["kind"],
+            "properties": {"kind": {"const": "cat"}},
+        },
+        "then": {"properties": {"kind": {"const": "cat"}}},
+        "else": {"properties": {"kind": {"const": "dog"}}},
+        "unevaluatedProperties": {"type": "integer"},
+    }
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(
+            endeavor=True,
+            budgets=ProofBudgets(max_work=1000),
+        ),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_true"
+
+
+def test_conditioned_array_conditional_selector_correlation_uses_typed_ir_facts():
+    lhs = {
+        "type": "array",
+        "prefixItems": [
+            {"enum": ["cat", "dog"]},
+            {"type": ["string", "integer"]},
+        ],
+        "items": False,
+        "minItems": 2,
+        "maxItems": 2,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "if": {"prefixItems": [{"const": "cat"}]},
+        "then": {
+            "prefixItems": [{"const": "cat"}, {"type": ["string", "integer"]}],
+        },
+        "else": {
+            "prefixItems": [{"const": "dog"}, {"type": ["string", "integer"]}],
+        },
+        "unevaluatedItems": False,
+    }
+    default_engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(),
+    )
+    default_proof = default_engine.is_subschema(lhs, rhs)
+
+    assert default_proof.status == "unsupported"
+    assert "branch-conditioned evaluation trace paths" in default_proof.reason
+
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(
+            endeavor=True,
+            budgets=ProofBudgets(max_work=1000),
+        ),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_true"
+
+
+def test_conditioned_array_conditional_selector_schema_valued_unevaluated():
+    lhs = {
+        "type": "array",
+        "prefixItems": [{"enum": ["cat", "dog"]}, {"type": "integer"}],
+        "items": False,
+        "minItems": 2,
+        "maxItems": 2,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "if": {"prefixItems": [{"const": "cat"}]},
+        "then": {"prefixItems": [{"const": "cat"}]},
+        "else": {"prefixItems": [{"const": "dog"}]},
+        "unevaluatedItems": {"type": "integer"},
+    }
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(
+            endeavor=True,
+            budgets=ProofBudgets(max_work=1000),
+        ),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_true"
+
+
+def test_conditioned_object_conditional_extra_condition_stays_unsupported():
+    lhs = {
+        "type": "object",
+        "properties": {
+            "kind": {"enum": ["cat", "dog"]},
+            "flag": {"type": "boolean"},
+            "extra": {"type": "integer"},
+        },
+        "required": ["kind", "flag", "extra"],
+        "additionalProperties": False,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "if": {
+            "required": ["kind", "flag"],
+            "properties": {
+                "kind": {"const": "cat"},
+                "flag": {"const": True},
+            },
+        },
+        "then": {"properties": {"kind": {"const": "cat"}}},
+        "else": {"properties": {"kind": {"const": "dog"}}},
+        "unevaluatedProperties": {"type": "integer"},
+    }
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(
+            endeavor=True,
+            budgets=ProofBudgets(max_work=1000),
+        ),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "unsupported"
+    assert "branch-conditioned evaluation trace paths" in proof.reason
+
+
+def test_conditioned_array_conditional_extra_condition_stays_unsupported():
+    lhs = {
+        "type": "array",
+        "prefixItems": [
+            {"enum": ["cat", "dog"]},
+            {"enum": ["x", "y"]},
+            {"type": "integer"},
+        ],
+        "items": False,
+        "minItems": 3,
+        "maxItems": 3,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "if": {"prefixItems": [{"const": "cat"}, {"const": "x"}]},
+        "then": {"prefixItems": [{"const": "cat"}]},
+        "else": {"prefixItems": [{"const": "dog"}]},
+        "unevaluatedItems": {"type": "integer"},
+    }
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(
+            endeavor=True,
+            budgets=ProofBudgets(max_work=1000),
+        ),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "unsupported"
+    assert "branch-conditioned evaluation trace paths" in proof.reason
+
+
+def test_conditioned_object_selector_schema_value_mismatch_is_not_proved_true():
+    lhs = {
+        "type": "object",
+        "properties": {
+            "kind": {"enum": ["cat", "dog"]},
+            "extra": {"type": "string"},
+        },
+        "required": ["kind", "extra"],
+        "additionalProperties": False,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+            {
+                "required": ["kind"],
+                "properties": {"kind": {"const": "cat"}},
+            },
+            {
+                "required": ["kind"],
+                "properties": {"kind": {"const": "dog"}},
+            },
+        ],
+        "unevaluatedProperties": {"type": "integer"},
+    }
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(
+            endeavor=True,
+            budgets=ProofBudgets(max_work=1000),
+        ),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status in {"proved_false", "unsupported"}
+    if proof.status == "proved_false":
+        assert_witness_validates(lhs, rhs, Dialect.DRAFT202012, proof.witness)
+
+
+def test_conditioned_array_selector_schema_value_mismatch_is_not_proved_true():
+    lhs = {
+        "type": "array",
+        "prefixItems": [{"enum": ["cat", "dog"]}, {"type": "string"}],
+        "items": False,
+        "minItems": 2,
+        "maxItems": 2,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+            {"prefixItems": [{"const": "cat"}]},
+            {"prefixItems": [{"const": "dog"}]},
+        ],
+        "unevaluatedItems": {"type": "integer"},
+    }
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(
+            endeavor=True,
+            budgets=ProofBudgets(max_work=1000),
+        ),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status in {"proved_false", "unsupported"}
+    if proof.status == "proved_false":
+        assert_witness_validates(lhs, rhs, Dialect.DRAFT202012, proof.witness)
 
 
 def test_not_evaluation_effects_stay_unsupported_with_modern_kernel():
@@ -1577,7 +2244,7 @@ def test_not_evaluation_effects_stay_unsupported_with_modern_kernel():
         "not": {"properties": {"foo": {"type": "string"}}},
         "unevaluatedProperties": False,
     }
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT202012,
@@ -1596,7 +2263,7 @@ def test_schema_valued_unevaluated_properties_unbounded_case_stays_unsupported()
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "unevaluatedProperties": {"type": "number"},
     }
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT202012,
@@ -1612,11 +2279,47 @@ def test_schema_valued_unevaluated_properties_unbounded_case_stays_unsupported()
     )
 
 
+def test_schema_valued_unevaluated_properties_closed_branch_rejection_is_refutable():
+    lhs = {
+        "type": "object",
+        "required": ["kind", "extra"],
+        "properties": {
+            "kind": {"const": "cat"},
+            "extra": {"type": "integer"},
+        },
+        "additionalProperties": False,
+    }
+    rhs = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+            {
+                "type": "object",
+                "required": ["kind"],
+                "properties": {"kind": {"const": "cat"}},
+                "additionalProperties": False,
+            },
+            False,
+        ],
+        "unevaluatedProperties": {"type": "integer"},
+    }
+    engine = proof_engine_for_schemas(
+        lhs,
+        rhs,
+        dialect=Dialect.DRAFT202012,
+        options=ProofOptions(),
+    )
+
+    proof = engine.is_subschema(lhs, rhs)
+
+    assert proof.status == "proved_false"
+    assert_witness_validates(lhs, rhs, Dialect.DRAFT202012, proof.witness)
+
+
 def test_object_presence_product_reports_resource_exhausted_when_universe_budget_is_exceeded():
     lhs = {"type": "object", "required": ["a", "b"]}
     rhs = {"type": "object", "required": ["a"]}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
-    engine = ProofEngine.for_schemas(lhs, rhs, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1636,7 +2339,7 @@ def test_object_key_value_reports_resource_exhausted_for_mixed_product_budget():
         "patternProperties": {"^b": {"type": "number"}},
     }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(lhs, rhs, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1660,7 +2363,7 @@ def test_object_key_value_reports_resource_exhausted_for_pattern_obligation_budg
         },
     }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
-    engine = ProofEngine.for_schemas(lhs, rhs, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -1672,7 +2375,7 @@ def test_public_subschema_keeps_solver_resource_exhaustion_with_solver_path():
     lhs = {"type": "array", "items": {"anyOf": [{"type": "integer"}]}, "minItems": 1}
     rhs = {"type": "array", "items": {"type": "number"}}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs, rhs, dialect=Dialect.DRAFT202012, options=options
     )
 
@@ -1685,7 +2388,7 @@ def test_public_subschema_keeps_solver_resource_exhaustion_with_solver_path():
 def test_bounded_ir_uses_sat_emptiness_solver_before_generic_search_path(monkeypatch):
     lhs = {"const": {"a": 1}}
     rhs = {"type": "array"}
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
+    engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
     def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError(
@@ -1709,7 +2412,7 @@ def test_bounded_ir_uses_sat_emptiness_solver_before_generic_search_path(monkeyp
 def test_bounded_ir_sat_solver_can_prove_finite_empty_difference(monkeypatch):
     lhs = {"enum": [1, 2]}
     rhs = {"type": "number"}
-    engine = ProofEngine.for_schemas(lhs, rhs)
+    engine = proof_engine_for_schemas(lhs, rhs)
 
     def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError("SAT solver should prove the finite difference is empty")
@@ -1737,7 +2440,7 @@ def test_object_pattern_obligations_with_property_counts_prove(monkeypatch):
         "minProperties": 1,
         "patternProperties": {"^a+": {"type": "integer"}},
     }
-    engine = ProofEngine.for_schemas(lhs, rhs)
+    engine = proof_engine_for_schemas(lhs, rhs)
 
     def fail_unexpected_proof_path(*_args, **_kwargs):
         raise AssertionError(
@@ -1778,12 +2481,27 @@ def test_object_pattern_obligations_with_property_counts_prove(monkeypatch):
             Dialect.DRAFT7,
             "recursive lhs $ref",
         ),
+        (
+            {"const": 1},
+            {
+                "$defs": {"x": {"$ref": "#/$defs/x"}},
+                "$ref": "#/$defs/x",
+            },
+            Dialect.DRAFT202012,
+            "recursive rhs $ref",
+        ),
+        (
+            {"const": 1},
+            {"$recursiveRef": "#"},
+            Dialect.DRAFT201909,
+            "$recursiveRef requires guarded recursive reference proof support",
+        ),
     ],
 )
 def test_modern_unsupported_cases_do_not_return_success(
     lhs, rhs, dialect, reason_fragment
 ):
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=dialect,
@@ -1804,7 +2522,7 @@ def test_rhs_not_uses_required_property_disjointness_for_object_values():
         "required": ["a"],
     }
     rhs = {"not": {"required": ["a"], "properties": {"a": {"type": "string"}}}}
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs, rhs, dialect=Dialect.DRAFT7, options=ProofOptions()
     )
 
@@ -1826,7 +2544,7 @@ def test_endeavor_object_product_expands_complex_value_obligations(monkeypatch):
             "^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 2}
         },
     }
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT201909,
@@ -1874,7 +2592,7 @@ def test_endeavor_object_product_expands_property_names_additional_obligations(
             "minContains": 2,
         },
     }
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT201909,
@@ -1920,7 +2638,7 @@ def test_endeavor_object_product_expands_pattern_properties_to_additional_obliga
             "minContains": 2,
         },
     }
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT201909,
@@ -1945,7 +2663,7 @@ def test_endeavor_object_product_expands_pattern_properties_to_additional_obliga
     assert_witness_validates(lhs, rhs, Dialect.DRAFT201909, proof.witness)
 
 
-def test_default_mode_does_not_enter_endeavor_object_product():
+def test_default_mode_proves_pattern_property_value_difference_without_product():
     lhs = {
         "type": "object",
         "patternProperties": {
@@ -1958,7 +2676,7 @@ def test_default_mode_does_not_enter_endeavor_object_product():
             "^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 2}
         },
     }
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT201909,
@@ -1967,13 +2685,14 @@ def test_default_mode_does_not_enter_endeavor_object_product():
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
-    assert proof.status == "unsupported"
+    assert proof.status == "proved_false"
+    assert_witness_validates(lhs, rhs, Dialect.DRAFT201909, proof.witness)
 
 
 def test_endeavor_array_contains_product_proves_min_violation(monkeypatch):
     lhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 1}
     rhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 2}
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT201909,
@@ -2001,7 +2720,7 @@ def test_endeavor_array_contains_product_proves_min_violation(monkeypatch):
 def test_endeavor_array_contains_product_proves_max_violation(monkeypatch):
     lhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 2}
     rhs = {"type": "array", "contains": {"type": "integer"}, "maxContains": 1}
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT201909,
@@ -2029,7 +2748,7 @@ def test_endeavor_array_contains_product_proves_max_violation(monkeypatch):
 def test_endeavor_evaluation_trace_expands_contains_unevaluated_items(monkeypatch):
     lhs = {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "number"}}
     rhs = {"type": "array", "contains": {"type": "integer"}, "unevaluatedItems": False}
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=Dialect.DRAFT202012,
@@ -2108,7 +2827,7 @@ def test_endeavor_evaluation_trace_expands_contains_unevaluated_items(monkeypatc
     ),
 )
 def test_endeavor_expanded_products_exhaust_first_work_unit(lhs, rhs, dialect, reason):
-    engine = ProofEngine.for_schemas(
+    engine = proof_engine_for_schemas(
         lhs,
         rhs,
         dialect=dialect,
@@ -2134,7 +2853,7 @@ def test_endeavor_expanded_product_small_positive_budgets_track_frontiers():
             "^a": {"type": "array", "contains": {"type": "integer"}, "minContains": 2}
         },
     }
-    object_engine = ProofEngine.for_schemas(
+    object_engine = proof_engine_for_schemas(
         object_lhs,
         object_rhs,
         dialect=Dialect.DRAFT201909,
@@ -2148,7 +2867,7 @@ def test_endeavor_expanded_product_small_positive_budgets_track_frontiers():
 
     array_lhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 1}
     array_rhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 2}
-    array_engine = ProofEngine.for_schemas(
+    array_engine = proof_engine_for_schemas(
         array_lhs,
         array_rhs,
         dialect=Dialect.DRAFT201909,
@@ -2173,7 +2892,7 @@ def test_endeavor_expanded_product_small_positive_budgets_track_frontiers():
         "contains": {"type": "integer"},
         "unevaluatedItems": False,
     }
-    evaluation_engine = ProofEngine.for_schemas(
+    evaluation_engine = proof_engine_for_schemas(
         evaluation_lhs,
         evaluation_rhs,
         dialect=Dialect.DRAFT202012,
@@ -2191,7 +2910,7 @@ def test_endeavor_expanded_product_small_positive_budgets_track_frontiers():
 
     max_lhs = {"type": "array", "contains": {"type": "integer"}, "minContains": 2}
     max_rhs = {"type": "array", "contains": {"type": "integer"}, "maxContains": 1}
-    max_budget_engine = ProofEngine.for_schemas(
+    max_budget_engine = proof_engine_for_schemas(
         max_lhs,
         max_rhs,
         dialect=Dialect.DRAFT201909,
@@ -2216,7 +2935,7 @@ def test_endeavor_object_product_budget_applies_to_nested_witness_construction()
         "patternProperties": {"^a": {"type": "array", "minItems": 2}},
     }
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(lhs, rhs, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
     proof = engine._bounded_ir_proof(lhs, rhs)
 
@@ -2225,17 +2944,17 @@ def test_endeavor_object_product_budget_applies_to_nested_witness_construction()
 
 
 def test_sat_solver_exposes_language_difference_formula():
-    formula = DifferenceFormula.from_schemas(
+    formula = difference_formula_from_schemas(
         {"type": "integer"}, {"type": "number"}, Dialect.DRAFT7
     )
     solver = EmptinessSolver(ProofContext(Dialect.DRAFT7))
 
     proof = solver.prove_formula_difference_empty(formula)
 
-    assert DifferenceFormula.__module__ == "subschema.kernel.formulas"
-    assert EmptinessSolver.__module__ == "subschema.kernel.sat"
-    assert formula.lhs.__class__.__module__ == "subschema.kernel.ir"
-    assert formula.lhs.source.__class__.__module__ == "subschema.kernel.references"
+    assert DifferenceFormula.__module__ == "subschema.prover.formulas"
+    assert EmptinessSolver.__module__ == "subschema.prover.sat"
+    assert formula.lhs.__class__.__module__ == "subschema.ir"
+    assert formula.lhs.source.__class__.__module__ == "subschema.provenance"
     assert formula.lhs.type_shape is not None
     assert formula.rhs.type_shape is not None
     assert formula.rhs.numeric_shape is not None
@@ -2243,7 +2962,7 @@ def test_sat_solver_exposes_language_difference_formula():
 
 
 def test_difference_formula_lowers_to_typed_formula_nodes():
-    formula = DifferenceFormula.from_schemas(
+    formula = difference_formula_from_schemas(
         {"allOf": [{"type": "integer"}, {"minimum": 1}]},
         {"anyOf": [{"type": "number"}, {"const": "x"}]},
         Dialect.DRAFT7,
@@ -2262,11 +2981,11 @@ def test_difference_formula_lowers_to_typed_formula_nodes():
 
 
 def test_formula_lowering_handles_booleans_not_oneof_and_conditionals():
-    boolean_formula = DifferenceFormula.from_schemas(True, False, Dialect.DRAFT7)
+    boolean_formula = difference_formula_from_schemas(True, False, Dialect.DRAFT7)
     assert isinstance(boolean_formula.positive_lhs.formula, TopFormula)
     assert isinstance(boolean_formula.negative_rhs.formula, TopFormula)
 
-    not_formula = DifferenceFormula.from_schemas(
+    not_formula = difference_formula_from_schemas(
         {"type": "string"},
         {"not": {"type": "string"}},
         Dialect.DRAFT7,
@@ -2277,7 +2996,7 @@ def test_formula_lowering_handles_booleans_not_oneof_and_conditionals():
         for child in not_formula.negative_rhs.formula.children
     )
 
-    positive_not_formula = DifferenceFormula.from_schemas(
+    positive_not_formula = difference_formula_from_schemas(
         {"not": {"type": "string"}},
         {},
         Dialect.DRAFT7,
@@ -2290,7 +3009,7 @@ def test_formula_lowering_handles_booleans_not_oneof_and_conditionals():
     )
     assert positive_not_wrapper.polarity == "positive"
 
-    one_of_formula = DifferenceFormula.from_schemas(
+    one_of_formula = difference_formula_from_schemas(
         {},
         {"oneOf": [{"type": "string"}, {"type": "number"}]},
         Dialect.DRAFT7,
@@ -2299,7 +3018,7 @@ def test_formula_lowering_handles_booleans_not_oneof_and_conditionals():
     assert one_of_formula.negative_rhs.formula.polarity == "negative"
     assert len(one_of_formula.negative_rhs.formula.children) == 2
 
-    conditional_formula = DifferenceFormula.from_schemas(
+    conditional_formula = difference_formula_from_schemas(
         {
             "if": {"type": "string"},
             "then": {"minLength": 1},
@@ -2312,7 +3031,7 @@ def test_formula_lowering_handles_booleans_not_oneof_and_conditionals():
     assert conditional_formula.positive_lhs.formula.then_branch is not None
     assert conditional_formula.positive_lhs.formula.else_branch is not None
 
-    negative_conditional_formula = DifferenceFormula.from_schemas(
+    negative_conditional_formula = difference_formula_from_schemas(
         {},
         {
             "if": {"type": "string"},
@@ -2328,7 +3047,7 @@ def test_formula_lowering_handles_booleans_not_oneof_and_conditionals():
 
 
 def test_formula_lowering_records_static_references_as_reference_nodes():
-    formula = DifferenceFormula.from_schemas(
+    formula = difference_formula_from_schemas(
         {
             "definitions": {"name": {"type": "string"}},
             "$ref": "#/definitions/name",
@@ -2348,7 +3067,7 @@ def test_formula_lowering_records_static_references_as_reference_nodes():
 def test_applicator_subproofs_share_the_engine_context():
     lhs = {"anyOf": [{"type": "integer"}]}
     rhs = {"type": "number"}
-    engine = ProofEngine.for_schemas(lhs, rhs)
+    engine = proof_engine_for_schemas(lhs, rhs)
 
     proof = engine.is_subschema(lhs, rhs)
 
@@ -2365,7 +3084,7 @@ def test_applicator_subproofs_use_branch_expansion_budget():
     lhs = {"anyOf": [{"type": "integer"}]}
     rhs = {"type": "number"}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(lhs, rhs, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
     proof = engine.is_subschema(lhs, rhs)
 
@@ -2377,7 +3096,7 @@ def test_conditional_branch_products_use_branch_expansion_budget():
     lhs = {"type": "string", "minLength": 2}
     rhs = {"if": {"type": "string"}, "then": {"minLength": 2}}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(lhs, rhs, dialect=Dialect.DRAFT7, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7, options=options)
 
     proof = engine.is_subschema(lhs, rhs)
 
@@ -2389,7 +3108,7 @@ def test_one_of_cardinality_products_use_branch_expansion_budget():
     lhs = {"type": "object"}
     rhs = {"oneOf": [{"type": "object"}, {"type": "array"}]}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(lhs, rhs, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
     proof = engine.is_subschema(lhs, rhs)
 
@@ -2401,7 +3120,7 @@ def test_one_of_disjointness_products_use_branch_expansion_budget():
     lhs = {"type": "object"}
     rhs = {"oneOf": [{"type": "object"}, {"type": "array"}]}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=2))
-    engine = ProofEngine.for_schemas(lhs, rhs, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
     proof = engine.is_subschema(lhs, rhs)
 
@@ -2413,7 +3132,7 @@ def test_left_applicator_branch_products_use_branch_expansion_budget():
     lhs = {"anyOf": [{"type": "integer"}]}
     rhs = {"type": "number"}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(lhs, rhs, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
     proof = engine.is_subschema(lhs, rhs)
 
@@ -2425,7 +3144,7 @@ def test_right_nnf_branch_products_use_branch_expansion_budget():
     lhs = {"type": "string"}
     rhs = {"allOf": [{"type": "string"}]}
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
-    engine = ProofEngine.for_schemas(lhs, rhs, options=options)
+    engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
     proof = engine.is_subschema(lhs, rhs)
 

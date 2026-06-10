@@ -106,3 +106,29 @@ class TestConditionals(unittest.TestCase):
 
         self.assertTrue(is_subschema(schema, True, dialect=Dialect.DRAFT6))
         self.assertTrue(is_subschema(True, schema, dialect=Dialect.DRAFT6))
+
+    def test_negated_conditionals_preserve_else_array_counterexample(self):
+        lhs = {
+            "not": {
+                "if": False,
+                "else": {
+                    "type": "array",
+                    "maxItems": 0,
+                    "contains": {"type": "null"},
+                    "minContains": 0,
+                    "maxContains": 1,
+                },
+            }
+        }
+        rhs = {
+            "not": {
+                "if": False,
+                "else": {
+                    "type": "array",
+                    "items": True,
+                    "maxItems": 1,
+                },
+            }
+        }
+
+        self.assertFalse(is_subschema(lhs, rhs, dialect=Dialect.DRAFT202012))

@@ -1,300 +1,36 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from subschema import (
-    Dialect,
     UnsupportedProofError,
     canonicalize_schema,
+    covers,
     is_disjoint,
     is_empty,
     is_subschema,
     join_schemas,
     meet_schemas,
 )
-from subschema.kernel.validation import ValidationUnsupportedError
-from subschema.kernel.validation import validation_backend_for
-
-
-JSON_VALUES: tuple[Any, ...] = (
-    None,
-    True,
-    False,
-    -2,
-    -1,
-    0,
-    1,
-    2,
-    "",
-    "a",
-    "b",
-    " ",
-    [],
-    [0],
-    ["a"],
-    {},
-    {"a": 0},
-    {"b": "a"},
+from test.proof_oracle import proof_engine_for_schemas
+from subschema.validator import ValidationUnsupportedError
+from test.proof_oracle import (
+    assert_proved_false_result_is_confirmed,
+    backend_is_valid,
+    finite_universe_counterexample,
+    finite_universe_coverage_counterexample,
+    finite_universe_schema_instance,
+    finite_universe_shared_instance,
 )
-JSON_INSTANCES: tuple[Any, ...] = (
-    *JSON_VALUES,
-    [0, "a"],
-    {"a": 0, "b": "a"},
-    {"kind": "cat", "name": "a"},
-    {"kind": "dog", "age": 1},
+from test.schema_strategies import (
+    random_external_resource_case,
+    random_json_instance,
+    random_resource_schema,
+    random_schema,
 )
-PROPERTY_NAMES = ("a", "b", "kind", "name", "age")
-TYPE_NAMES = ("null", "boolean", "integer", "number", "string", "array", "object")
-SAFE_PATTERNS = ("", "^a$", "^[ab]{0,2}$", r"[\s\S]", r"^\s?$", r"^\S{0,2}$")
-
-
-def _stable_json_key(value: Any) -> str:
-    return json.dumps(value, allow_nan=False, sort_keys=True, separators=(",", ":"))
-
-
-@st.composite
-def random_schema(draw: st.DrawFn) -> Any:
-    return draw(
-        st.recursive(
-            _random_leaf_schema(),
-            _random_schema_extension,
-            max_leaves=10,
-        )
-    )
-
-
-def _random_leaf_schema() -> st.SearchStrategy[Any]:
-    return st.one_of(
-        st.booleans(),
-        _type_schema(),
-        _const_schema(),
-        _enum_schema(),
-        _numeric_schema(),
-        _string_schema(),
-    )
-
-
-def _type_schema() -> st.SearchStrategy[dict[str, Any]]:
-    single_type = st.sampled_from(TYPE_NAMES).map(lambda name: {"type": name})
-    type_array = st.lists(
-        st.sampled_from(TYPE_NAMES),
-        min_size=1,
-        max_size=4,
-        unique=True,
-    ).map(lambda names: {"type": names})
-    return st.one_of(single_type, type_array)
-
-
-def _const_schema() -> st.SearchStrategy[dict[str, Any]]:
-    return st.sampled_from(JSON_VALUES).map(lambda value: {"const": value})
-
-
-def _enum_schema() -> st.SearchStrategy[dict[str, Any]]:
-    return st.lists(
-        st.sampled_from(JSON_VALUES),
-        min_size=1,
-        max_size=4,
-        unique_by=_stable_json_key,
-    ).map(lambda values: {"enum": values})
-
-
-@st.composite
-def _numeric_schema(draw: st.DrawFn) -> dict[str, Any]:
-    lower = draw(st.integers(min_value=-4, max_value=3))
-    upper = draw(st.integers(min_value=lower, max_value=4))
-    schema: dict[str, Any] = {
-        "type": draw(st.sampled_from(("integer", "number"))),
-        "minimum": lower,
-        "maximum": upper,
-    }
-    if draw(st.booleans()):
-        schema["exclusiveMinimum"] = lower - 1
-    if draw(st.booleans()):
-        schema["exclusiveMaximum"] = upper + 1
-    if draw(st.booleans()):
-        schema["multipleOf"] = draw(st.sampled_from((1, 2, 0.5)))
-    return schema
-
-
-@st.composite
-def _string_schema(draw: st.DrawFn) -> dict[str, Any]:
-    min_length = draw(st.integers(min_value=0, max_value=2))
-    max_length = draw(st.integers(min_value=min_length, max_value=4))
-    schema: dict[str, Any] = {
-        "type": "string",
-        "minLength": min_length,
-        "maxLength": max_length,
-    }
-    if draw(st.booleans()):
-        schema["pattern"] = draw(st.sampled_from(SAFE_PATTERNS))
-    return schema
-
-
-def _random_schema_extension(
-    children: st.SearchStrategy[Any],
-) -> st.SearchStrategy[Any]:
-    return st.one_of(
-        _applicator_schema(children),
-        _conditional_schema(children),
-        _object_schema(children),
-        _array_schema(children),
-        _annotation_schema(children),
-    )
-
-
-def _applicator_schema(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
-    all_of = st.lists(children, min_size=1, max_size=3).map(
-        lambda schemas: {"allOf": schemas}
-    )
-    any_of = st.lists(children, min_size=1, max_size=3).map(
-        lambda schemas: {"anyOf": schemas}
-    )
-    one_of = st.lists(children, min_size=1, max_size=3).map(
-        lambda schemas: {"oneOf": schemas}
-    )
-    not_schema = children.map(lambda schema: {"not": schema})
-    return st.one_of(all_of, any_of, one_of, not_schema)
-
-
-@st.composite
-def _conditional_schema(draw: st.DrawFn, children: st.SearchStrategy[Any]) -> dict[str, Any]:
-    schema: dict[str, Any] = {"if": draw(children)}
-    if draw(st.booleans()):
-        schema["then"] = draw(children)
-    if draw(st.booleans()):
-        schema["else"] = draw(children)
-    return schema
-
-
-@st.composite
-def _object_schema(draw: st.DrawFn, children: st.SearchStrategy[Any]) -> dict[str, Any]:
-    property_names = draw(
-        st.lists(st.sampled_from(PROPERTY_NAMES), unique=True, max_size=3)
-    )
-    properties = {name: draw(children) for name in property_names}
-    required_strategy = (
-        st.lists(st.sampled_from(property_names), unique=True)
-        if property_names
-        else st.just([])
-    )
-    schema: dict[str, Any] = {
-        "type": "object",
-        "properties": properties,
-        "required": draw(required_strategy),
-    }
-    if draw(st.booleans()):
-        schema["additionalProperties"] = draw(st.one_of(st.booleans(), children))
-    if draw(st.booleans()):
-        schema["minProperties"] = draw(st.integers(min_value=0, max_value=2))
-    if draw(st.booleans()):
-        schema["maxProperties"] = draw(st.integers(min_value=2, max_value=4))
-    if draw(st.booleans()):
-        schema["propertyNames"] = draw(_string_schema())
-    if draw(st.booleans()) and property_names:
-        schema["dependentRequired"] = {
-            property_names[0]: draw(
-                st.lists(st.sampled_from(PROPERTY_NAMES), unique=True, max_size=2)
-            )
-        }
-    if draw(st.booleans()) and property_names:
-        schema["dependentSchemas"] = {property_names[0]: draw(children)}
-    return schema
-
-
-@st.composite
-def _array_schema(draw: st.DrawFn, children: st.SearchStrategy[Any]) -> dict[str, Any]:
-    prefix_items = draw(st.lists(children, min_size=0, max_size=3))
-    schema: dict[str, Any] = {"type": "array"}
-    if prefix_items:
-        schema["prefixItems"] = prefix_items
-    if draw(st.booleans()):
-        schema["items"] = draw(st.one_of(st.booleans(), children))
-    min_items = draw(st.integers(min_value=0, max_value=3))
-    max_items = draw(st.integers(min_value=min_items, max_value=4))
-    if draw(st.booleans()):
-        schema["minItems"] = min_items
-    if draw(st.booleans()):
-        schema["maxItems"] = max_items
-    if draw(st.booleans()):
-        schema["uniqueItems"] = True
-    if draw(st.booleans()):
-        schema["contains"] = draw(children)
-        min_contains = draw(st.integers(min_value=0, max_value=2))
-        max_contains = draw(st.integers(min_value=min_contains, max_value=3))
-        schema["minContains"] = min_contains
-        schema["maxContains"] = max_contains
-    return schema
-
-
-@st.composite
-def _annotation_schema(draw: st.DrawFn, children: st.SearchStrategy[Any]) -> dict[str, Any]:
-    schema = draw(children)
-    if not isinstance(schema, dict):
-        schema = {"const": schema}
-    annotated = dict(schema)
-    annotated["title"] = draw(st.sampled_from(("Generated", "Random", "")))
-    annotated["description"] = draw(st.sampled_from(("schema", "property test", "")))
-    if draw(st.booleans()):
-        annotated["default"] = draw(st.sampled_from(JSON_VALUES))
-    if draw(st.booleans()):
-        annotated["examples"] = draw(
-            st.lists(st.sampled_from(JSON_VALUES), max_size=3)
-        )
-    return annotated
-
-
-@st.composite
-def random_resource_schema(draw: st.DrawFn) -> dict[str, Any]:
-    target = draw(
-        st.one_of(
-            st.booleans(),
-            _type_schema(),
-            _const_schema(),
-            _enum_schema(),
-            _numeric_schema(),
-            _string_schema(),
-        )
-    )
-    kind = draw(st.sampled_from(("defs-ref", "allof-ref", "nested-defs", "anchor")))
-    if kind == "defs-ref":
-        return {"$defs": {"target": target}, "$ref": "#/$defs/target"}
-    if kind == "allof-ref":
-        return {
-            "$defs": {"target": target},
-            "allOf": [{"$ref": "#/$defs/target"}],
-        }
-    if kind == "nested-defs":
-        return {
-            "$defs": {
-                "outer": {
-                    "$defs": {"inner": target},
-                    "$ref": "#/$defs/outer/$defs/inner",
-                }
-            },
-            "$ref": "#/$defs/outer",
-        }
-    return {
-        "$defs": {"target": _anchored_target(target)},
-        "$ref": "#target",
-    }
-
-
-def _anchored_target(target: Any) -> dict[str, Any]:
-    if isinstance(target, dict):
-        return {"$anchor": "target", **target}
-    return {"$anchor": "target", "allOf": [target]}
-
-
-def _small_instance_counterexample(lhs: Any, rhs: Any) -> Any | None:
-    backend = validation_backend_for(Dialect.DRAFT202012)
-    for instance in JSON_INSTANCES:
-        if backend.is_valid(lhs, instance) and not backend.is_valid(rhs, instance):
-            return instance
-    return None
 
 
 def _assert_public_helper_has_no_backend_exception(call: Any) -> None:
@@ -326,15 +62,106 @@ def test_random_schema_is_valid_and_reflexive_when_provable(schema: Any) -> None
 
 
 @given(random_schema(), random_schema())
-@settings(max_examples=150, deadline=None)
-def test_random_true_subschema_has_no_small_counterexample(lhs: Any, rhs: Any) -> None:
+@settings(max_examples=100, deadline=None)
+def test_random_true_subschema_has_no_finite_universe_counterexample(
+    lhs: Any, rhs: Any
+) -> None:
     try:
         result = is_subschema(lhs, rhs)
     except UnsupportedProofError:
         assume(False)
 
     if result:
-        assert _small_instance_counterexample(lhs, rhs) is None
+        assert finite_universe_counterexample(lhs, rhs) is None
+
+
+@given(random_schema(), random_schema())
+@settings(max_examples=80, deadline=None)
+def test_random_generated_false_subschema_results_are_confirmed(
+    lhs: Any, rhs: Any
+) -> None:
+    proof = proof_engine_for_schemas(lhs, rhs).is_subschema(lhs, rhs)
+
+    if proof.status == "proved_false":
+        assert_proved_false_result_is_confirmed(lhs, rhs, proof)
+
+
+@given(random_schema(), random_schema(), random_json_instance())
+@settings(max_examples=80, deadline=None)
+def test_random_true_subschema_accepts_random_lhs_instances(
+    lhs: Any,
+    rhs: Any,
+    instance: Any,
+) -> None:
+    try:
+        result = is_subschema(lhs, rhs)
+    except UnsupportedProofError:
+        assume(False)
+
+    if result and backend_is_valid(lhs, instance):
+        assert backend_is_valid(rhs, instance)
+
+
+@given(random_schema(), random_schema())
+@settings(max_examples=80, deadline=None)
+def test_random_true_disjointness_has_no_finite_universe_shared_instance(
+    lhs: Any, rhs: Any
+) -> None:
+    try:
+        result = is_disjoint(lhs, rhs)
+    except UnsupportedProofError:
+        assume(False)
+
+    if result:
+        assert finite_universe_shared_instance(lhs, rhs) is None
+
+
+@given(random_schema())
+@settings(max_examples=80, deadline=None)
+def test_random_true_emptiness_rejects_finite_universe_instances(
+    schema: Any,
+) -> None:
+    try:
+        result = is_empty(schema)
+    except UnsupportedProofError:
+        assume(False)
+
+    if result:
+        assert finite_universe_schema_instance(schema) is None
+
+
+@given(random_schema(), st.lists(random_schema(), max_size=3))
+@settings(max_examples=60, deadline=None)
+def test_random_true_coverage_accepts_finite_universe_lhs_instances(
+    lhs: Any,
+    rhs_alternatives: list[Any],
+) -> None:
+    try:
+        result = covers(lhs, rhs_alternatives)
+    except UnsupportedProofError:
+        assume(False)
+
+    if result:
+        assert (
+            finite_universe_coverage_counterexample(lhs, rhs_alternatives) is None
+        )
+
+
+@given(random_schema(), random_schema(), random_json_instance())
+@settings(max_examples=60, deadline=None)
+def test_random_meet_join_match_random_instance_semantics(
+    lhs: Any,
+    rhs: Any,
+    instance: Any,
+) -> None:
+    meet = meet_schemas(lhs, rhs)
+    join = join_schemas(lhs, rhs)
+
+    if backend_is_valid(meet, instance):
+        assert backend_is_valid(lhs, instance)
+        assert backend_is_valid(rhs, instance)
+    if backend_is_valid(lhs, instance) or backend_is_valid(rhs, instance):
+        assert backend_is_valid(join, instance)
 
 
 def test_count_shape_complement_does_not_ignore_property_names() -> None:
@@ -354,6 +181,26 @@ def test_count_shape_complement_does_not_ignore_property_names() -> None:
             "maxProperties": 2,
         },
     }
+
+    try:
+        result = is_subschema(lhs, rhs)
+    except UnsupportedProofError:
+        return
+    assert not result
+
+
+def test_overapprox_scalar_fact_does_not_prove_negative_one_of() -> None:
+    lhs = {
+        "not": {
+            "not": {
+                "oneOf": [
+                    {"type": ["string"]},
+                    {"enum": [None, ""]},
+                ]
+            }
+        }
+    }
+    rhs = {"not": {"if": False, "else": {"type": "string"}}}
 
     try:
         result = is_subschema(lhs, rhs)
@@ -400,4 +247,25 @@ def test_random_resource_schemas_do_not_leak_backend_exceptions(
     )
     _assert_public_helper_has_no_backend_exception(
         lambda: is_disjoint({"type": "null"}, schema)
+    )
+
+
+@given(random_external_resource_case())
+@settings(max_examples=25, deadline=None)
+def test_random_external_resources_do_not_leak_backend_exceptions(
+    case: tuple[Any, dict[str, Any]],
+) -> None:
+    schema, resources = case
+
+    _assert_public_helper_has_no_backend_exception(
+        lambda: is_subschema(schema, schema, resources=resources)
+    )
+    _assert_public_helper_has_no_backend_exception(
+        lambda: is_empty(
+            {"allOf": [{"type": "null"}, schema]},
+            resources=resources,
+        )
+    )
+    _assert_public_helper_has_no_backend_exception(
+        lambda: is_disjoint({"type": "null"}, schema, resources=resources)
     )

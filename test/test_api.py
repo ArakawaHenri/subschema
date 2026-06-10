@@ -21,8 +21,8 @@ from subschema import (
     meet_schemas,
 )
 from subschema.exceptions import UnsupportedKeywordError
-from subschema.kernel import ProofResult
-from subschema.kernel.json_data import strict_json_loads
+from subschema.prover import ProofResult
+from subschema.json_data import strict_json_loads
 
 
 s1 = {"type": "number"}
@@ -89,6 +89,68 @@ class TestAPI(unittest.TestCase):
     def test_api_is_disjoint(self):
         self.assertTrue(is_disjoint({"type": "string"}, {"type": "integer"}))
         self.assertFalse(is_disjoint({"type": "integer"}, {"type": "number"}))
+
+    def test_public_api_resolves_registered_external_resources(self):
+        lhs = {
+            "$id": "https://example.com/root",
+            "$ref": "https://example.com/external#/$defs/name",
+        }
+        resources = {
+            "https://example.com/external": {
+                "$id": "https://example.com/external",
+                "$defs": {
+                    "name": {
+                        "type": "string",
+                        "pattern": "^a$",
+                    }
+                },
+            }
+        }
+
+        with self.assertRaises(UnsupportedProofError):
+            is_subschema(lhs, {"type": "string"})
+
+        self.assertTrue(is_subschema(lhs, {"type": "string"}, resources=resources))
+        self.assertFalse(is_subschema({"const": "b"}, lhs, resources=resources))
+        self.assertTrue(
+            is_equivalent(
+                lhs,
+                {"type": "string", "pattern": "^a$"},
+                resources=resources,
+            )
+        )
+        self.assertFalse(is_empty(lhs, resources=resources))
+        self.assertTrue(is_disjoint(lhs, {"type": "integer"}, resources=resources))
+        self.assertTrue(covers(lhs, [{"type": "string"}], resources=resources))
+        self.assertIs(meet_schemas(lhs, {"type": "integer"}, resources=resources), False)
+
+    def test_public_api_validates_resource_registry(self):
+        lhs = {"$ref": "https://example.com/external"}
+
+        with self.assertRaises(TypeError):
+            is_subschema(lhs, True, resources={1: {"type": "string"}})
+
+        with self.assertRaises(ValueError):
+            is_subschema(lhs, True, resources={"defs/name.json": {"type": "string"}})
+
+        with self.assertRaises(ValueError):
+            is_subschema(
+                lhs,
+                True,
+                resources={
+                    "https://example.com/external#/$defs/name": {"type": "string"}
+                },
+            )
+
+        with self.assertRaises(ValueError):
+            is_subschema(lhs, True, resources={"https://example.com/external": nan})
+
+        with self.assertRaises(SchemaError):
+            is_subschema(
+                lhs,
+                True,
+                resources={"https://example.com/external": {"type": 1}},
+            )
 
     def test_api_covers(self):
         self.assertTrue(covers({"type": "integer"}, [{"type": "number"}]))
@@ -226,6 +288,188 @@ class TestAPI(unittest.TestCase):
 
         self.assertIn("subschema tool", completed.stdout)
         self.assertNotIn("ssonsub" "schema", completed.stdout)
+
+    def test_cli_resolves_registered_external_resource(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lhs = Path(tmp) / "lhs.json"
+            rhs = Path(tmp) / "rhs.json"
+            resource = Path(tmp) / "external.json"
+            lhs.write_text(
+                json.dumps(
+                    {
+                        "$id": "https://example.com/root",
+                        "$ref": "https://example.com/external#/$defs/name",
+                    }
+                )
+            )
+            rhs.write_text(json.dumps({"type": "string"}))
+            resource.write_text(
+                json.dumps(
+                    {
+                        "$id": "https://example.com/external",
+                        "$defs": {"name": {"type": "string"}},
+                    }
+                )
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "subschema.cli",
+                    "--resource",
+                    "https://example.com/external",
+                    str(resource),
+                    str(lhs),
+                    str(rhs),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertIn("LHS <: RHS True", completed.stdout)
+
+    def test_cli_resolves_registered_external_resource_siblings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lhs = Path(tmp) / "lhs.json"
+            rhs = Path(tmp) / "rhs.json"
+            root_resource = Path(tmp) / "root.json"
+            name_resource = Path(tmp) / "name.json"
+            lhs.write_text(json.dumps({"const": "a"}))
+            rhs.write_text(json.dumps({"$ref": "https://example.com/schemas/root.json"}))
+            root_resource.write_text(
+                json.dumps(
+                    {
+                        "$id": "https://example.com/schemas/root.json",
+                        "$ref": "defs/name.json",
+                    }
+                )
+            )
+            name_resource.write_text(
+                json.dumps({"type": "string", "pattern": "^a$"})
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "subschema.cli",
+                    "--resource",
+                    "https://example.com/schemas/root.json",
+                    str(root_resource),
+                    "--resource",
+                    "https://example.com/schemas/defs/name.json",
+                    str(name_resource),
+                    str(lhs),
+                    str(rhs),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertIn("LHS <: RHS True", completed.stdout)
+
+    def test_cli_rejects_relative_resource_uri(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lhs = Path(tmp) / "lhs.json"
+            rhs = Path(tmp) / "rhs.json"
+            resource = Path(tmp) / "external.json"
+            lhs.write_text(json.dumps({"$ref": "https://example.com/external"}))
+            rhs.write_text(json.dumps({"type": "string"}))
+            resource.write_text(json.dumps({"type": "string"}))
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "subschema.cli",
+                    "--resource",
+                    "defs/name.json",
+                    str(resource),
+                    str(lhs),
+                    str(rhs),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(
+            "resource registry keys must be absolute document URIs",
+            completed.stderr,
+        )
+
+    def test_cli_rejects_fragment_resource_uri(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lhs = Path(tmp) / "lhs.json"
+            rhs = Path(tmp) / "rhs.json"
+            resource = Path(tmp) / "external.json"
+            lhs.write_text(json.dumps({"$ref": "https://example.com/external"}))
+            rhs.write_text(json.dumps({"type": "string"}))
+            resource.write_text(json.dumps({"type": "string"}))
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "subschema.cli",
+                    "--resource",
+                    "https://example.com/external#fragment",
+                    str(resource),
+                    str(lhs),
+                    str(rhs),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(
+            "resource registry keys must not include fragments",
+            completed.stderr,
+        )
+        self.assertNotIn("Traceback", completed.stderr)
+
+    def test_cli_rejects_duplicate_resource_uri(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lhs = Path(tmp) / "lhs.json"
+            rhs = Path(tmp) / "rhs.json"
+            first = Path(tmp) / "first.json"
+            second = Path(tmp) / "second.json"
+            lhs.write_text(json.dumps({"$ref": "https://example.com/external"}))
+            rhs.write_text(json.dumps({"type": "string"}))
+            first.write_text(json.dumps({"type": "string"}))
+            second.write_text(json.dumps({"type": "number"}))
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "subschema.cli",
+                    "--resource",
+                    "https://example.com/external",
+                    str(first),
+                    "--resource",
+                    "https://example.com/external",
+                    str(second),
+                    str(lhs),
+                    str(rhs),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(
+            "duplicate resource URI 'https://example.com/external'",
+            completed.stderr,
+        )
+        self.assertNotIn("Traceback", completed.stderr)
 
     def test_cli_rejects_non_json_numbers(self):
         with tempfile.TemporaryDirectory() as tmp:

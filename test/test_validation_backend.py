@@ -4,16 +4,16 @@ from math import inf, nan
 from jsonschema.exceptions import SchemaError
 import jsonschema_rs
 
-import subschema.kernel.validation as validation_module
+import subschema.validator.core as validation_module
 from subschema.dialects import Dialect
-from subschema.kernel.confirmation import confirm_difference, confirm_valid
-from subschema.kernel.provenance import SchemaSource
-from subschema.kernel.validation import (
+from subschema.prover.confirmation import confirm_difference, confirm_valid
+from subschema.provenance import SchemaSource
+from subschema.validator import (
     ValidationUnsupportedError,
     validate_schema_for_dialect,
     validation_backend_for,
 )
-from subschema.kernel.values import stable_key
+from subschema.values import stable_key
 
 
 @pytest.mark.parametrize("dialect", list(Dialect))
@@ -48,10 +48,58 @@ def test_validation_backend_uses_jsonschema_rs_for_supported_schema():
     assert validator is backend.validator_for_schema({"minLength": 2, "type": "string"})
 
 
+def test_validation_state_machine_plans_jsonschema_rs_registry_resources():
+    source = SchemaSource.root(
+        {"$ref": "https://example.com/schemas/root.json"},
+        Dialect.DRAFT202012,
+        resources={
+            "https://example.com/schemas/root.json": {
+                "$id": "https://example.com/schemas/root.json",
+                "$ref": "defs/name.json",
+            },
+            "https://example.com/schemas/defs/name.json": {
+                "type": "string",
+                "pattern": "^a$",
+            },
+        },
+    )
+    plan = validation_module._build_instance_plan(source)
+
+    assert isinstance(plan, validation_module.InstanceValidationPlan)
+    assert plan.schema.backend_kind == "jsonschema_rs"
+    assert plan.schema.backend_registry_key is not None
+    assert validation_module.validate_source_instance(source, "a").status == "valid"
+    assert validation_module.validate_source_instance(source, "b").status == "invalid"
+
+
+def test_validation_state_machine_rejects_external_resource_dialect_transition():
+    source = SchemaSource.root(
+        {"$ref": "https://example.com/schemas/resource.json"},
+        Dialect.DRAFT202012,
+        resources={
+            "https://example.com/schemas/resource.json": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "const": 1,
+            },
+        },
+    )
+    plan = validation_module._build_instance_plan(source)
+    outcome = validation_module.validate_source_instance(source, float("nan"))
+
+    assert isinstance(plan, validation_module.InstanceValidationPlan)
+    assert plan.schema.backend_kind == "unsupported"
+    assert (
+        plan.schema.unsupported_reason
+        == "validation with external resource dialect transitions is unsupported"
+    )
+    assert outcome.status == "unsupported"
+    assert outcome.reason == plan.schema.unsupported_reason
+
+
 def test_validation_backend_wraps_jsonschema_rs_compile_errors(monkeypatch):
     backend = validation_backend_for(Dialect.DRAFT202012)
 
-    def raise_compile_error(dialect, schema):
+    def raise_compile_error(dialect, schema, registry_resources=None):
         raise RuntimeError("compile failed")
 
     monkeypatch.setattr(
@@ -65,7 +113,7 @@ def test_validation_backend_wraps_jsonschema_rs_compile_errors(monkeypatch):
 
 
 def test_validation_state_machine_reports_backend_compile_unsupported(monkeypatch):
-    def raise_compile_error(dialect, schema):
+    def raise_compile_error(dialect, schema, registry_resources=None):
         raise RuntimeError("compile failed")
 
     monkeypatch.setattr(
@@ -86,19 +134,111 @@ def test_validation_state_machine_reports_backend_compile_unsupported(monkeypatc
     assert "compile failed" in outcome.reason
 
 
-def test_validation_state_machine_prefers_unsupported_source_over_invalid_instance():
+def test_validation_state_machine_prefers_missing_source_document_over_invalid_instance():
     source = SchemaSource(
         schema={"type": "integer"},
         dialect=Dialect.DRAFT202012,
         pointer=("$defs", "value"),
-        document_root={"$defs": {"value": {"type": "integer"}}},
-        document_dialect=Dialect.DRAFT202012,
     )
 
     outcome = validation_module.validate_source_instance(source, float("nan"))
 
     assert outcome.status == "unsupported"
-    assert outcome.reason == "validation requires root schema source"
+    assert outcome.reason == "validation requires source document"
+
+
+def test_validation_state_machine_validates_non_root_source_with_document_context():
+    document = {"$defs": {"value": {"type": "integer"}}}
+    source = SchemaSource(
+        schema=document["$defs"]["value"],
+        dialect=Dialect.DRAFT202012,
+        pointer=("$defs", "value"),
+        resource_pointer=("$defs", "value"),
+        document_pointer=("$defs", "value"),
+        document_root=document,
+        document_dialect=Dialect.DRAFT202012,
+    )
+
+    plan = validation_module._build_instance_plan(source)
+
+    assert plan.schema.backend_kind == "jsonschema_rs"
+    assert plan.schema.backend_registry_key is not None
+    assert validation_module.validate_source_instance(source, 1).status == "valid"
+    assert validation_module.validate_source_instance(source, "x").status == "invalid"
+
+
+def test_validation_state_machine_preserves_non_root_reference_context():
+    document = {
+        "$defs": {
+            "value": {"$ref": "#/$defs/name"},
+            "name": {"type": "string", "pattern": "^a$"},
+        }
+    }
+    source = SchemaSource(
+        schema=document["$defs"]["value"],
+        dialect=Dialect.DRAFT202012,
+        pointer=("$defs", "value"),
+        resource_pointer=("$defs", "value"),
+        document_pointer=("$defs", "value"),
+        document_root=document,
+        document_dialect=Dialect.DRAFT202012,
+    )
+
+    assert validation_module.validate_source_instance(source, "a").status == "valid"
+    assert validation_module.validate_source_instance(source, "b").status == "invalid"
+
+
+def test_validation_state_machine_validates_embedded_resource_source_context():
+    document = {
+        "$id": "https://example.com/root.json",
+        "$defs": {
+            "child": {
+                "$id": "child.json",
+                "properties": {"name": {"type": "string"}},
+            }
+        },
+    }
+    source = SchemaSource(
+        schema=document["$defs"]["child"]["properties"]["name"],
+        dialect=Dialect.DRAFT202012,
+        resource_uri="https://example.com/child.json",
+        pointer=("$defs", "child", "properties", "name"),
+        resource_pointer=("properties", "name"),
+        document_pointer=("$defs", "child", "properties", "name"),
+        document_root=document,
+        document_dialect=Dialect.DRAFT202012,
+    )
+
+    assert validation_module.validate_source_instance(source, "x").status == "valid"
+    assert validation_module.validate_source_instance(source, 1).status == "invalid"
+
+
+def test_validation_state_machine_validates_plain_fragment_id_source_context():
+    document = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "definitions": {
+            "positiveInteger": {
+                "$id": "#positiveInteger",
+                "type": "integer",
+                "minimum": 0,
+            }
+        },
+        "type": "array",
+        "items": {"$id": "#positiveInteger", "type": "integer", "minimum": 0},
+    }
+    source = SchemaSource(
+        schema=document["items"],
+        dialect=Dialect.DRAFT7,
+        resource_uri="#positiveInteger",
+        pointer=("items",),
+        resource_pointer=("items",),
+        document_pointer=("items",),
+        document_root=document,
+        document_dialect=Dialect.DRAFT7,
+    )
+
+    assert validation_module.validate_source_instance(source, 0).status == "valid"
+    assert validation_module.validate_source_instance(source, -1).status == "invalid"
 
 
 def test_confirmation_uses_validation_outcomes_for_root_sources():
@@ -110,20 +250,87 @@ def test_confirmation_uses_validation_outcomes_for_root_sources():
     assert confirm_difference(integer, number, "x").status == "rejected"
 
 
-def test_confirmation_rejects_non_root_source_without_source_backend():
+def test_confirmation_uses_validation_outcomes_for_non_root_source_context():
+    document = {"$defs": {"value": {"type": "integer"}}}
+    source = SchemaSource(
+        schema=document["$defs"]["value"],
+        dialect=Dialect.DRAFT202012,
+        pointer=("$defs", "value"),
+        resource_pointer=("$defs", "value"),
+        document_pointer=("$defs", "value"),
+        document_root=document,
+        document_dialect=Dialect.DRAFT202012,
+    )
+
+    assert confirm_valid(source, 1).status == "confirmed"
+    assert confirm_valid(source, "x").status == "rejected"
+
+
+def test_confirmation_escapes_non_root_pointer_for_reference_wrapper():
+    document = {
+        "patternProperties": {
+            "^emai": {"type": "string"},
+        }
+    }
+    source = SchemaSource(
+        schema=document["patternProperties"]["^emai"],
+        dialect=Dialect.DRAFT202012,
+        pointer=("patternProperties", "^emai"),
+        resource_pointer=("patternProperties", "^emai"),
+        document_pointer=("patternProperties", "^emai"),
+        document_root=document,
+        document_dialect=Dialect.DRAFT202012,
+    )
+
+    assert confirm_valid(source, "x").status == "confirmed"
+    assert confirm_valid(source, 1).status == "rejected"
+
+
+def test_confirmation_confirms_non_root_source_difference():
+    document = {
+        "$defs": {
+            "number": {"type": "number"},
+            "integer": {"type": "integer"},
+        }
+    }
+    lhs = SchemaSource(
+        schema=document["$defs"]["number"],
+        dialect=Dialect.DRAFT202012,
+        pointer=("$defs", "number"),
+        resource_pointer=("$defs", "number"),
+        document_pointer=("$defs", "number"),
+        document_root=document,
+        document_dialect=Dialect.DRAFT202012,
+    )
+    rhs = SchemaSource(
+        schema=document["$defs"]["integer"],
+        dialect=Dialect.DRAFT202012,
+        pointer=("$defs", "integer"),
+        resource_pointer=("$defs", "integer"),
+        document_pointer=("$defs", "integer"),
+        document_root=document,
+        document_dialect=Dialect.DRAFT202012,
+    )
+
+    assert confirm_difference(lhs, rhs, 1.5).status == "confirmed"
+    assert confirm_difference(lhs, rhs, 1).status == "rejected"
+
+
+def test_confirmation_rejects_non_root_source_without_document_context():
     source = SchemaSource(
         schema={"type": "integer"},
         dialect=Dialect.DRAFT202012,
         pointer=("$defs", "value"),
-        document_root={"$defs": {"value": {"type": "integer"}}},
-        document_dialect=Dialect.DRAFT202012,
     )
 
     result = confirm_valid(source, 1)
 
     assert result.status == "unsupported"
     assert result.proof is not None
-    assert result.proof.reason == "schema confirmation requires source validator backend"
+    assert (
+        result.proof.reason
+        == "schema validation is unsupported: validation requires source document"
+    )
 
 
 def test_validation_backend_wraps_jsonschema_rs_runtime_errors(monkeypatch):
@@ -233,8 +440,6 @@ def test_validation_difference_prefers_unsupported_rhs_over_invalid_witness():
         schema={"type": "integer"},
         dialect=Dialect.DRAFT202012,
         pointer=("$defs", "value"),
-        document_root={"$defs": {"value": {"type": "integer"}}},
-        document_dialect=Dialect.DRAFT202012,
     )
 
     outcome = validation_module.validate_source_difference(
@@ -244,7 +449,7 @@ def test_validation_difference_prefers_unsupported_rhs_over_invalid_witness():
     )
 
     assert outcome.status == "unsupported"
-    assert outcome.reason == "validation requires root schema source"
+    assert outcome.reason == "validation requires source document"
 
 
 def test_validation_difference_plan_reports_dialect_mismatch():

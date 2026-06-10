@@ -18,9 +18,9 @@ from subschema.dialects import (
     dialect_from_schema,
     strip_inactive_keywords_for_dialect,
 )
-from subschema.kernel.json_data import ensure_json_value
-from subschema.kernel.references import DynamicScope, ReferenceFrame, ResourceGraph
-from subschema.kernel.values import json_semantic_key, json_values_equal
+from subschema.json_data import ensure_json_value
+from subschema.compiler.resources import DynamicScope, ReferenceFrame, ResourceGraph
+from subschema.values import json_semantic_key, json_values_equal
 
 __all__ = [
     "ConcreteEvaluationResult",
