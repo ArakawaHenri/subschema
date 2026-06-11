@@ -16,26 +16,26 @@ from subschema.prover.difference import (
 )
 from subschema.prover.protocols import DifferenceProblemProtocol
 from subschema.prover.rules.common import (
-    _array_static_reference_unsupported,
-    _array_witness_horizon,
-    _certified_false,
-    _lhs_static_reference_unsupported,
-    _validated_false,
+    array_static_reference_unsupported,
+    array_witness_horizon,
+    certified_false,
+    lhs_static_reference_unsupported,
+    validated_false,
 )
 from subschema.prover.witness_results import WitnessBuildResult
 from subschema.prover.witnesses import build_term_witness
 
 
-def _prove_array_unevaluated_items_difference(
+def prove_array_unevaluated_items_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
-    if proof := _lhs_static_reference_unsupported(
+    if proof := lhs_static_reference_unsupported(
         problem, "array unevaluatedItems difference"
     ):
         return proof
     model = problem.array_model
     plan = model.unevaluated_items_difference_plan(
-        budget=_array_witness_horizon(problem),
+        budget=array_witness_horizon(problem),
         expanded=problem.context.allows_expensive_proof("evaluation_trace"),
     )
     if plan.status == "resource_exhausted":
@@ -61,7 +61,7 @@ def _prove_array_unevaluated_items_difference(
             return ProofResult.unsupported(
                 plan.reason or "SAT unevaluatedItems witness could not be constructed"
             )
-        return _validated_false(problem, witness, plan.rejected_reason)
+        return validated_false(problem, witness, plan.rejected_reason)
 
     for obligation in plan.obligations:
         proof = _array_child_subproof(
@@ -84,7 +84,7 @@ def _prove_array_unevaluated_items_difference(
                 return ProofResult.unsupported(
                     "SAT unevaluatedItems finite-left item witness is missing"
                 )
-            budget = _array_witness_horizon(problem)
+            budget = array_witness_horizon(problem)
             skeleton = model.array_witness_skeleton_reaching(
                 obligation.index, budget=budget
             )
@@ -105,7 +105,7 @@ def _prove_array_unevaluated_items_difference(
                     "SAT unevaluatedItems finite-left item witness could not be "
                     "constructed"
                 )
-            return _validated_false(
+            return validated_false(
                 problem,
                 witness,
                 "SAT unevaluatedItems finite-left item witness was rejected",
@@ -114,11 +114,11 @@ def _prove_array_unevaluated_items_difference(
     return ProofResult.true()
 
 
-def _prove_array_length_difference(problem: DifferenceProblemProtocol) -> ProofResult:
-    if proof := _array_static_reference_unsupported(problem, "array length difference"):
+def prove_array_length_difference(problem: DifferenceProblemProtocol) -> ProofResult:
+    if proof := array_static_reference_unsupported(problem, "array length difference"):
         return proof
     model = problem.array_model
-    plan = model.length_difference_plan(budget=_array_witness_horizon(problem))
+    plan = model.length_difference_plan(budget=array_witness_horizon(problem))
     if plan.status == "resource_exhausted":
         return ProofResult.resource_exhausted(plan.reason)
     if plan.status == "unsupported":
@@ -139,18 +139,18 @@ def _prove_array_length_difference(problem: DifferenceProblemProtocol) -> ProofR
         return ProofResult.unsupported(
             plan.reason or "SAT array length witness could not be constructed"
         )
-    return _validated_false(problem, witness, plan.rejected_reason)
+    return validated_false(problem, witness, plan.rejected_reason)
 
 
-def _prove_array_uniqueness_difference(
+def prove_array_uniqueness_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
-    if proof := _array_static_reference_unsupported(
+    if proof := array_static_reference_unsupported(
         problem, "array uniqueness difference"
     ):
         return proof
     model = problem.array_model
-    plan = model.uniqueness_difference_plan(budget=_array_witness_horizon(problem))
+    plan = model.uniqueness_difference_plan(budget=array_witness_horizon(problem))
     if plan.status == "resource_exhausted":
         return ProofResult.resource_exhausted(plan.reason)
     if plan.status == "unsupported":
@@ -169,7 +169,7 @@ def _prove_array_uniqueness_difference(
                 plan.reason
                 or "SAT array uniqueness array witness could not be constructed"
             )
-        return _validated_false(problem, witness, plan.rejected_reason)
+        return validated_false(problem, witness, plan.rejected_reason)
 
     duplicate_witness = materialize_array_duplicate_witness_plan(
         plan.duplicate_plan, problem.dialect, context=problem.context
@@ -179,17 +179,17 @@ def _prove_array_uniqueness_difference(
             plan.reason
             or "SAT array uniqueness difference could not construct a duplicate witness"
         )
-    return _validated_false(problem, duplicate_witness, plan.rejected_reason)
+    return validated_false(problem, duplicate_witness, plan.rejected_reason)
 
 
-def _prove_array_contains_difference(problem: DifferenceProblemProtocol) -> ProofResult:
-    if proof := _array_static_reference_unsupported(
+def prove_array_contains_difference(problem: DifferenceProblemProtocol) -> ProofResult:
+    if proof := array_static_reference_unsupported(
         problem, "array contains difference"
     ):
         return proof
     model = problem.array_model
     plan = model.contains_difference_plan(
-        problem.context, budget=_array_witness_horizon(problem)
+        problem.context, budget=array_witness_horizon(problem)
     )
     if plan.status == "unsupported" and plan.reason in {
         "SAT array contains count bounds could not be proven exactly",
@@ -200,7 +200,7 @@ def _prove_array_contains_difference(problem: DifferenceProblemProtocol) -> Proo
             return gate
         plan = model.contains_difference_plan(
             problem.context,
-            budget=_array_witness_horizon(problem),
+            budget=array_witness_horizon(problem),
             expanded=True,
         )
     if plan.status == "resource_exhausted":
@@ -228,7 +228,7 @@ def _prove_array_contains_difference(problem: DifferenceProblemProtocol) -> Proo
         return ProofResult.unsupported(
             plan.reason or "SAT array contains witness could not be constructed"
         )
-    return _validated_false(problem, contains_witness, plan.rejected_reason)
+    return validated_false(problem, contains_witness, plan.rejected_reason)
 
 
 def _array_contains_rhs_item_value_witness(
@@ -284,7 +284,7 @@ def _array_contains_rhs_item_value_witness(
 
         length = max(overrides) + 1
         skeleton = model.array_witness_skeleton(
-            length, budget=_array_witness_horizon(problem)
+            length, budget=array_witness_horizon(problem)
         )
         witness = materialize_array_witness_skeleton(
             skeleton,
@@ -294,7 +294,7 @@ def _array_contains_rhs_item_value_witness(
         )
         if witness is None:
             continue
-        proof = _validated_false(
+        proof = validated_false(
             problem,
             witness,
             "SAT array contains RHS item-value witness was rejected",
@@ -315,15 +315,15 @@ def _array_term_witness(
     return None if witness.status == "unsupported" else witness
 
 
-def _prove_array_item_values_difference(
+def prove_array_item_values_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
-    if proof := _array_static_reference_unsupported(
+    if proof := array_static_reference_unsupported(
         problem, "array item-values difference"
     ):
         return proof
     model = problem.array_model
-    plan = model.item_values_difference_plan(budget=_array_witness_horizon(problem))
+    plan = model.item_values_difference_plan(budget=array_witness_horizon(problem))
     if plan.status == "resource_exhausted":
         return ProofResult.resource_exhausted(plan.reason)
     if plan.status == "unsupported":
@@ -345,7 +345,7 @@ def _prove_array_item_values_difference(
             return ProofResult.unsupported(
                 plan.reason or "SAT array item-values witness could not be constructed"
             )
-        return _validated_false(problem, witness, plan.rejected_reason)
+        return validated_false(problem, witness, plan.rejected_reason)
 
     for obligation in plan.obligations:
         proof = _array_child_subproof(
@@ -366,7 +366,7 @@ def _prove_array_item_values_difference(
                 return ProofResult.unsupported(
                     "SAT array item-values counterexample is missing"
                 )
-            budget = _array_witness_horizon(problem)
+            budget = array_witness_horizon(problem)
             witness_plan = (
                 None
                 if proof.certificate is not None
@@ -378,7 +378,7 @@ def _prove_array_item_values_difference(
                 obligation.index, budget=budget
             )
             if proof.certificate is not None:
-                return _certified_false(
+                return certified_false(
                     "array-item-value",
                     (
                         "array item-value subproof has a certified counterexample at "
@@ -401,7 +401,7 @@ def _prove_array_item_values_difference(
                 if model.array_witness_skeleton_reaching_budget_exhausted(
                     obligation.index, budget=budget
                 ):
-                    return _certified_false(
+                    return certified_false(
                         "array-item-value",
                         (
                             "array item-value concrete counterexample is reachable "
@@ -413,7 +413,7 @@ def _prove_array_item_values_difference(
                 return ProofResult.unsupported(
                     "SAT array item-values witness could not be constructed"
                 )
-            return _validated_false(
+            return validated_false(
                 problem, witness, "SAT array item-values witness was rejected"
             )
 
@@ -435,7 +435,7 @@ def _prove_array_item_values_difference(
             )
         )
         if witness is not None:
-            return _validated_false(
+            return validated_false(
                 problem, witness, plan.post_obligation_rejected_reason
             )
 

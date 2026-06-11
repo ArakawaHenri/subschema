@@ -18,17 +18,17 @@ from subschema.prover.difference import (
 )
 from subschema.prover.protocols import DifferenceProblemProtocol
 from subschema.prover.rules.common import (
-    _certified_false,
-    _lhs_static_reference_unsupported,
-    _object_static_reference_unsupported,
-    _validated_false,
+    certified_false,
+    lhs_static_reference_unsupported,
+    object_static_reference_unsupported,
+    validated_false,
 )
 
 
-def _prove_object_unevaluated_properties_difference(
+def prove_object_unevaluated_properties_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
-    if proof := _lhs_static_reference_unsupported(
+    if proof := lhs_static_reference_unsupported(
         problem, "object unevaluatedProperties difference"
     ):
         return proof
@@ -51,7 +51,7 @@ def _prove_object_unevaluated_properties_difference(
 
     if plan.status == "witness":
         if plan.witness is not None:
-            return _validated_false(problem, plan.witness, plan.rejected_reason)
+            return validated_false(problem, plan.witness, plan.rejected_reason)
         for skeleton in plan.witness_skeletons:
             witness = materialize_object_key_value_witness_skeleton(
                 skeleton,
@@ -61,7 +61,7 @@ def _prove_object_unevaluated_properties_difference(
             )
             if witness is None:
                 continue
-            proof = _validated_false(problem, witness, plan.rejected_reason)
+            proof = validated_false(problem, witness, plan.rejected_reason)
             if proof.status != "unsupported":
                 return proof
         return ProofResult.unsupported(
@@ -105,7 +105,7 @@ def _prove_object_unevaluated_properties_difference(
                     "SAT unevaluatedProperties closed-left value witness could "
                     "not be constructed"
                 )
-            return _validated_false(
+            return validated_false(
                 problem,
                 witness,
                 "SAT unevaluatedProperties closed-left value witness was rejected",
@@ -114,15 +114,15 @@ def _prove_object_unevaluated_properties_difference(
     return ProofResult.true()
 
 
-def _prove_object_property_count_difference(
+def prove_object_property_count_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
-    if proof := _object_static_reference_unsupported(
+    if proof := object_static_reference_unsupported(
         problem, "object property-count difference"
     ):
         return proof
     if _rhs_rejects_empty_object(problem):
-        empty_object = _validated_false(
+        empty_object = validated_false(
             problem, {}, "SAT object property-count empty-object witness was rejected"
         )
         if empty_object.status != "unsupported":
@@ -136,7 +136,7 @@ def _prove_object_property_count_difference(
     if plan.status == "proved_true":
         return ProofResult.true()
 
-    return _validated_false(problem, plan.witness, plan.rejected_reason)
+    return validated_false(problem, plan.witness, plan.rejected_reason)
 
 
 def _rhs_rejects_empty_object(problem: DifferenceProblemProtocol) -> bool:
@@ -174,10 +174,10 @@ def _rhs_property_count_is_directly_satisfied(
     return lhs_bounds.maximum is not None and lhs_bounds.maximum <= rhs_bounds.maximum
 
 
-def _prove_object_presence_product_difference(
+def prove_object_presence_product_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
-    if proof := _object_static_reference_unsupported(
+    if proof := object_static_reference_unsupported(
         problem, "object presence-product difference"
     ):
         return proof
@@ -227,7 +227,7 @@ def _prove_object_presence_witness_plans(
             )
             if materialized is not None:
                 witness = materialized
-        proof = _validated_false(
+        proof = validated_false(
             problem,
             witness,
             f"SAT object presence {witness_plan.source} witness was rejected",
@@ -284,7 +284,7 @@ def _rhs_dependent_schema_property_value_witness(
             ir=problem.formula.lhs,
         )
         if witness is None:
-            return _certified_false(
+            return certified_false(
                 "object-dependent-schema",
                 (
                     "object dependentSchemas counterexample could not be "
@@ -293,7 +293,7 @@ def _rhs_dependent_schema_property_value_witness(
                 path=(name,),
                 child=proof,
             )
-        validated = _validated_false(
+        validated = validated_false(
             problem,
             witness,
             "SAT object dependentSchemas witness was rejected",
@@ -303,10 +303,10 @@ def _rhs_dependent_schema_property_value_witness(
     return None
 
 
-def _prove_object_property_values_difference(
+def prove_object_property_values_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
-    if proof := _object_static_reference_unsupported(
+    if proof := object_static_reference_unsupported(
         problem, "object property-values difference"
     ):
         return proof
@@ -328,7 +328,7 @@ def _prove_object_property_values_difference(
                 plan.reason
                 or "SAT object property-values witness could not be constructed"
             )
-        return _validated_false(problem, witness, plan.rejected_reason)
+        return validated_false(problem, witness, plan.rejected_reason)
 
     for obligation in plan.obligations:
         proof = _object_child_subproof(
@@ -348,7 +348,7 @@ def _prove_object_property_values_difference(
                     "SAT object property-values counterexample is missing"
                 )
             if proof.certificate is not None:
-                return _certified_false(
+                return certified_false(
                     "object-property-value",
                     "object property-value subproof has a certified counterexample",
                     path=(obligation.name,),
@@ -361,7 +361,7 @@ def _prove_object_property_values_difference(
                 context=problem.context,
             )
             if witness is None:
-                return _certified_false(
+                return certified_false(
                     "object-property-value",
                     (
                         "object property-value counterexample could not be "
@@ -370,7 +370,7 @@ def _prove_object_property_values_difference(
                     path=(obligation.name,),
                     child=proof,
                 )
-            return _validated_false(
+            return validated_false(
                 problem,
                 witness,
                 "SAT object property-values value witness was rejected",
@@ -379,10 +379,10 @@ def _prove_object_property_values_difference(
     return ProofResult.true()
 
 
-def _prove_object_key_value_difference(
+def prove_object_key_value_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
-    if proof := _object_static_reference_unsupported(
+    if proof := object_static_reference_unsupported(
         problem, "object key-value difference"
     ):
         return proof
@@ -422,7 +422,7 @@ def _prove_object_key_value_difference(
             return ProofResult.unsupported(
                 plan.reason or "SAT object key-value witness could not be constructed"
             )
-        return _validated_false(problem, witness, plan.rejected_reason)
+        return validated_false(problem, witness, plan.rejected_reason)
 
     for obligation in plan.obligations:
         proof = _object_child_subproof(
@@ -444,7 +444,7 @@ def _prove_object_key_value_difference(
                     "SAT object key-value counterexample is missing"
                 )
             if proof.certificate is not None:
-                return _certified_false(
+                return certified_false(
                     "object-key-value",
                     "object key-value subproof has a certified counterexample",
                     path=(obligation.name,),
@@ -458,7 +458,7 @@ def _prove_object_key_value_difference(
                 ir=problem.formula.lhs,
             )
             if witness is None:
-                return _certified_false(
+                return certified_false(
                     "object-key-value",
                     (
                         "object key-value counterexample could not be materialized "
@@ -467,7 +467,7 @@ def _prove_object_key_value_difference(
                     path=(obligation.name,),
                     child=proof,
                 )
-            return _validated_false(
+            return validated_false(
                 problem, witness, "SAT object key-value witness was rejected"
             )
 
@@ -480,10 +480,10 @@ def _prove_object_key_value_difference(
     return ProofResult.true()
 
 
-def _prove_object_property_names_difference(
+def prove_object_property_names_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
-    if proof := _object_static_reference_unsupported(
+    if proof := object_static_reference_unsupported(
         problem, "object propertyNames difference"
     ):
         return proof
@@ -494,7 +494,7 @@ def _prove_object_property_names_difference(
     if plan.status == "proved_true":
         return ProofResult.true()
 
-    proof = _validated_false(
+    proof = validated_false(
         problem,
         plan.witness,
         "SAT object propertyNames witness was rejected by concrete validation",
@@ -507,14 +507,14 @@ def _prove_object_property_names_difference(
     )
     if repaired is None:
         return proof
-    return _validated_false(
+    return validated_false(
         problem,
         repaired,
         "SAT object propertyNames repaired witness was rejected by concrete validation",
     )
 
 
-def _prove_closed_object_properties_difference(
+def prove_closed_object_properties_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
     model = problem.object_model
@@ -534,7 +534,7 @@ def _prove_closed_object_properties_difference(
             return ProofResult.unsupported(
                 plan.reason or "SAT closed-object witness could not be constructed"
             )
-        return _validated_false(problem, witness, plan.rejected_reason)
+        return validated_false(problem, witness, plan.rejected_reason)
 
     for obligation in plan.obligations:
         proof = _object_child_subproof(
@@ -554,7 +554,7 @@ def _prove_closed_object_properties_difference(
                     "SAT closed-object counterexample is missing"
                 )
             if proof.certificate is not None:
-                return _certified_false(
+                return certified_false(
                     "closed-object-property",
                     "closed-object property subproof has a certified counterexample",
                     path=(obligation.name,),
@@ -567,7 +567,7 @@ def _prove_closed_object_properties_difference(
                 context=problem.context,
             )
             if witness is None:
-                return _certified_false(
+                return certified_false(
                     "closed-object-property",
                     (
                         "closed-object counterexample could not be materialized "
@@ -576,12 +576,12 @@ def _prove_closed_object_properties_difference(
                     path=(obligation.name,),
                     child=proof,
                 )
-            validated = _validated_false(
+            validated = validated_false(
                 problem, witness, "SAT closed-object value witness was rejected"
             )
             if validated.status != "unsupported":
                 return validated
-            return _certified_false(
+            return certified_false(
                 "closed-object-property",
                 (
                     "closed-object property counterexample could not be "

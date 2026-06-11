@@ -5,6 +5,7 @@ from typing import Any, Protocol
 
 from subschema.contracts import ExpensiveProofKind, ProofResult
 from subschema.dialects import Dialect
+from subschema.prover.formulas import DifferenceFormula
 from subschema.work_protocols import SubproofContext, SymbolicContext
 
 
@@ -44,7 +45,7 @@ class ProofContextProtocol(SymbolicContext, SubproofContext, Protocol):
 
 class DifferenceProblemProtocol(Protocol):
     @property
-    def formula(self) -> Any: ...
+    def formula(self) -> DifferenceFormula: ...
 
     @property
     def context(self) -> ProofContextProtocol: ...

@@ -4,35 +4,38 @@ Shared helpers for SAT difference rule implementations.
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from subschema.contracts import CounterexampleCertificate, ProofResult
+from subschema.ir import LogicalSchemaIR, SchemaNode
 from subschema.ir.terms import SchemaTerm
+from subschema.provenance import SchemaSource
 from subschema.prover.confirmation import confirm_difference
+from subschema.prover.protocols import DifferenceProblemProtocol
 
 
-def _array_static_reference_unsupported(
-    problem: Any, fragment: str
+def array_static_reference_unsupported(
+    problem: DifferenceProblemProtocol, fragment: str
 ) -> ProofResult | None:
-    if _contains_static_reference(problem):
+    if contains_static_reference(problem):
         return ProofResult.unsupported(
             f"SAT {fragment} is deferred for static references"
         )
     return None
 
 
-def _object_static_reference_unsupported(
-    problem: Any, fragment: str
+def object_static_reference_unsupported(
+    problem: DifferenceProblemProtocol, fragment: str
 ) -> ProofResult | None:
-    if _contains_static_reference(problem):
+    if contains_static_reference(problem):
         return ProofResult.unsupported(
             f"SAT {fragment} is deferred for static references"
         )
     return None
 
 
-def _lhs_static_reference_unsupported(
-    problem: Any, fragment: str
+def lhs_static_reference_unsupported(
+    problem: DifferenceProblemProtocol, fragment: str
 ) -> ProofResult | None:
     if _has_blocking_lhs_static_reference_boundary(problem):
         return ProofResult.unsupported(
@@ -47,7 +50,7 @@ def _child_certificate(kind: str, proof: ProofResult) -> CounterexampleCertifica
     return CounterexampleCertificate(kind, "validated concrete child witness")
 
 
-def _certified_false(
+def certified_false(
     kind: str,
     reason: str,
     *,
@@ -65,10 +68,12 @@ def _certified_false(
     )
 
 
-def _validated_false(problem: Any, witness: Any, rejected_reason: str) -> ProofResult:
+def validated_false(
+    problem: DifferenceProblemProtocol, witness: Any, rejected_reason: str
+) -> ProofResult:
     confirmed = confirm_difference(
-        _lhs_confirmation_source(problem),
-        _rhs_confirmation_source(problem),
+        lhs_confirmation_source(problem),
+        rhs_confirmation_source(problem),
         witness,
     )
     if confirmed.status == "unsupported":
@@ -80,14 +85,14 @@ def _validated_false(problem: Any, witness: Any, rejected_reason: str) -> ProofR
     return ProofResult.unsupported(rejected_reason)
 
 
-def _validated_any_false(
-    problem: Any, witnesses: tuple[Any, ...], missing_reason: str
+def validated_any_false(
+    problem: DifferenceProblemProtocol, witnesses: tuple[Any, ...], missing_reason: str
 ) -> ProofResult:
     unsupported: ProofResult | None = None
     for witness in witnesses:
         confirmed = confirm_difference(
-            _lhs_confirmation_source(problem),
-            _rhs_confirmation_source(problem),
+            lhs_confirmation_source(problem),
+            rhs_confirmation_source(problem),
             witness,
         )
         if confirmed.status == "unsupported":
@@ -100,26 +105,28 @@ def _validated_any_false(
     return unsupported or ProofResult.unsupported(missing_reason)
 
 
-def _array_witness_horizon(problem: Any) -> int:
-    return cast(int, problem.context.default_search_horizon)
+def array_witness_horizon(problem: DifferenceProblemProtocol) -> int:
+    return problem.context.default_search_horizon
 
 
-def _lhs_confirmation_source(problem: Any) -> Any:
+def lhs_confirmation_source(problem: DifferenceProblemProtocol) -> SchemaSource:
     return problem.formula.lhs.source.to_source()
 
 
-def _rhs_confirmation_source(problem: Any) -> Any:
+def rhs_confirmation_source(problem: DifferenceProblemProtocol) -> SchemaSource:
     return problem.formula.rhs.source.to_source()
 
 
-def _contains_static_reference(problem: Any) -> bool:
+def contains_static_reference(problem: DifferenceProblemProtocol) -> bool:
     return bool(
         _has_blocking_lhs_static_reference_boundary(problem)
         or problem.formula.rhs.semantics.reference.has_static_reference_boundary
     )
 
 
-def _has_blocking_lhs_static_reference_boundary(problem: Any) -> bool:
+def _has_blocking_lhs_static_reference_boundary(
+    problem: DifferenceProblemProtocol,
+) -> bool:
     lhs_term = problem.formula.lhs_term
     if isinstance(lhs_term, SchemaTerm):
         return _term_has_blocking_static_reference_boundary(
@@ -129,7 +136,7 @@ def _has_blocking_lhs_static_reference_boundary(problem: Any) -> bool:
     return _ir_has_blocking_static_reference_boundary(lhs)
 
 
-def _ir_has_blocking_static_reference_boundary(ir: Any) -> bool:
+def _ir_has_blocking_static_reference_boundary(ir: LogicalSchemaIR) -> bool:
     if not ir.semantics.reference.has_static_reference_boundary:
         return False
     reference = ir.semantics.reference
@@ -147,7 +154,7 @@ def _ir_has_blocking_static_reference_boundary(ir: Any) -> bool:
 
 def _term_has_blocking_static_reference_boundary(
     term: SchemaTerm,
-    ir: Any,
+    ir: LogicalSchemaIR,
 ) -> bool:
     match term.kind:
         case "true" | "false":
@@ -168,7 +175,7 @@ def _term_has_blocking_static_reference_boundary(
             )
 
 
-def _node_has_blocking_static_reference_boundary(node: Any) -> bool:
+def _node_has_blocking_static_reference_boundary(node: SchemaNode) -> bool:
     if not node.semantics.reference.has_static_reference_boundary:
         return False
     reference = node.semantics.reference

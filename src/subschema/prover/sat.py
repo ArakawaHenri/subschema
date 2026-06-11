@@ -55,43 +55,43 @@ from subschema.prover.formulas import (
 )
 from subschema.prover.protocols import ProofContextProtocol
 from subschema.prover.rules.applicators import (
-    _prove_conditional_applicator_difference,
-    _prove_left_all_of_applicator_difference,
-    _prove_left_any_of_applicator_difference,
-    _prove_left_one_of_applicator_difference,
-    _prove_right_all_of_applicator_difference,
-    _prove_right_any_of_applicator_difference,
-    _prove_right_not_applicator_difference,
-    _prove_right_one_of_applicator_difference,
+    prove_conditional_applicator_difference,
+    prove_left_all_of_applicator_difference,
+    prove_left_any_of_applicator_difference,
+    prove_left_one_of_applicator_difference,
+    prove_right_all_of_applicator_difference,
+    prove_right_any_of_applicator_difference,
+    prove_right_not_applicator_difference,
+    prove_right_one_of_applicator_difference,
 )
 from subschema.prover.rules.arrays import (
-    _prove_array_contains_difference,
-    _prove_array_item_values_difference,
-    _prove_array_length_difference,
-    _prove_array_unevaluated_items_difference,
-    _prove_array_uniqueness_difference,
+    prove_array_contains_difference,
+    prove_array_item_values_difference,
+    prove_array_length_difference,
+    prove_array_unevaluated_items_difference,
+    prove_array_uniqueness_difference,
 )
 from subschema.prover.rules.common import (
-    _validated_false,
+    validated_false,
 )
 from subschema.prover.rules.objects import (
-    _prove_closed_object_properties_difference,
-    _prove_object_key_value_difference,
-    _prove_object_presence_product_difference,
-    _prove_object_property_count_difference,
-    _prove_object_property_names_difference,
-    _prove_object_property_values_difference,
-    _prove_object_unevaluated_properties_difference,
+    prove_closed_object_properties_difference,
+    prove_object_key_value_difference,
+    prove_object_presence_product_difference,
+    prove_object_property_count_difference,
+    prove_object_property_names_difference,
+    prove_object_property_values_difference,
+    prove_object_unevaluated_properties_difference,
 )
 from subschema.prover.rules.scalars import (
-    _prove_finite_complement_difference,
-    _prove_finite_lhs_difference,
-    _prove_finite_rhs_difference,
-    _prove_numeric_difference,
-    _prove_string_language_difference,
-    _prove_string_length_difference,
-    _prove_type_difference,
-    _prove_typed_scalar_difference,
+    prove_finite_complement_difference,
+    prove_finite_lhs_difference,
+    prove_finite_rhs_difference,
+    prove_numeric_difference,
+    prove_string_language_difference,
+    prove_string_length_difference,
+    prove_type_difference,
+    prove_typed_scalar_difference,
 )
 from subschema.prover.witnesses import build_ir_witness, build_term_witness
 
@@ -701,28 +701,28 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "finite-domain-ir",
-            _prove_finite_lhs_difference,
+            prove_finite_lhs_difference,
             fragment="finite left language",
             completeness="exact",
             witness_mode="validated",
         ),
         _rule(
             "finite-rhs-domain-ir",
-            _prove_finite_rhs_difference,
+            prove_finite_rhs_difference,
             fragment="finite right language with generated non-member witnesses",
             completeness="bounded_witness",
             witness_mode="validated",
         ),
         _rule(
             "finite-complement-ir",
-            _prove_finite_complement_difference,
+            prove_finite_complement_difference,
             fragment="complements of finite enum/const/applicator languages",
             completeness="exact",
             witness_mode="validated",
         ),
         _rule(
             "applicator-left-anyof-ir",
-            _prove_left_any_of_applicator_difference,
+            prove_left_any_of_applicator_difference,
             fragment="left-side anyOf branch coverage products",
             completeness="exact",
             witness_mode="validated",
@@ -730,7 +730,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "applicator-left-oneof-ir",
-            _prove_left_one_of_applicator_difference,
+            prove_left_one_of_applicator_difference,
             fragment="left-side oneOf branch coverage products",
             completeness="exact",
             witness_mode="validated",
@@ -738,7 +738,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "applicator-left-allof-ir",
-            _prove_left_all_of_applicator_difference,
+            prove_left_all_of_applicator_difference,
             fragment="left-side allOf covering-conjunct products",
             completeness="exact",
             witness_mode="validated",
@@ -746,7 +746,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "applicator-right-not-ir",
-            _prove_right_not_applicator_difference,
+            prove_right_not_applicator_difference,
             fragment="right-side not base, NNF schema product, and specialized overlap",
             completeness="bounded_witness",
             witness_mode="validated",
@@ -755,7 +755,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "applicator-right-anyof-ir",
-            _prove_right_any_of_applicator_difference,
+            prove_right_any_of_applicator_difference,
             fragment="right-side anyOf negative NNF branch products",
             completeness="bounded_witness",
             witness_mode="validated",
@@ -763,7 +763,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "applicator-right-oneof-ir",
-            _prove_right_one_of_applicator_difference,
+            prove_right_one_of_applicator_difference,
             fragment=(
                 "right-side oneOf base, coverage, overlap, and disjointness products"
             ),
@@ -773,7 +773,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "applicator-right-allof-ir",
-            _prove_right_all_of_applicator_difference,
+            prove_right_all_of_applicator_difference,
             fragment="right-side allOf negative NNF branch products",
             completeness="exact",
             witness_mode="validated",
@@ -781,7 +781,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "applicator-conditional-ir",
-            _prove_conditional_applicator_difference,
+            prove_conditional_applicator_difference,
             fragment="if/then/else base and guarded branch products",
             completeness="exact",
             witness_mode="validated",
@@ -790,28 +790,28 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "numeric-domain-ir",
-            _prove_numeric_difference,
+            prove_numeric_difference,
             fragment="numeric interval and multipleOf constraints",
             completeness="exact",
             witness_mode="validated",
         ),
         _rule(
             "type-domain-ir",
-            _prove_type_difference,
+            prove_type_difference,
             fragment="JSON type-set constraints",
             completeness="exact",
             witness_mode="validated",
         ),
         _rule(
             "string-length-domain-ir",
-            _prove_string_length_difference,
+            prove_string_length_difference,
             fragment="string length interval constraints",
             completeness="exact",
             witness_mode="validated",
         ),
         _rule(
             "string-language-domain-ir",
-            _prove_string_language_difference,
+            prove_string_language_difference,
             fragment="supported regular string-language constraints",
             completeness="exact",
             witness_mode="validated",
@@ -819,7 +819,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "typed-scalar-domain-ir",
-            _prove_typed_scalar_difference,
+            prove_typed_scalar_difference,
             fragment="type-partitioned numeric and string scalar constraints",
             completeness="exact",
             witness_mode="validated",
@@ -827,7 +827,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "array-unevaluated-items-ir",
-            _prove_array_unevaluated_items_difference,
+            prove_array_unevaluated_items_difference,
             fragment="evaluation-expression unevaluatedItems frontier constraints",
             completeness="bounded_witness",
             witness_mode="validated",
@@ -835,7 +835,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "array-length-ir",
-            _prove_array_length_difference,
+            prove_array_length_difference,
             fragment="array length and closed-tail constraints",
             completeness="exact",
             witness_mode="validated",
@@ -843,7 +843,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "array-uniqueness-ir",
-            _prove_array_uniqueness_difference,
+            prove_array_uniqueness_difference,
             fragment="local uniqueItems constraints and duplicate witness plans",
             completeness="bounded_witness",
             witness_mode="validated",
@@ -851,7 +851,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "array-contains-ir",
-            _prove_array_contains_difference,
+            prove_array_contains_difference,
             fragment="local contains cardinality and witness plans",
             completeness="bounded_witness",
             witness_mode="validated",
@@ -859,7 +859,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "array-item-values-ir",
-            _prove_array_item_values_difference,
+            prove_array_item_values_difference,
             fragment="array prefix/tail item-value obligations",
             completeness="bounded_witness",
             witness_mode="validated",
@@ -867,7 +867,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "object-unevaluated-properties-ir",
-            _prove_object_unevaluated_properties_difference,
+            prove_object_unevaluated_properties_difference,
             fragment="evaluation-expression unevaluatedProperties frontier constraints",
             completeness="bounded_witness",
             witness_mode="validated",
@@ -875,14 +875,14 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "object-property-count-ir",
-            _prove_object_property_count_difference,
+            prove_object_property_count_difference,
             fragment="object property-count constraints",
             completeness="exact",
             witness_mode="validated",
         ),
         _rule(
             "object-presence-product-ir",
-            _prove_object_presence_product_difference,
+            prove_object_presence_product_difference,
             fragment=(
                 "required and dependency presence products over finite key universes"
             ),
@@ -892,14 +892,14 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "object-property-values-ir",
-            _prove_object_property_values_difference,
+            prove_object_property_values_difference,
             fragment="object property-value obligations",
             completeness="bounded_witness",
             witness_mode="validated",
         ),
         _rule(
             "object-key-value-ir",
-            _prove_object_key_value_difference,
+            prove_object_key_value_difference,
             fragment="object explicit, pattern, and fresh key/value products",
             completeness="bounded_witness",
             witness_mode="validated",
@@ -907,7 +907,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "object-property-names-ir",
-            _prove_object_property_names_difference,
+            prove_object_property_names_difference,
             fragment="object propertyNames keyspace and repair witness plans",
             completeness="bounded_witness",
             witness_mode="validated",
@@ -915,7 +915,7 @@ def difference_rules() -> tuple[DifferenceRule, ...]:
         ),
         _rule(
             "object-closed-properties-ir",
-            _prove_closed_object_properties_difference,
+            prove_closed_object_properties_difference,
             fragment="closed object keyspace and property-value obligations",
             completeness="bounded_witness",
             witness_mode="validated",
@@ -1186,7 +1186,7 @@ def _prove_static_reference_difference(problem: DifferenceProblem) -> ProofResul
         return ProofResult.unsupported(
             "SAT static-reference witness could not be constructed"
         )
-    return _validated_false(
+    return validated_false(
         problem, proof.witness, "SAT static-reference witness was rejected"
     )
 
@@ -1208,7 +1208,7 @@ def _try_static_reference_target_subproof(
     if proof.status in {"proved_true", "resource_exhausted"}:
         return proof
     if proof.status == "proved_false" and proof.witness is not None:
-        confirmed = _validated_false(
+        confirmed = validated_false(
             problem,
             proof.witness,
             "SAT static-reference target witness was rejected",
@@ -1230,7 +1230,7 @@ def _constructive_static_reference_false(problem: DifferenceProblem) -> ProofRes
             witness.reason
             or "SAT static-reference constructive witness could not be built"
         )
-    return _validated_false(
+    return validated_false(
         problem,
         witness.witness,
         "SAT static-reference constructive witness was rejected",
@@ -1290,7 +1290,7 @@ def _prove_dynamic_reference_difference(problem: DifferenceProblem) -> ProofResu
         return ProofResult.unsupported(
             "SAT dynamic-reference witness could not be constructed"
         )
-    return _validated_false(
+    return validated_false(
         problem, proof.witness, "SAT dynamic-reference witness was rejected"
     )
 

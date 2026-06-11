@@ -5,7 +5,6 @@ from typing import Any
 from unittest.mock import patch
 
 import subschema.api as public_api
-from subschema.api import _difference_formula_from_schemas as difference_formula_from_schemas
 import subschema.compiler.normalization as compiler_normalization_module
 import subschema.compiler.semantics as semantics_module
 import subschema.prover.applicators as applicators_module
@@ -42,11 +41,6 @@ import subschema.compiler.domains.objects as objects_module
 import subschema.compiler.domains.strings as strings_module
 import subschema.compiler.domains.types as types_module
 from subschema.compiler.ir import SchemaIRCompiler
-from subschema.api import (
-    _proof_engine as proof_engine,
-    _proof_engine_for_schemas as proof_engine_for_schemas,
-    _schemas_are_disjoint as schemas_are_disjoint,
-)
 from subschema.exceptions import UnsupportedKeywordError
 from subschema.values import json_semantic_key
 from subschema.prover.applicators import (
@@ -249,6 +243,10 @@ from test.proof_oracle import (
     assert_concrete_evaluator_matches_validator,
     assert_concrete_evaluator_unsupported,
     assert_witness_validates,
+    difference_formula_from_schemas,
+    proof_engine,
+    proof_engine_for_schemas,
+    schemas_are_disjoint,
 )
 from test.semantic_oracle import ConcreteEvaluator
 
@@ -921,7 +919,7 @@ class TestProofEngineRouting(unittest.TestCase):
             schema, {"type": "object"}, dialect=Dialect.DRAFT202012
         )
 
-        proof = engine._bounded_ir_proof(schema, {"type": "object"})
+        proof = engine.bounded_ir_proof(schema, {"type": "object"})
 
         self.assertEqual(proof.status, "unsupported")
         self.assertEqual(
@@ -1295,11 +1293,9 @@ class TestProofEngineRouting(unittest.TestCase):
 
     def test_meet_and_join_use_compiler_projection_services(self):
         projection_sources = inspect.getsource(
-            public_api._SchemaProofEngine.meet
-        ) + inspect.getsource(public_api._SchemaProofEngine.join)
+            public_api.meet_schemas
+        ) + inspect.getsource(public_api.join_schemas)
 
-        self.assertIn("_meet_projection_with_context", projection_sources)
-        self.assertIn("_join_projection_with_context", projection_sources)
         self.assertNotIn("_raw_meet_projection", projection_sources)
         self.assertNotIn("_raw_join_projection", projection_sources)
         self.assertNotIn("self.context.meet", projection_sources)
@@ -1310,12 +1306,12 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertFalse(hasattr(ProofContext, "join"))
         self.assertNotIn("finite_", projection_sources)
         self.assertEqual(
-            public_api._meet_projection_with_context.__module__,
-            "subschema.api",
+            public_api.meet_schemas({"type": "integer"}, True),
+            {"type": "integer"},
         )
         self.assertEqual(
-            public_api._join_projection_with_context.__module__,
-            "subschema.api",
+            public_api.join_schemas(False, {"type": "integer"}),
+            {"type": "integer"},
         )
         self.assertEqual(ProjectionEngine.__module__, "subschema.prover.projection")
 
@@ -3657,7 +3653,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn(
             'base_proof.status == "proved_false"', inspect.getsource(sat_module)
         )
-        self.assertTrue(hasattr(applicator_rules_module, "ApplicatorProofFlow"))
+        self.assertTrue(hasattr(applicator_rules_module, "_ApplicatorProofFlow"))
         self.assertIn(
             "_run_right_applicator_base_first_flow",
             inspect.getsource(applicator_rules_module._run_right_applicator_flow),
@@ -3689,25 +3685,25 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn(
             "right_applicator_base_first_result_choice",
             inspect.getsource(
-                applicator_rules_module._prove_right_not_applicator_difference
+                applicator_rules_module.prove_right_not_applicator_difference
             ),
         )
         self.assertNotIn(
             "right_applicator_branch_first_pre_base_choice",
             inspect.getsource(
-                applicator_rules_module._prove_right_any_of_applicator_difference
+                applicator_rules_module.prove_right_any_of_applicator_difference
             ),
         )
         self.assertNotIn(
             "right_applicator_branch_first_result_choice",
             inspect.getsource(
-                applicator_rules_module._prove_right_any_of_applicator_difference
+                applicator_rules_module.prove_right_any_of_applicator_difference
             ),
         )
         self.assertNotIn(
             'branch_proof.status == "proved_true" and base_proof.status == "proved_true"',
             inspect.getsource(
-                applicator_rules_module._prove_right_not_applicator_difference
+                applicator_rules_module.prove_right_not_applicator_difference
             ),
         )
         self.assertNotIn("right-not base witness", inspect.getsource(sat_module))
@@ -4133,9 +4129,9 @@ class TestProofEngineRouting(unittest.TestCase):
             ),
         )
         self.assertIn(
-            "ApplicatorProofFlow",
+            "_ApplicatorProofFlow",
             inspect.getsource(
-                applicator_rules_module._prove_right_one_of_applicator_difference
+                applicator_rules_module.prove_right_one_of_applicator_difference
             ),
         )
         self.assertIn(
@@ -4253,8 +4249,8 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIn("_realize_right_not_decision", prove_rhs_not_source)
         self.assertNotIn("right_not_witness_plan", prove_rhs_not_source)
         self.assertNotIn("right_not_intersection_witness_plan", prove_rhs_not_source)
-        self.assertNotIn("_validated_false", prove_rhs_not_source)
-        self.assertNotIn("_certified_false", prove_rhs_not_source)
+        self.assertNotIn("validated_false", prove_rhs_not_source)
+        self.assertNotIn("certified_false", prove_rhs_not_source)
         self.assertIn(
             "right_not_string_overlap_plan_from_constraints",
             plan_rhs_not_source,
@@ -4273,15 +4269,15 @@ class TestProofEngineRouting(unittest.TestCase):
             "product.rhs_string_language_constraint",
             plan_rhs_not_source,
         )
-        self.assertIn("RightNotWitnessObligation", plan_rhs_not_source)
+        self.assertIn("_RightNotWitnessObligation", plan_rhs_not_source)
         self.assertNotIn("RightNotCertificateObligation", plan_rhs_not_source)
         self.assertIn("right_not_witness_plan", realize_rhs_not_obligation_source)
         self.assertIn(
             "right_not_intersection_witness_plan", realize_rhs_not_obligation_source
         )
-        self.assertIn("_validated_false", realize_rhs_not_plan_source)
+        self.assertIn("validated_false", realize_rhs_not_plan_source)
         self.assertIn("ProofResult.certified_false", realize_rhs_not_plan_source)
-        self.assertNotIn("_certified_false", realize_rhs_not_source)
+        self.assertNotIn("certified_false", realize_rhs_not_source)
         self.assertIn("_realize_right_not_witness_obligation", realize_rhs_not_source)
         self.assertNotIn("right_not_complement_schema", plan_rhs_not_source)
         self.assertNotIn(
@@ -4314,10 +4310,6 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn("positive_node.source.schema", plan_rhs_not_source)
         self.assertNotIn('{"not": rhs_schema}', plan_rhs_not_source)
         self.assertNotIn("_schema_node_constraint", inspect.getsource(sat_module))
-        self.assertEqual(
-            public_api._schemas_are_disjoint.__module__,
-            "subschema.api",
-        )
         self.assertFalse(hasattr(sat_module, "_prove_schema_disjoint"))
         self.assertNotIn(
             "schema_type_overapproximations_are_disjoint", inspect.getsource(sat_module)
@@ -4601,19 +4593,19 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "problem.array_model",
-            inspect.getsource(array_rules_module._prove_array_length_difference),
+            inspect.getsource(array_rules_module.prove_array_length_difference),
         )
         self.assertIn(
             "finite_constraint",
-            inspect.getsource(scalar_rules_module._prove_finite_lhs_difference),
+            inspect.getsource(scalar_rules_module.prove_finite_lhs_difference),
         )
         self.assertIn(
             "lhs_constraint",
-            inspect.getsource(scalar_rules_module._prove_finite_lhs_difference),
+            inspect.getsource(scalar_rules_module.prove_finite_lhs_difference),
         )
         self.assertNotIn(
             "formula.lhs.finite_values",
-            inspect.getsource(scalar_rules_module._prove_finite_lhs_difference),
+            inspect.getsource(scalar_rules_module.prove_finite_lhs_difference),
         )
         self.assertIn(
             "_side_formula_assertion",
@@ -4625,94 +4617,94 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertFalse(hasattr(sat_module, "_json_values_equal"))
         self.assertIn(
             "finite_rhs_difference_plan",
-            inspect.getsource(scalar_rules_module._prove_finite_rhs_difference),
+            inspect.getsource(scalar_rules_module.prove_finite_rhs_difference),
         )
         self.assertIn(
             "lhs_constraint",
-            inspect.getsource(scalar_rules_module._prove_finite_rhs_difference),
+            inspect.getsource(scalar_rules_module.prove_finite_rhs_difference),
         )
         self.assertIn(
             "rhs_constraint",
-            inspect.getsource(scalar_rules_module._prove_finite_rhs_difference),
+            inspect.getsource(scalar_rules_module.prove_finite_rhs_difference),
         )
         self.assertNotIn(
             "witness_not_in",
-            inspect.getsource(scalar_rules_module._prove_type_difference),
+            inspect.getsource(scalar_rules_module.prove_type_difference),
         )
         self.assertNotIn(
             "witness_not_in",
-            inspect.getsource(scalar_rules_module._prove_numeric_difference),
+            inspect.getsource(scalar_rules_module.prove_numeric_difference),
         )
         self.assertNotIn(
             "witness_not_in",
-            inspect.getsource(scalar_rules_module._prove_string_length_difference),
+            inspect.getsource(scalar_rules_module.prove_string_length_difference),
         )
         self.assertNotIn(
             "witness_not_in",
-            inspect.getsource(scalar_rules_module._prove_string_language_difference),
+            inspect.getsource(scalar_rules_module.prove_string_language_difference),
         )
         self.assertIn(
             "type_difference_plan",
-            inspect.getsource(scalar_rules_module._prove_type_difference),
+            inspect.getsource(scalar_rules_module.prove_type_difference),
         )
         self.assertIn(
             "numeric_difference_plan",
-            inspect.getsource(scalar_rules_module._prove_numeric_difference),
+            inspect.getsource(scalar_rules_module.prove_numeric_difference),
         )
         self.assertIn(
             "string_length_difference_plan",
-            inspect.getsource(scalar_rules_module._prove_string_length_difference),
+            inspect.getsource(scalar_rules_module.prove_string_length_difference),
         )
         self.assertIn(
             "string_language_difference_plan",
-            inspect.getsource(scalar_rules_module._prove_string_language_difference),
+            inspect.getsource(scalar_rules_module.prove_string_language_difference),
         )
         self.assertIn(
             "lhs_constraint",
-            inspect.getsource(scalar_rules_module._prove_type_difference),
+            inspect.getsource(scalar_rules_module.prove_type_difference),
         )
         self.assertIn(
             "rhs_constraint",
-            inspect.getsource(scalar_rules_module._prove_type_difference),
+            inspect.getsource(scalar_rules_module.prove_type_difference),
         )
         self.assertIn(
             "lhs_constraint",
-            inspect.getsource(scalar_rules_module._prove_numeric_difference),
+            inspect.getsource(scalar_rules_module.prove_numeric_difference),
         )
         self.assertIn(
             "rhs_constraint",
-            inspect.getsource(scalar_rules_module._prove_numeric_difference),
+            inspect.getsource(scalar_rules_module.prove_numeric_difference),
         )
         self.assertIn("ScalarDifferencePlan", inspect.getsource(scalars_module))
         self.assertIn("FiniteRhsDifferencePlan", inspect.getsource(scalars_module))
         self.assertNotIn(
             "lhs_length",
-            inspect.getsource(array_rules_module._prove_array_length_difference),
+            inspect.getsource(array_rules_module.prove_array_length_difference),
         )
         self.assertNotIn(
             "rhs_length",
-            inspect.getsource(array_rules_module._prove_array_length_difference),
+            inspect.getsource(array_rules_module.prove_array_length_difference),
         )
         self.assertNotIn(
             "witness_not_in",
-            inspect.getsource(array_rules_module._prove_array_length_difference),
+            inspect.getsource(array_rules_module.prove_array_length_difference),
         )
         self.assertNotIn("_schema_type_is_array_only", inspect.getsource(sat_module))
         self.assertNotIn(
             "contains_empty_min_violation_possible(",
-            inspect.getsource(array_rules_module._prove_array_contains_difference),
+            inspect.getsource(array_rules_module.prove_array_contains_difference),
         )
         self.assertNotIn(
             "minimum_contains_matches_guaranteed(",
-            inspect.getsource(array_rules_module._prove_array_contains_difference),
+            inspect.getsource(array_rules_module.prove_array_contains_difference),
         )
         self.assertNotIn(
             "contains_min_violation_witness_plan(",
-            inspect.getsource(array_rules_module._prove_array_contains_difference),
+            inspect.getsource(array_rules_module.prove_array_contains_difference),
         )
         self.assertNotIn(
             "maximum_contains_matches_possible(",
-            inspect.getsource(array_rules_module._prove_array_contains_difference),
+            inspect.getsource(array_rules_module.prove_array_contains_difference),
         )
         self.assertNotIn(
             "_rhs_all_of_evaluated_item_sources", inspect.getsource(sat_module)
@@ -4726,19 +4718,19 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn(
             "lhs_length",
             inspect.getsource(
-                array_rules_module._prove_array_unevaluated_items_difference
+                array_rules_module.prove_array_unevaluated_items_difference
             ),
         )
         self.assertNotIn(
-            "_array_static_reference_unsupported",
+            "array_static_reference_unsupported",
             inspect.getsource(
-                array_rules_module._prove_array_unevaluated_items_difference
+                array_rules_module.prove_array_unevaluated_items_difference
             ),
         )
         self.assertIn(
-            "_lhs_static_reference_unsupported",
+            "lhs_static_reference_unsupported",
             inspect.getsource(
-                array_rules_module._prove_array_unevaluated_items_difference
+                array_rules_module.prove_array_unevaluated_items_difference
             ),
         )
         self.assertNotIn(
@@ -4751,19 +4743,19 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertNotIn(
             "lhs_key_values",
             inspect.getsource(
-                object_rules_module._prove_object_unevaluated_properties_difference
+                object_rules_module.prove_object_unevaluated_properties_difference
             ),
         )
         self.assertNotIn(
-            "_object_static_reference_unsupported",
+            "object_static_reference_unsupported",
             inspect.getsource(
-                object_rules_module._prove_object_unevaluated_properties_difference
+                object_rules_module.prove_object_unevaluated_properties_difference
             ),
         )
         self.assertIn(
-            "_lhs_static_reference_unsupported",
+            "lhs_static_reference_unsupported",
             inspect.getsource(
-                object_rules_module._prove_object_unevaluated_properties_difference
+                object_rules_module.prove_object_unevaluated_properties_difference
             ),
         )
         difference_model_sources = inspect.getsource(
@@ -4788,26 +4780,26 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertNotIn(
             "lhs_uniqueness",
-            inspect.getsource(array_rules_module._prove_array_uniqueness_difference),
+            inspect.getsource(array_rules_module.prove_array_uniqueness_difference),
         )
         self.assertNotIn(
             "rhs_uniqueness",
-            inspect.getsource(array_rules_module._prove_array_uniqueness_difference),
+            inspect.getsource(array_rules_module.prove_array_uniqueness_difference),
         )
         self.assertNotIn(
             "uniqueness_duplicate_witness_plan(",
-            inspect.getsource(array_rules_module._prove_array_uniqueness_difference),
+            inspect.getsource(array_rules_module.prove_array_uniqueness_difference),
         )
         self.assertNotIn(
             "_is_array_item_values_fragment_schema", inspect.getsource(sat_module)
         )
         self.assertNotIn(
             "has_rhs_item_value_constraints(",
-            inspect.getsource(array_rules_module._prove_array_item_values_difference),
+            inspect.getsource(array_rules_module.prove_array_item_values_difference),
         )
         self.assertNotIn(
             "item_value_obligations(",
-            inspect.getsource(array_rules_module._prove_array_item_values_difference),
+            inspect.getsource(array_rules_module.prove_array_item_values_difference),
         )
         self.assertNotIn(
             "object_property_count_shape_for_schema",
@@ -4816,25 +4808,25 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIn(
             "problem.object_model",
             inspect.getsource(
-                object_rules_module._prove_object_property_count_difference
+                object_rules_module.prove_object_property_count_difference
             ),
         )
         self.assertNotIn(
             "lhs_property_count",
             inspect.getsource(
-                object_rules_module._prove_object_property_count_difference
+                object_rules_module.prove_object_property_count_difference
             ),
         )
         self.assertNotIn(
             "rhs_property_count",
             inspect.getsource(
-                object_rules_module._prove_object_property_count_difference
+                object_rules_module.prove_object_property_count_difference
             ),
         )
         self.assertNotIn(
             "witness_not_in",
             inspect.getsource(
-                object_rules_module._prove_object_property_count_difference
+                object_rules_module.prove_object_property_count_difference
             ),
         )
         self.assertFalse(hasattr(sat_module, "object_key_value_shape_for_schema"))
@@ -4850,65 +4842,65 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertFalse(hasattr(sat_module, "_repair_object_property_names_witness"))
         self.assertNotIn(
             "lhs_key_values",
-            inspect.getsource(object_rules_module._prove_object_key_value_difference),
+            inspect.getsource(object_rules_module.prove_object_key_value_difference),
         )
         self.assertNotIn(
             "rhs_key_values",
-            inspect.getsource(object_rules_module._prove_object_key_value_difference),
+            inspect.getsource(object_rules_module.prove_object_key_value_difference),
         )
         self.assertNotIn(
             "key_value_product_supported(",
-            inspect.getsource(object_rules_module._prove_object_key_value_difference),
+            inspect.getsource(object_rules_module.prove_object_key_value_difference),
         )
         self.assertNotIn(
             "key_value_obligations(",
-            inspect.getsource(object_rules_module._prove_object_key_value_difference),
+            inspect.getsource(object_rules_module.prove_object_key_value_difference),
         )
         self.assertIn(
             "materialize_object_key_value_witness_skeleton",
-            inspect.getsource(object_rules_module._prove_object_key_value_difference),
+            inspect.getsource(object_rules_module.prove_object_key_value_difference),
         )
         self.assertNotIn(
             "lhs_property_values",
             inspect.getsource(
-                object_rules_module._prove_object_property_values_difference
+                object_rules_module.prove_object_property_values_difference
             ),
         )
         self.assertNotIn(
             "rhs_property_values",
             inspect.getsource(
-                object_rules_module._prove_object_property_values_difference
+                object_rules_module.prove_object_property_values_difference
             ),
         )
         self.assertNotIn(
             "property_value_obligations(",
             inspect.getsource(
-                object_rules_module._prove_object_property_values_difference
+                object_rules_module.prove_object_property_values_difference
             ),
         )
         self.assertFalse(hasattr(sat_module, "_object_property_values_witness"))
         self.assertIn(
             "materialize_object_property_value_witness_skeleton",
             inspect.getsource(
-                object_rules_module._prove_object_property_values_difference
+                object_rules_module.prove_object_property_values_difference
             ),
         )
         self.assertNotIn(
             "lhs_closed_properties",
             inspect.getsource(
-                object_rules_module._prove_closed_object_properties_difference
+                object_rules_module.prove_closed_object_properties_difference
             ),
         )
         self.assertNotIn(
             "rhs_closed_properties",
             inspect.getsource(
-                object_rules_module._prove_closed_object_properties_difference
+                object_rules_module.prove_closed_object_properties_difference
             ),
         )
         self.assertNotIn(
             "closed_object_value_obligations(",
             inspect.getsource(
-                object_rules_module._prove_closed_object_properties_difference
+                object_rules_module.prove_closed_object_properties_difference
             ),
         )
         self.assertFalse(hasattr(sat_module, "_closed_object_witness"))
@@ -4916,7 +4908,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIn(
             "materialize_closed_object_witness_skeleton",
             inspect.getsource(
-                object_rules_module._prove_closed_object_properties_difference
+                object_rules_module.prove_closed_object_properties_difference
             ),
         )
         self.assertNotIn(
@@ -4933,7 +4925,7 @@ class TestProofEngineRouting(unittest.TestCase):
         self.assertIn(
             "materialize_object_property_names_repair_skeleton",
             inspect.getsource(
-                object_rules_module._prove_object_property_names_difference
+                object_rules_module.prove_object_property_names_difference
             ),
         )
         self.assertFalse(hasattr(sat_module, "_rhs_has_array_item_value_constraints"))
@@ -4958,12 +4950,12 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertIn(
             "materialize_array_witness_plan",
-            inspect.getsource(array_rules_module._prove_array_contains_difference),
+            inspect.getsource(array_rules_module.prove_array_contains_difference),
         )
         self.assertFalse(hasattr(sat_module, "_array_length_shape_allows"))
         self.assertNotIn(
             "[None, None]",
-            inspect.getsource(array_rules_module._prove_array_uniqueness_difference),
+            inspect.getsource(array_rules_module.prove_array_uniqueness_difference),
         )
         self.assertNotIn("presence_property_sets(", inspect.getsource(sat_module))
         self.assertNotIn(
@@ -4976,8 +4968,8 @@ class TestProofEngineRouting(unittest.TestCase):
             inspect.getsource(engine_module.ProofEngine.is_ir_subschema),
         )
         self.assertIn(
-            "EmptinessSolver",
-            inspect.getsource(public_api._bounded_ir_proof),
+            "prove_formula_difference_empty",
+            inspect.getsource(sat_module.EmptinessSolver),
         )
         self.assertFalse(hasattr(driver_module, "bounded_ir_proof"))
         self.assertFalse(hasattr(driver_module, "prove_subschema_with_context"))
@@ -5114,7 +5106,7 @@ class TestProofEngineRouting(unittest.TestCase):
             {"type": "array"}, {"const": []}, dialect=Dialect.DRAFT7
         )
 
-        proof = engine._bounded_ir_proof({"type": "array"}, {"const": []})
+        proof = engine.bounded_ir_proof({"type": "array"}, {"const": []})
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(proof.witness, [None])
@@ -5135,7 +5127,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIsInstance(proof.witness, int)
@@ -5158,7 +5150,7 @@ class TestProofEngineRouting(unittest.TestCase):
         )
         self.assertEqual(type_constraint_plan, type_plan)
         type_engine = proof_engine_for_schemas({"type": "null"}, {"type": "string"})
-        type_proof = type_engine._bounded_ir_proof({"type": "null"}, {"type": "string"})
+        type_proof = type_engine.bounded_ir_proof({"type": "null"}, {"type": "string"})
         self.assertEqual(type_proof.status, "proved_false")
         self.assertIsNone(type_proof.witness)
 
@@ -6352,7 +6344,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -6517,7 +6509,7 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string"}
         engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT7)
 
-        proof = engine._bounded_ir_proof(lhs, rhs)
+        proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "unsupported")
         self.assertIn("dialect transition in lhs target", proof.reason)
@@ -6560,7 +6552,7 @@ class TestProofEngineRouting(unittest.TestCase):
         }
         engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
 
-        proof = engine._bounded_ir_proof(lhs, rhs)
+        proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertNotEqual(proof.witness, 1)
@@ -6579,7 +6571,7 @@ class TestProofEngineRouting(unittest.TestCase):
             lhs, {"type": "string"}, dialect=Dialect.DRAFT7
         )
 
-        proof = engine._bounded_ir_proof(lhs, {"type": "string"})
+        proof = engine.bounded_ir_proof(lhs, {"type": "string"})
 
         self.assertEqual(proof.status, "unsupported")
         self.assertIn("nested references in lhs target", proof.reason)
@@ -7114,7 +7106,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -7147,7 +7139,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -7177,7 +7169,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertGreaterEqual(len(proof.witness), 2)
@@ -7198,7 +7190,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIsInstance(proof.witness, int)
@@ -7221,7 +7213,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIsInstance(proof.witness, list)
@@ -7251,7 +7243,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIsInstance(proof.witness, list)
@@ -7318,7 +7310,7 @@ class TestProofEngineRouting(unittest.TestCase):
                     fail_unexpected_proof_path,
                     create=True,
                 ):
-                    proof = engine._bounded_ir_proof(lhs, rhs)
+                    proof = engine.bounded_ir_proof(lhs, rhs)
 
                 self.assertEqual(proof.status, "proved_false")
                 self.assertIsInstance(proof.witness, list)
@@ -7347,7 +7339,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIsInstance(proof.witness, list)
@@ -7407,7 +7399,7 @@ class TestProofEngineRouting(unittest.TestCase):
                     fail_unexpected_proof_path,
                     create=True,
                 ):
-                    proof = engine._bounded_ir_proof(lhs, rhs)
+                    proof = engine.bounded_ir_proof(lhs, rhs)
 
                 self.assertEqual(proof.status, "proved_false")
                 self.assertIsInstance(proof.witness, dict)
@@ -7435,7 +7427,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(set(proof.witness), {"a"})
@@ -7465,7 +7457,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertNotIn("a", proof.witness)
@@ -7487,7 +7479,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertNotIn("a", proof.witness)
@@ -7509,7 +7501,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -7529,7 +7521,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIsInstance(proof.witness, list)
@@ -7551,7 +7543,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIsInstance(proof.witness, list)
@@ -7573,7 +7565,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(len(proof.witness), 2)
@@ -7602,7 +7594,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(len(proof.witness), 2)
@@ -7629,7 +7621,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(len(proof.witness), 2)
@@ -7657,7 +7649,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(len(proof.witness), 2)
@@ -7691,7 +7683,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(proof.witness.count(1), 1)
@@ -7721,7 +7713,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(proof.witness.count(1), 1)
@@ -7753,7 +7745,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         integer_count = sum(
@@ -7788,7 +7780,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(proof.witness.count(1), 1)
@@ -7816,7 +7808,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIsInstance(proof.witness, list)
@@ -7839,7 +7831,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(len(proof.witness), 2)
@@ -7868,7 +7860,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -7888,7 +7880,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -7912,7 +7904,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -7932,7 +7924,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIn("a", proof.witness)
@@ -7958,7 +7950,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIn("a", proof.witness)
@@ -7984,7 +7976,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIn("a", proof.witness)
@@ -8010,7 +8002,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIn("a", proof.witness)
@@ -8032,7 +8024,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIn("a", proof.witness)
@@ -8054,7 +8046,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIn("b", proof.witness)
@@ -8075,7 +8067,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIn("a", proof.witness)
@@ -8103,7 +8095,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertGreater(len(proof.witness), 2)
@@ -8125,7 +8117,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -8151,7 +8143,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(proof.witness, {})
@@ -8174,7 +8166,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -8204,7 +8196,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -8232,7 +8224,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertTrue(any(name.startswith("a") for name in proof.witness))
@@ -8261,7 +8253,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertTrue(any(name.startswith("a") for name in proof.witness))
@@ -8282,7 +8274,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIn("a", proof.witness)
@@ -8303,7 +8295,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -8323,7 +8315,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertTrue(any("b" in name for name in proof.witness))
@@ -8355,7 +8347,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -8383,7 +8375,7 @@ class TestProofEngineRouting(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertTrue(
@@ -8564,7 +8556,7 @@ class TestProofEngineRouting(unittest.TestCase):
             {"type": "string"}, dynamic_ref, dialect=Dialect.DRAFT202012
         )
 
-        proof = engine._bounded_ir_proof({"type": "string"}, dynamic_ref)
+        proof = engine.bounded_ir_proof({"type": "string"}, dynamic_ref)
 
         self.assertEqual(proof.status, "proved_true")
         self.assertFalse(proof.diagnostics)
@@ -8574,7 +8566,7 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string"}
         engine = proof_engine_for_schemas(lhs, rhs)
 
-        proof = engine._bounded_ir_proof(lhs, rhs)
+        proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
         self.assertFalse(proof.diagnostics)
@@ -8586,7 +8578,7 @@ class TestProofEngineRouting(unittest.TestCase):
         rhs = {"type": "string", "pattern": "(?=a)a"}
         engine = proof_engine_for_schemas(lhs, rhs)
 
-        proof = engine._bounded_ir_proof(lhs, rhs)
+        proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "unsupported")
         self.assertEqual(proof.diagnostics[0].category, "non-regular-regex")
@@ -9932,7 +9924,7 @@ class TestArrayUniquenessDomainProof(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(len(proof.witness), 2)
@@ -10686,7 +10678,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertIsInstance(proof.witness, dict)
@@ -10724,7 +10716,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
                 create=True,
             ),
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -10757,7 +10749,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(set(proof.witness), {"foo"})
@@ -10786,7 +10778,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        proof = engine._bounded_ir_proof(lhs, rhs)
+        proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertNotIn("bar", proof.witness)
@@ -10822,7 +10814,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
                 create=True,
             ),
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -10855,7 +10847,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(len(proof.witness), 1)
@@ -10891,7 +10883,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(len(proof.witness), 2)
@@ -10919,7 +10911,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        proof = engine._bounded_ir_proof(lhs, rhs)
+        proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertLess(len(proof.witness), 2)
@@ -10961,7 +10953,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
                 create=True,
             ),
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -10995,7 +10987,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(set(proof.witness), {"foo"})
@@ -11038,7 +11030,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
                 create=True,
             ),
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -11397,7 +11389,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
                 create=True,
             ),
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -11429,7 +11421,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(set(proof.witness), {"foo"})
@@ -11465,7 +11457,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
                 create=True,
             ),
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -11497,7 +11489,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(len(proof.witness), 1)
@@ -11544,7 +11536,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -11577,7 +11569,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        proof = engine._bounded_ir_proof(lhs, rhs)
+        proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(set(proof.witness), {"extra", "kind"})
@@ -11607,7 +11599,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        proof = engine._bounded_ir_proof(lhs, rhs)
+        proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertNotIn("kind", proof.witness)
@@ -11648,7 +11640,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -11677,7 +11669,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        proof = engine._bounded_ir_proof(lhs, rhs)
+        proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(len(proof.witness), 2)
@@ -11707,7 +11699,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        proof = engine._bounded_ir_proof(lhs, rhs)
+        proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
 
@@ -11748,7 +11740,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -11796,7 +11788,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(cat, rhs)
+            proof = engine.bounded_ir_proof(cat, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -11838,7 +11830,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(cat, rhs)
+            proof = engine.bounded_ir_proof(cat, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -11880,7 +11872,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(cat, rhs)
+            proof = engine.bounded_ir_proof(cat, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -11923,7 +11915,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(cat, rhs)
+            proof = engine.bounded_ir_proof(cat, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -11965,7 +11957,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        proof = engine._bounded_ir_proof(lhs, rhs)
+        proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "unsupported")
         self.assertIn("branch-conditioned evaluation trace paths", proof.reason)
@@ -12006,7 +11998,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -12051,7 +12043,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        proof = engine._bounded_ir_proof(lhs, rhs)
+        proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_false")
         self.assertEqual(set(proof.witness), {"extra", "kind", "name"})
@@ -12089,7 +12081,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -12144,7 +12136,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(cat, rhs)
+            proof = engine.bounded_ir_proof(cat, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -12199,7 +12191,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(dog, rhs)
+            proof = engine.bounded_ir_proof(dog, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -12263,7 +12255,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(cat_with_extra, rhs)
+            proof = engine.bounded_ir_proof(cat_with_extra, rhs)
 
         self.assertEqual(proof.status, "proved_false")
 
@@ -12309,7 +12301,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(cat, rhs)
+            proof = engine.bounded_ir_proof(cat, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 
@@ -12364,7 +12356,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             fail_unexpected_proof_path,
             create=True,
         ):
-            proof = engine._bounded_ir_proof(cat_with_extra, rhs)
+            proof = engine.bounded_ir_proof(cat_with_extra, rhs)
 
         self.assertEqual(proof.status, "proved_false")
 
@@ -12387,7 +12379,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
             options=ProofOptions(),
         )
 
-        proof = engine._bounded_ir_proof(lhs, rhs)
+        proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "unsupported")
         self.assertIn("$dynamicRef", proof.reason)
@@ -12441,7 +12433,7 @@ class TestIREngineHardFeatures(unittest.TestCase):
                 create=True,
             ),
         ):
-            proof = engine._bounded_ir_proof(lhs, rhs)
+            proof = engine.bounded_ir_proof(lhs, rhs)
 
         self.assertEqual(proof.status, "proved_true")
 

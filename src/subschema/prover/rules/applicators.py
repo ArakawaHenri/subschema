@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from subschema.contracts import ProofResult
 from subschema.ir import ReferenceUnsupportedFact, SchemaNode, TaggedBranch
@@ -61,8 +61,8 @@ from subschema.prover.overlaps import (
 )
 from subschema.prover.protocols import DifferenceProblemProtocol
 from subschema.prover.rules.common import (
-    _certified_false,
-    _validated_false,
+    certified_false,
+    validated_false,
 )
 from subschema.prover.witness_results import WitnessBuildResult
 from subschema.values import json_values_equal
@@ -85,7 +85,7 @@ RIGHT_NOT_SUBPROOF_EXHAUSTED = "SAT right-not subproof exhausted its budget"
 
 
 @dataclass(frozen=True)
-class RightNotWitnessObligation:
+class _RightNotWitnessObligation:
     kind: RightNotWitnessKind
     product: ApplicatorNnfSchemaProduct
     rejected_reason: str
@@ -94,30 +94,30 @@ class RightNotWitnessObligation:
 
 
 @dataclass(frozen=True)
-class RightNotDecision:
+class _RightNotDecision:
     proof: ProofResult | None = None
-    witness_obligation: RightNotWitnessObligation | None = None
+    witness_obligation: _RightNotWitnessObligation | None = None
 
     @classmethod
-    def from_proof(cls, proof: ProofResult) -> RightNotDecision:
+    def from_proof(cls, proof: ProofResult) -> _RightNotDecision:
         return cls(proof=proof)
 
     @classmethod
     def from_witness(
         cls,
-        obligation: RightNotWitnessObligation,
-    ) -> RightNotDecision:
+        obligation: _RightNotWitnessObligation,
+    ) -> _RightNotDecision:
         return cls(witness_obligation=obligation)
 
 
 @dataclass(frozen=True)
-class ApplicatorProofFlow:
+class _ApplicatorProofFlow:
     plan: ApplicatorPlanWithBase
     prove_branch: Callable[[], ProofResult]
     branch_first: bool = False
 
 
-def _prove_left_any_of_applicator_difference(
+def prove_left_any_of_applicator_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
     plan = problem.applicator_plan_set.branch_with_strategy("left-anyof-exact")
@@ -128,7 +128,7 @@ def _prove_left_any_of_applicator_difference(
     return _prove_left_any_of_difference(problem, plan)
 
 
-def _prove_left_one_of_applicator_difference(
+def prove_left_one_of_applicator_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
     plan = problem.applicator_plan_set.branch_with_strategy("left-oneof-exact")
@@ -139,7 +139,7 @@ def _prove_left_one_of_applicator_difference(
     return _prove_left_one_of_difference(problem, plan)
 
 
-def _prove_left_all_of_applicator_difference(
+def prove_left_all_of_applicator_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
     plan = problem.applicator_plan_set.branch_with_strategy("left-allof-exact")
@@ -150,7 +150,7 @@ def _prove_left_all_of_applicator_difference(
     return _prove_left_all_of_difference(problem, plan)
 
 
-def _prove_right_not_applicator_difference(
+def prove_right_not_applicator_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
     plan = problem.applicator_plan_set.branch_with_strategy("right-not-nnf")
@@ -160,14 +160,14 @@ def _prove_right_not_applicator_difference(
         )
     return _run_right_applicator_flow(
         problem,
-        ApplicatorProofFlow(
+        _ApplicatorProofFlow(
             plan=plan,
             prove_branch=lambda: _prove_rhs_not_difference(problem, plan.nnf),
         ),
     )
 
 
-def _prove_right_any_of_applicator_difference(
+def prove_right_any_of_applicator_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
     plan = problem.applicator_plan_set.branch_with_strategy("right-anyof-nnf-bounded")
@@ -177,7 +177,7 @@ def _prove_right_any_of_applicator_difference(
         )
     return _run_right_applicator_flow(
         problem,
-        ApplicatorProofFlow(
+        _ApplicatorProofFlow(
             plan=plan,
             prove_branch=lambda: _prove_rhs_negative_any_of_difference(
                 problem, plan.nnf
@@ -187,7 +187,7 @@ def _prove_right_any_of_applicator_difference(
     )
 
 
-def _prove_right_one_of_applicator_difference(
+def prove_right_one_of_applicator_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
     tagged_proof = _prove_tagged_right_one_of_difference(problem)
@@ -201,7 +201,7 @@ def _prove_right_one_of_applicator_difference(
         )
     return _run_right_applicator_flow(
         problem,
-        ApplicatorProofFlow(
+        _ApplicatorProofFlow(
             plan=plan,
             prove_branch=lambda: _prove_rhs_one_of_cardinality_difference(
                 problem, plan
@@ -231,13 +231,13 @@ def _prove_tagged_right_one_of_difference(
         return proof
     if proof.status == "proved_false":
         if proof.certificate is not None:
-            return _certified_false(
+            return certified_false(
                 "applicator-right-oneof",
                 "tagged right oneOf branch has a certified counterexample",
                 child=proof,
             )
         if proof.witness is not None:
-            return _validated_false(
+            return validated_false(
                 problem,
                 proof.witness,
                 "SAT tagged right-oneOf matching-tag witness was rejected",
@@ -266,7 +266,7 @@ def _matching_tagged_rhs_one_of_branch(
         return None
     for branch in tagged.branches:
         if json_values_equal(lhs_tag, branch.tag_value):
-            return cast(TaggedBranch, branch)
+            return branch
     return None
 
 
@@ -284,7 +284,7 @@ def _tagged_branch_subproof(
     )
 
 
-def _prove_right_all_of_applicator_difference(
+def prove_right_all_of_applicator_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
     plan = problem.applicator_plan_set.branch_with_strategy("right-allof-nnf-exact")
@@ -297,7 +297,7 @@ def _prove_right_all_of_applicator_difference(
 
     return _run_right_applicator_flow(
         problem,
-        ApplicatorProofFlow(
+        _ApplicatorProofFlow(
             plan=plan,
             prove_branch=lambda: _prove_rhs_negative_all_of_difference(
                 problem, plan.nnf
@@ -330,7 +330,7 @@ def _prove_rhs_all_of_evaluation_sibling_refutation(
         if proof.status == "proved_true":
             continue
         if proof.certificate is not None:
-            return _certified_false(
+            return certified_false(
                 "applicator-right-allof",
                 "right allOf child subproof has a certified counterexample",
                 child=proof,
@@ -340,7 +340,7 @@ def _prove_rhs_all_of_evaluation_sibling_refutation(
                 "SAT right-allOf branch witness could not be constructed"
             )
             continue
-        validated = _validated_false(
+        validated = validated_false(
             problem, proof.witness, "SAT right-allOf branch witness was rejected"
         )
         if validated.status != "unsupported":
@@ -354,7 +354,7 @@ def _prove_rhs_all_of_evaluation_sibling_refutation(
 
 
 def _run_right_applicator_flow(
-    problem: DifferenceProblemProtocol, flow: ApplicatorProofFlow
+    problem: DifferenceProblemProtocol, flow: _ApplicatorProofFlow
 ) -> ProofResult:
     if flow.branch_first:
         return _run_right_applicator_branch_first_flow(problem, flow)
@@ -362,7 +362,7 @@ def _run_right_applicator_flow(
 
 
 def _run_right_applicator_base_first_flow(
-    problem: DifferenceProblemProtocol, flow: ApplicatorProofFlow
+    problem: DifferenceProblemProtocol, flow: _ApplicatorProofFlow
 ) -> ProofResult:
     base_proof = ProofResult.unsupported(
         "SAT applicator sibling base requires evaluation-aware proof"
@@ -385,7 +385,7 @@ def _run_right_applicator_base_first_flow(
 
 
 def _run_right_applicator_branch_first_flow(
-    problem: DifferenceProblemProtocol, flow: ApplicatorProofFlow
+    problem: DifferenceProblemProtocol, flow: _ApplicatorProofFlow
 ) -> ProofResult:
     branch_proof = flow.prove_branch()
     if branch_proof.status in {"proved_false", "resource_exhausted"}:
@@ -411,7 +411,7 @@ def _applicator_base_is_standalone(plan: ApplicatorPlanWithBase) -> bool:
     return True
 
 
-def _prove_conditional_applicator_difference(
+def prove_conditional_applicator_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
     plan = problem.applicator_plan_set.conditional()
@@ -462,14 +462,14 @@ def _validated_applicator_base_false(
             "SAT applicator base product could not be recovered"
         )
     if proof.certificate is not None:
-        return _certified_false(
+        return certified_false(
             "applicator-base",
             "applicator base subproof has a certified counterexample",
             child=proof,
         )
     if proof.witness is None:
         return ProofResult.unsupported(product.witness_missing_reason)
-    return _validated_false(problem, proof.witness, product.witness_rejected_reason)
+    return validated_false(problem, proof.witness, product.witness_rejected_reason)
 
 
 def _prove_conditional_difference(
@@ -518,7 +518,7 @@ def _prove_conditional_difference(
             continue
         if proof.witness is None:
             return ProofResult.unsupported(product.witness_missing_reason)
-        validated = _validated_false(
+        validated = validated_false(
             problem, proof.witness, product.witness_rejected_reason
         )
         if validated.status != "unsupported":
@@ -603,7 +603,7 @@ def _prove_left_any_of_difference(
             return proof
         if proof.witness is None:
             return ProofResult.unsupported(product.witness_missing_reason)
-        validated = _validated_false(
+        validated = validated_false(
             problem, proof.witness, product.witness_rejected_reason
         )
         if validated.status != "unsupported":
@@ -633,13 +633,13 @@ def _prove_left_one_of_difference(
             unsupported = proof
             continue
         if choice == "validate_witness" and proof.certificate is not None:
-            return _certified_false(
+            return certified_false(
                 "applicator-right-anyof",
                 "negative anyOf branch product has a certified counterexample",
                 child=proof,
             )
         if choice == "validate_witness":
-            validated = _validated_false(
+            validated = validated_false(
                 problem, proof.witness, product.witness_rejected_reason
             )
             if validated.status != "unsupported":
@@ -671,13 +671,13 @@ def _prove_left_all_of_difference(
             unsupported = proof
             continue
         if choice == "validate_witness" and proof.certificate is not None:
-            return _certified_false(
+            return certified_false(
                 "applicator-right-oneof",
                 "right oneOf branch product has a certified counterexample",
                 child=proof,
             )
         if choice == "validate_witness":
-            validated = _validated_false(
+            validated = validated_false(
                 problem, proof.witness, product.witness_rejected_reason
             )
             if validated.status != "unsupported":
@@ -770,13 +770,13 @@ def _prove_rhs_negative_any_of_difference(
             unsupported = proof
             continue
         if choice == "validate_witness" and proof.certificate is not None:
-            return _certified_false(
+            return certified_false(
                 "applicator-right-anyof",
                 "negative anyOf branch product has a certified counterexample",
                 child=proof,
             )
         if choice == "validate_witness":
-            validated = _validated_false(
+            validated = validated_false(
                 problem, proof.witness, product.witness_rejected_reason
             )
             if validated.status != "unsupported":
@@ -824,7 +824,7 @@ def _prove_lhs_tuple_anyof_distribution(
             continue
         if branch_proof.status == "proved_false":
             if branch_proof.certificate is not None:
-                return _certified_false(
+                return certified_false(
                     "array-item-anyof",
                     "tuple anyOf distribution branch has a certified counterexample",
                     child=branch_proof,
@@ -833,7 +833,7 @@ def _prove_lhs_tuple_anyof_distribution(
                 return ProofResult.unsupported(
                     "tuple anyOf distribution counterexample is missing"
                 )
-            return _validated_false(
+            return validated_false(
                 problem,
                 branch_proof.witness,
                 "tuple anyOf distribution witness was rejected",
@@ -870,13 +870,13 @@ def _prove_rhs_one_of_cardinality_difference(
             unsupported = proof
             continue
         if choice == "validate_witness" and proof.certificate is not None:
-            return _certified_false(
+            return certified_false(
                 "applicator-right-oneof",
                 "right oneOf branch product has a certified counterexample",
                 child=proof,
             )
         if choice == "validate_witness":
-            validated = _validated_false(
+            validated = validated_false(
                 problem, proof.witness, product.witness_rejected_reason
             )
             if validated.status != "unsupported":
@@ -902,7 +902,7 @@ def _prove_rhs_one_of_cardinality_difference(
             return ProofResult.certified_false(witness_plan.certificate)
         if not witness_plan.has_witness:
             return ProofResult.unsupported(witness_plan.reason)
-        return _validated_false(
+        return validated_false(
             problem,
             witness_plan.witness,
             covering.overlap_product.witness_rejected_reason,
@@ -921,7 +921,7 @@ def _prove_rhs_one_of_cardinality_difference(
         if choice == "proved_true":
             continue
         if choice == "validate_witness" and disjoint.witness is not None:
-            return _validated_false(
+            return validated_false(
                 problem,
                 disjoint.witness,
                 disjoint_product.witness_rejected_reason,
@@ -994,14 +994,14 @@ def _prove_rhs_negative_all_of_difference(
         if choice == "return_proof":
             return proof
         if proof.certificate is not None:
-            return _certified_false(
+            return certified_false(
                 "applicator-right-allof",
                 "negative allOf branch product has a certified counterexample",
                 child=proof,
             )
         if proof.witness is None:
             return ProofResult.unsupported(product.witness_missing_reason)
-        validated = _validated_false(
+        validated = validated_false(
             problem, proof.witness, product.witness_rejected_reason
         )
         if validated.status != "unsupported":
@@ -1081,7 +1081,7 @@ def _certified_array_item_against_rhs_anyof(
         return None
     if not proof.has_counterexample:
         return None
-    return _certified_false(
+    return certified_false(
         "array-item-anyof",
         "a reachable array item violates every RHS anyOf array item schema",
         path=("0",),
@@ -1127,14 +1127,14 @@ def _prove_rhs_not_difference(
 
 def _plan_rhs_not_difference(
     problem: DifferenceProblemProtocol, nnf: ApplicatorNnfFragment
-) -> RightNotDecision:
+) -> _RightNotDecision:
     product = _rhs_nnf_schema_product(problem, nnf)
     if product is None:
-        return RightNotDecision.from_proof(ProofResult.unsupported(nnf.reason))
+        return _RightNotDecision.from_proof(ProofResult.unsupported(nnf.reason))
 
     rhs_term = _rhs_not_product_term(product)
     if isinstance(rhs_term, ReferenceUnsupportedFact):
-        return RightNotDecision.from_proof(
+        return _RightNotDecision.from_proof(
             ProofResult.unsupported(
                 rhs_term.reason, diagnostics=rhs_term.diagnostic("rhs")
             )
@@ -1150,16 +1150,16 @@ def _plan_rhs_not_difference(
                 problem.formula.lhs,
             )
             if proof.status == "proved_true":
-                return RightNotDecision.from_proof(ProofResult.true())
+                return _RightNotDecision.from_proof(ProofResult.true())
             if proof.status == "resource_exhausted":
-                return RightNotDecision.from_proof(
+                return _RightNotDecision.from_proof(
                     ProofResult.resource_exhausted(
                         proof.reason or RIGHT_NOT_SUBPROOF_EXHAUSTED
                     )
                 )
             if proof.status == "proved_false" and proof.witness is not None:
-                return RightNotDecision.from_witness(
-                    RightNotWitnessObligation(
+                return _RightNotDecision.from_witness(
+                    _RightNotWitnessObligation(
                         "concrete",
                         product,
                         product.complement_witness_rejected_reason,
@@ -1177,13 +1177,13 @@ def _plan_rhs_not_difference(
                 problem.formula.rhs,
             )
             if proof.status in {"proved_true", "resource_exhausted", "unsupported"}:
-                return RightNotDecision.from_proof(proof)
+                return _RightNotDecision.from_proof(proof)
             if proof.witness is None:
-                return RightNotDecision.from_proof(
+                return _RightNotDecision.from_proof(
                     ProofResult.unsupported(product.complement_witness_missing_reason)
                 )
-            return RightNotDecision.from_witness(
-                RightNotWitnessObligation(
+            return _RightNotDecision.from_witness(
+                _RightNotWitnessObligation(
                     "concrete",
                     product,
                     product.complement_witness_rejected_reason,
@@ -1201,10 +1201,10 @@ def _plan_rhs_not_difference(
             problem.context,
         )
         if disjoint.status == "proved_true":
-            return RightNotDecision.from_proof(ProofResult.true())
+            return _RightNotDecision.from_proof(ProofResult.true())
         if disjoint.status == "proved_false" and disjoint.witness is not None:
-            return RightNotDecision.from_witness(
-                RightNotWitnessObligation(
+            return _RightNotDecision.from_witness(
+                _RightNotWitnessObligation(
                     "concrete",
                     product,
                     product.witness_rejected_reason,
@@ -1213,7 +1213,7 @@ def _plan_rhs_not_difference(
                 )
             )
         if disjoint.status == "resource_exhausted":
-            return RightNotDecision.from_proof(disjoint)
+            return _RightNotDecision.from_proof(disjoint)
 
     string_overlap = right_not_string_overlap_plan_from_constraints(
         _string_language_constraint(problem.lhs_constraint("string-language")),
@@ -1222,10 +1222,10 @@ def _plan_rhs_not_difference(
     )
     choice = right_not_string_overlap_proof_choice(string_overlap.status)
     if choice == "proved_true":
-        return RightNotDecision.from_proof(ProofResult.true())
+        return _RightNotDecision.from_proof(ProofResult.true())
     if choice == "validate_witness":
-        return RightNotDecision.from_witness(
-            RightNotWitnessObligation(
+        return _RightNotDecision.from_witness(
+            _RightNotWitnessObligation(
                 "concrete",
                 product,
                 string_overlap.rejected_reason,
@@ -1234,7 +1234,7 @@ def _plan_rhs_not_difference(
             )
         )
     if choice == "return_resource_exhausted":
-        return RightNotDecision.from_proof(
+        return _RightNotDecision.from_proof(
             ProofResult.resource_exhausted(
                 string_overlap.reason or RIGHT_NOT_REGEX_EXHAUSTED
             )
@@ -1248,8 +1248,8 @@ def _plan_rhs_not_difference(
             problem.formula.rhs,
         )
         if proof.status == "proved_true":
-            return RightNotDecision.from_witness(
-                RightNotWitnessObligation(
+            return _RightNotDecision.from_witness(
+                _RightNotWitnessObligation(
                     "product",
                     product,
                     product.witness_rejected_reason,
@@ -1257,13 +1257,13 @@ def _plan_rhs_not_difference(
                 )
             )
         if proof.status == "resource_exhausted":
-            return RightNotDecision.from_proof(
+            return _RightNotDecision.from_proof(
                 ProofResult.resource_exhausted(
                     proof.reason or RIGHT_NOT_SUBPROOF_EXHAUSTED
                 )
             )
-    return RightNotDecision.from_witness(
-        RightNotWitnessObligation(
+    return _RightNotDecision.from_witness(
+        _RightNotWitnessObligation(
             "intersection",
             product,
             product.complement_witness_rejected_reason,
@@ -1274,7 +1274,7 @@ def _plan_rhs_not_difference(
 
 def _realize_right_not_decision(
     problem: DifferenceProblemProtocol,
-    decision: RightNotDecision,
+    decision: _RightNotDecision,
 ) -> ProofResult:
     if decision.proof is not None:
         return decision.proof
@@ -1288,12 +1288,12 @@ def _realize_right_not_decision(
 
 def _realize_right_not_witness_obligation(
     problem: DifferenceProblemProtocol,
-    obligation: RightNotWitnessObligation,
+    obligation: _RightNotWitnessObligation,
 ) -> ProofResult:
     if obligation.kind == "concrete":
         if obligation.witness is None:
             return ProofResult.unsupported(obligation.missing_reason)
-        return _validated_false(problem, obligation.witness, obligation.rejected_reason)
+        return validated_false(problem, obligation.witness, obligation.rejected_reason)
     if obligation.kind == "product":
         return _realize_right_not_witness_plan(
             problem,
@@ -1329,7 +1329,7 @@ def _realize_right_not_witness_plan(
     if witness_plan.status == "certificate" and witness_plan.certificate is not None:
         return ProofResult.certified_false(witness_plan.certificate)
     if witness_plan.has_witness:
-        return _validated_false(problem, witness_plan.witness, rejected_reason)
+        return validated_false(problem, witness_plan.witness, rejected_reason)
     return ProofResult.unsupported(witness_plan.reason or RIGHT_NOT_DIFFERENCE_UNPROVEN)
 
 

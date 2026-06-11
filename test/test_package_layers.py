@@ -7,6 +7,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parents[1]
 PACKAGE_ROOT = REPO_ROOT / "src" / "subschema"
+TEST_ROOT = REPO_ROOT / "test"
 PROVER_ROOT = PACKAGE_ROOT / "prover"
 IR_ROOT = PACKAGE_ROOT / "ir"
 PROVER_PREFIX = "subschema.prover"
@@ -119,6 +120,61 @@ def test_source_imports_are_strictly_one_directional():
 
     assert not violations, "source imports must be one-directional:\n" + "\n".join(
         violations
+    )
+
+
+def test_source_modules_do_not_import_private_names_from_other_modules():
+    violations: list[str] = []
+
+    for path in sorted(PACKAGE_ROOT.rglob("*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            module = "." * node.level + (node.module or "")
+            violations.extend(
+                f"{path.relative_to(REPO_ROOT)}:{node.lineno}: "
+                f"from {module} import {alias.name}"
+                for alias in node.names
+                if _is_private_imported_name(alias.name)
+            )
+
+    assert not violations, (
+        "source modules must not import underscore-prefixed names from other "
+        "modules; shared internal entrypoints should be named explicitly:\n"
+        + "\n".join(violations)
+    )
+
+
+def test_tests_do_not_access_private_public_api_names():
+    violations: list[str] = []
+
+    for path in sorted(TEST_ROOT.rglob("*.py")):
+        tree = ast.parse(path.read_text())
+        subschema_aliases = _subschema_module_aliases(tree)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                if node.module is None or not node.module.startswith("subschema."):
+                    continue
+                violations.extend(
+                    f"{path.relative_to(REPO_ROOT)}:{node.lineno}: "
+                    f"from {node.module} import {alias.name}"
+                    for alias in node.names
+                    if _is_private_imported_name(alias.name)
+                )
+            elif isinstance(node, ast.Attribute) and _is_private_imported_name(
+                node.attr
+            ):
+                owner = _subschema_attribute_owner(node.value, subschema_aliases)
+                if owner in {"subschema", "subschema.api"}:
+                    violations.append(
+                        f"{path.relative_to(REPO_ROOT)}:{node.lineno}: "
+                        f"{owner}.{node.attr}"
+                    )
+
+    assert not violations, (
+        "tests should use public package APIs or test.proof_oracle, not "
+        "subschema.api underscore-prefixed internals:\n" + "\n".join(violations)
     )
 
 
@@ -243,7 +299,6 @@ def test_proof_engine_is_ir_native_and_raw_schema_entry_stays_in_api():
     assert "def _bounded_ir_proof(" not in engine_source
     assert "context.subproof(" not in source
     assert "prove_ir_subschema_with_context" in source
-    assert "_prepared_ir_proof" not in source
     assert "def is_subschema(" in api_source
 
 
@@ -920,20 +975,20 @@ def test_sat_rule_bodies_are_owned_by_rule_modules():
     sat_functions = _function_definitions(_module_ast(PROVER_ROOT / "sat.py"))
     rule_owners = {
         PROVER_ROOT / "rules" / "applicators.py": (
-            "_prove_right_not_applicator_difference",
+            "prove_right_not_applicator_difference",
             "_prove_lhs_tuple_anyof_distribution",
         ),
         PROVER_ROOT / "rules" / "arrays.py": (
-            "_prove_array_length_difference",
-            "_prove_array_contains_difference",
+            "prove_array_length_difference",
+            "prove_array_contains_difference",
         ),
         PROVER_ROOT / "rules" / "objects.py": (
-            "_prove_object_key_value_difference",
-            "_prove_closed_object_properties_difference",
+            "prove_object_key_value_difference",
+            "prove_closed_object_properties_difference",
         ),
         PROVER_ROOT / "rules" / "scalars.py": (
-            "_prove_numeric_difference",
-            "_prove_typed_scalar_difference",
+            "prove_numeric_difference",
+            "prove_typed_scalar_difference",
         ),
     }
 
@@ -1203,8 +1258,8 @@ def test_typed_scalar_rules_use_compiled_assertion_presence_facts():
     source = "\n".join(
         _function_source(PROVER_ROOT / "rules" / "scalars.py", name)
         for name in (
-            "_prove_numeric_difference",
-            "_prove_typed_scalar_difference",
+            "prove_numeric_difference",
+            "prove_typed_scalar_difference",
             "_typed_scalar_rhs_atom_is_modeled",
             "_numeric_constraint_for_typed_scalar",
         )
@@ -1223,10 +1278,10 @@ def test_sat_static_reference_guards_use_compiled_ir_facts():
     source = "\n".join(
         _function_source(PROVER_ROOT / "rules" / "common.py", name)
         for name in (
-            "_array_static_reference_unsupported",
-            "_object_static_reference_unsupported",
-            "_lhs_static_reference_unsupported",
-            "_contains_static_reference",
+            "array_static_reference_unsupported",
+            "object_static_reference_unsupported",
+            "lhs_static_reference_unsupported",
+            "contains_static_reference",
         )
     )
 
@@ -1519,6 +1574,42 @@ def _forbidden_type_checking_edge_reason(edge: ImportEdge) -> str | None:
         "subschema.ir.evaluation"
     ):
         return "proof context must not name evaluation-specific cache value types"
+    return None
+
+
+def _is_private_imported_name(name: str) -> bool:
+    return name.startswith("_") and not (name.startswith("__") and name.endswith("__"))
+
+
+def _subschema_module_aliases(tree: ast.AST) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if not alias.name.startswith("subschema"):
+                    continue
+                local_name = alias.asname or alias.name.split(".", 1)[0]
+                aliases[local_name] = alias.name
+        elif isinstance(node, ast.ImportFrom):
+            if node.module is None or not node.module.startswith("subschema"):
+                continue
+            for alias in node.names:
+                if _is_private_imported_name(alias.name):
+                    continue
+                local_name = alias.asname or alias.name
+                aliases[local_name] = f"{node.module}.{alias.name}"
+    return aliases
+
+
+def _subschema_attribute_owner(
+    value: ast.expr, aliases: dict[str, str]
+) -> str | None:
+    if isinstance(value, ast.Name):
+        return aliases.get(value.id)
+    if isinstance(value, ast.Attribute):
+        owner = _subschema_attribute_owner(value.value, aliases)
+        if owner is not None:
+            return f"{owner}.{value.attr}"
     return None
 
 

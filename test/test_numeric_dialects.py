@@ -5,12 +5,13 @@ from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from subschema import Dialect, is_disjoint, is_empty, is_equivalent, is_subschema
-from subschema.api import _schema_is_empty_exact, _schemas_are_disjoint
 from subschema.exceptions import UnsupportedProofError
 from subschema.validator import validation_backend_for
 from test.proof_oracle import (
     assert_proved_false_result_is_confirmed,
     proof_engine_for_schemas,
+    schema_is_empty_exact,
+    schemas_are_disjoint,
 )
 
 
@@ -352,7 +353,7 @@ def test_numeric_edge_false_disjointness_witnesses_are_confirmed(
     lhs: Any, rhs: Any
 ) -> None:
     engine = proof_engine_for_schemas(lhs, rhs, dialect=Dialect.DRAFT202012)
-    proof = _schemas_are_disjoint(lhs, rhs, engine.context)
+    proof = schemas_are_disjoint(lhs, rhs, engine.context)
 
     if proof.status == "proved_false":
         _assert_numeric_shared_witness_is_confirmed(lhs, rhs, proof.witness)
@@ -362,7 +363,7 @@ def test_numeric_edge_false_disjointness_witnesses_are_confirmed(
 @settings(max_examples=160, deadline=None)
 def test_numeric_edge_false_emptiness_witnesses_are_confirmed(schema: Any) -> None:
     engine = proof_engine_for_schemas(schema, dialect=Dialect.DRAFT202012)
-    proof = _schema_is_empty_exact(schema, engine.context)
+    proof = schema_is_empty_exact(schema, engine.context)
 
     if proof.status == "proved_false":
         assert validation_backend_for(Dialect.DRAFT202012).is_valid(

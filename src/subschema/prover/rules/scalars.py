@@ -24,11 +24,11 @@ from subschema.prover.finite import (
 )
 from subschema.prover.protocols import DifferenceProblemProtocol
 from subschema.prover.rules.common import (
-    _contains_static_reference,
-    _lhs_confirmation_source,
-    _rhs_confirmation_source,
-    _validated_any_false,
-    _validated_false,
+    contains_static_reference,
+    lhs_confirmation_source,
+    rhs_confirmation_source,
+    validated_any_false,
+    validated_false,
 )
 from subschema.prover.scalars import (
     finite_rhs_difference_plan_from_constraints,
@@ -79,7 +79,7 @@ def _scalar_fact_unsupported(
     return None
 
 
-def _prove_finite_lhs_difference(problem: DifferenceProblemProtocol) -> ProofResult:
+def prove_finite_lhs_difference(problem: DifferenceProblemProtocol) -> ProofResult:
     finite_constraint = _finite_constraint(problem.lhs_constraint("finite"))
     if finite_constraint is None:
         return ProofResult.unsupported(
@@ -88,8 +88,8 @@ def _prove_finite_lhs_difference(problem: DifferenceProblemProtocol) -> ProofRes
 
     for value in finite_constraint.values:
         confirmed = confirm_difference(
-            _lhs_confirmation_source(problem),
-            _rhs_confirmation_source(problem),
+            lhs_confirmation_source(problem),
+            rhs_confirmation_source(problem),
             value,
         )
         if confirmed.status == "unsupported":
@@ -101,8 +101,8 @@ def _prove_finite_lhs_difference(problem: DifferenceProblemProtocol) -> ProofRes
     return ProofResult.true()
 
 
-def _prove_finite_rhs_difference(problem: DifferenceProblemProtocol) -> ProofResult:
-    if _contains_static_reference(problem):
+def prove_finite_rhs_difference(problem: DifferenceProblemProtocol) -> ProofResult:
+    if contains_static_reference(problem):
         return ProofResult.unsupported(
             "SAT finite-rhs fragment is deferred for static references"
         )
@@ -133,7 +133,7 @@ def _prove_finite_rhs_difference(problem: DifferenceProblemProtocol) -> ProofRes
         return ProofResult.unsupported(plan.reason)
     if plan.status == "proved_true":
         return ProofResult.true()
-    proof = _validated_any_false(
+    proof = validated_any_false(
         problem, plan.witnesses, "SAT finite-rhs witness could not be constructed"
     )
     if proof.status != "unsupported":
@@ -152,12 +152,12 @@ def _constructive_finite_rhs_false(problem: DifferenceProblemProtocol) -> ProofR
         return ProofResult.unsupported(
             witness.reason or "SAT finite-rhs witness could not be constructed"
         )
-    return _validated_false(
+    return validated_false(
         problem, witness.witness, "SAT finite-rhs constructive witness was rejected"
     )
 
 
-def _prove_finite_complement_difference(
+def prove_finite_complement_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
     lhs_excluded = _finite_complement_excluded_values(
@@ -173,7 +173,7 @@ def _prove_finite_complement_difference(
             "SAT finite-complement fragment requires finite negated schemas"
         )
     if lhs_excluded is None:
-        return _validated_any_false(
+        return validated_any_false(
             problem,
             rhs_excluded,
             "SAT finite-complement witness could not be constructed",
@@ -184,7 +184,7 @@ def _prove_finite_complement_difference(
 
     for value in rhs_excluded:
         if not _json_value_in(value, lhs_excluded):
-            return _validated_false(
+            return validated_false(
                 problem, value, "SAT finite-complement witness was rejected"
             )
     return ProofResult.unsupported(
@@ -192,7 +192,7 @@ def _prove_finite_complement_difference(
     )
 
 
-def _prove_type_difference(problem: DifferenceProblemProtocol) -> ProofResult:
+def prove_type_difference(problem: DifferenceProblemProtocol) -> ProofResult:
     lhs_constraint = _type_constraint(problem.lhs_constraint("type"))
     rhs_constraint = _type_constraint(problem.rhs_constraint("type"))
     plan = type_difference_plan_from_constraints(
@@ -206,7 +206,7 @@ def _prove_type_difference(problem: DifferenceProblemProtocol) -> ProofResult:
     if plan.status == "proved_true":
         return ProofResult.true()
     if lhs_constraint is None or rhs_constraint is None:
-        return _validated_false(problem, plan.witness, plan.rejected_reason)
+        return validated_false(problem, plan.witness, plan.rejected_reason)
     extra_atoms = lhs_constraint.atoms - rhs_constraint.atoms
     lhs_witness = build_ir_witness(
         problem.formula.lhs,
@@ -215,10 +215,10 @@ def _prove_type_difference(problem: DifferenceProblemProtocol) -> ProofResult:
     witnesses = tuple(type_atom_witness(atom) for atom in sorted(extra_atoms)) + (
         (lhs_witness.witness,) if lhs_witness.has_witness else ()
     )
-    return _validated_any_false(problem, witnesses, plan.rejected_reason)
+    return validated_any_false(problem, witnesses, plan.rejected_reason)
 
 
-def _prove_numeric_difference(problem: DifferenceProblemProtocol) -> ProofResult:
+def prove_numeric_difference(problem: DifferenceProblemProtocol) -> ProofResult:
     lhs_numeric = _numeric_constraint(problem.lhs_constraint("numeric"))
     rhs_type = _type_constraint(problem.rhs_constraint("type"))
     if (
@@ -246,10 +246,10 @@ def _prove_numeric_difference(problem: DifferenceProblemProtocol) -> ProofResult
         return ProofResult.unsupported(plan.reason)
     if plan.status == "proved_true":
         return ProofResult.true()
-    return _validated_false(problem, plan.witness, plan.rejected_reason)
+    return validated_false(problem, plan.witness, plan.rejected_reason)
 
 
-def _prove_string_length_difference(problem: DifferenceProblemProtocol) -> ProofResult:
+def prove_string_length_difference(problem: DifferenceProblemProtocol) -> ProofResult:
     plan = string_length_difference_plan_from_constraints(
         _string_length_constraint(problem.lhs_constraint("string-length")),
         _string_length_constraint(problem.rhs_constraint("string-length")),
@@ -260,10 +260,10 @@ def _prove_string_length_difference(problem: DifferenceProblemProtocol) -> Proof
         return ProofResult.unsupported(plan.reason)
     if plan.status == "proved_true":
         return ProofResult.true()
-    return _validated_false(problem, plan.witness, plan.rejected_reason)
+    return validated_false(problem, plan.witness, plan.rejected_reason)
 
 
-def _prove_string_language_difference(
+def prove_string_language_difference(
     problem: DifferenceProblemProtocol,
 ) -> ProofResult:
     plan = string_language_difference_plan_from_constraints(
@@ -277,11 +277,11 @@ def _prove_string_language_difference(
         return ProofResult.unsupported(plan.reason)
     if plan.status == "proved_true":
         return ProofResult.true()
-    return _validated_false(problem, plan.witness, plan.rejected_reason)
+    return validated_false(problem, plan.witness, plan.rejected_reason)
 
 
-def _prove_typed_scalar_difference(problem: DifferenceProblemProtocol) -> ProofResult:
-    if _contains_static_reference(problem):
+def prove_typed_scalar_difference(problem: DifferenceProblemProtocol) -> ProofResult:
+    if contains_static_reference(problem):
         return ProofResult.unsupported(
             "SAT typed-scalar fragment is deferred for static references"
         )
@@ -341,7 +341,7 @@ def _prove_typed_scalar_difference(problem: DifferenceProblemProtocol) -> ProofR
                 "SAT typed-scalar fragment requires modeled right scalar semantics"
             )
         return ProofResult.true()
-    return _validated_false(problem, plan.witness, plan.rejected_reason)
+    return validated_false(problem, plan.witness, plan.rejected_reason)
 
 
 def _typed_scalar_rhs_atom_is_modeled(

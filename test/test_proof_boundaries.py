@@ -1,8 +1,6 @@
 from math import inf, nan
 import pytest
 
-from subschema.api import _difference_formula_from_schemas as difference_formula_from_schemas
-from test.proof_oracle import proof_engine_for_schemas
 from subschema.compiler.resources import ResourceGraph
 from subschema.dialects import Dialect
 from subschema.prover import ProofBudgets, ProofContext, ProofEngine, ProofOptions
@@ -38,6 +36,8 @@ from test.proof_oracle import (
     assert_proved_subschema,
     assert_proved,
     assert_witness_validates,
+    difference_formula_from_schemas,
+    proof_engine_for_schemas,
     validator as oracle_validator,
 )
 
@@ -1148,7 +1148,7 @@ def test_grouped_false_witnesses_validate_by_generator_family(
     assert fragment
     engine = proof_engine_for_schemas(lhs, rhs, dialect=dialect, options=options)
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "proved_false"
     assert_witness_validates(lhs, rhs, dialect, proof.witness)
@@ -1332,7 +1332,7 @@ def test_endeavor_object_product_reports_resource_exhausted_when_work_is_exceede
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
     engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "object product exceeded proof work budget"
@@ -1344,7 +1344,7 @@ def test_array_length_witness_reports_resource_exhausted_when_array_budget_is_ex
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=2))
     engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "array witness exceeded proof work budget"
@@ -1356,7 +1356,7 @@ def test_array_uniqueness_witness_reports_resource_exhausted_when_array_budget_i
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
     engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "array witness exceeded proof work budget"
@@ -1370,7 +1370,7 @@ def test_array_contains_witness_reports_resource_exhausted_when_array_budget_is_
         lhs, rhs, dialect=Dialect.DRAFT201909, options=options
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "array witness exceeded proof work budget"
@@ -1393,7 +1393,7 @@ def test_array_contains_structural_max_violation_reports_resource_exhausted_when
         lhs, rhs, dialect=Dialect.DRAFT202012, options=options
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "array witness exceeded proof work budget"
@@ -1407,7 +1407,7 @@ def test_array_contains_min_violation_reports_resource_exhausted_when_array_budg
         lhs, rhs, dialect=Dialect.DRAFT201909, options=options
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "array witness exceeded proof work budget"
@@ -1421,7 +1421,7 @@ def test_array_item_values_preserve_resource_exhausted_from_subproofs():
         lhs, rhs, dialect=Dialect.DRAFT202012, options=options
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "branch expansion exceeded proof work budget"
@@ -1444,7 +1444,7 @@ def test_array_item_values_reports_resource_exhausted_when_length_witness_exceed
         lhs, rhs, dialect=Dialect.DRAFT202012, options=options
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "array witness exceeded proof work budget"
@@ -1461,7 +1461,7 @@ def test_array_item_values_reports_resource_exhausted_when_obligation_witness_ex
         options=options,
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "branch expansion exceeded proof work budget"
@@ -1484,7 +1484,7 @@ def test_unevaluated_items_reports_resource_exhausted_when_all_of_child_proof_ex
         lhs, rhs, dialect=Dialect.DRAFT202012, options=options
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "branch expansion exceeded proof work budget"
@@ -1506,7 +1506,7 @@ def test_unevaluated_items_reports_resource_exhausted_when_value_witness_exceeds
         lhs, rhs, dialect=Dialect.DRAFT202012, options=options
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "branch expansion exceeded proof work budget"
@@ -2321,7 +2321,7 @@ def test_object_presence_product_reports_resource_exhausted_when_universe_budget
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
     engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "object product exceeded proof work budget"
@@ -2341,7 +2341,7 @@ def test_object_key_value_reports_resource_exhausted_for_mixed_product_budget():
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
     engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "object product exceeded proof work budget"
@@ -2365,7 +2365,7 @@ def test_object_key_value_reports_resource_exhausted_for_pattern_obligation_budg
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1))
     engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "object product exceeded proof work budget"
@@ -2402,7 +2402,7 @@ def test_bounded_ir_uses_sat_emptiness_solver_before_generic_search_path(monkeyp
         raising=False,
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "proved_false"
     assert proof.witness == {"a": 1}
@@ -2424,7 +2424,7 @@ def test_bounded_ir_sat_solver_can_prove_finite_empty_difference(monkeypatch):
         raising=False,
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "proved_true"
 
@@ -2454,7 +2454,7 @@ def test_object_pattern_obligations_with_property_counts_prove(monkeypatch):
         raising=False,
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "proved_false"
     assert set(proof.witness) == {"a"}
@@ -2563,7 +2563,7 @@ def test_endeavor_object_product_expands_complex_value_obligations(monkeypatch):
         raising=False,
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "proved_false"
     assert_witness_validates(lhs, rhs, Dialect.DRAFT201909, proof.witness)
@@ -2611,7 +2611,7 @@ def test_endeavor_object_product_expands_property_names_additional_obligations(
         raising=False,
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "proved_false"
     assert_witness_validates(lhs, rhs, Dialect.DRAFT201909, proof.witness)
@@ -2657,7 +2657,7 @@ def test_endeavor_object_product_expands_pattern_properties_to_additional_obliga
         raising=False,
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "proved_false"
     assert_witness_validates(lhs, rhs, Dialect.DRAFT201909, proof.witness)
@@ -2683,7 +2683,7 @@ def test_default_mode_proves_pattern_property_value_difference_without_product()
         options=ProofOptions(),
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "proved_false"
     assert_witness_validates(lhs, rhs, Dialect.DRAFT201909, proof.witness)
@@ -2711,7 +2711,7 @@ def test_endeavor_array_contains_product_proves_min_violation(monkeypatch):
         raising=False,
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "proved_false"
     assert_witness_validates(lhs, rhs, Dialect.DRAFT201909, proof.witness)
@@ -2739,7 +2739,7 @@ def test_endeavor_array_contains_product_proves_max_violation(monkeypatch):
         raising=False,
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "proved_false"
     assert_witness_validates(lhs, rhs, Dialect.DRAFT201909, proof.witness)
@@ -2767,7 +2767,7 @@ def test_endeavor_evaluation_trace_expands_contains_unevaluated_items(monkeypatc
         raising=False,
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "proved_false"
     assert len(proof.witness) == 1
@@ -2834,7 +2834,7 @@ def test_endeavor_expanded_products_exhaust_first_work_unit(lhs, rhs, dialect, r
         options=ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0)),
     )
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == reason
@@ -2860,7 +2860,7 @@ def test_endeavor_expanded_product_small_positive_budgets_track_frontiers():
         options=ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1)),
     )
 
-    object_proof = object_engine._bounded_ir_proof(object_lhs, object_rhs)
+    object_proof = object_engine.bounded_ir_proof(object_lhs, object_rhs)
 
     assert object_proof.status == "resource_exhausted"
     assert object_proof.reason == "object product exceeded proof work budget"
@@ -2874,7 +2874,7 @@ def test_endeavor_expanded_product_small_positive_budgets_track_frontiers():
         options=ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=2)),
     )
 
-    array_proof = array_engine._bounded_ir_proof(array_lhs, array_rhs)
+    array_proof = array_engine.bounded_ir_proof(array_lhs, array_rhs)
 
     assert array_proof.status == "proved_false"
     assert_witness_validates(
@@ -2899,7 +2899,7 @@ def test_endeavor_expanded_product_small_positive_budgets_track_frontiers():
         options=ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=2)),
     )
 
-    evaluation_proof = evaluation_engine._bounded_ir_proof(
+    evaluation_proof = evaluation_engine.bounded_ir_proof(
         evaluation_lhs, evaluation_rhs
     )
 
@@ -2917,7 +2917,7 @@ def test_endeavor_expanded_product_small_positive_budgets_track_frontiers():
         options=ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=1)),
     )
 
-    max_budget_proof = max_budget_engine._bounded_ir_proof(max_lhs, max_rhs)
+    max_budget_proof = max_budget_engine.bounded_ir_proof(max_lhs, max_rhs)
 
     assert max_budget_proof.status == "resource_exhausted"
     assert max_budget_proof.reason == "array product exceeded proof work budget"
@@ -2937,7 +2937,7 @@ def test_endeavor_object_product_budget_applies_to_nested_witness_construction()
     options = ProofOptions(endeavor=True, budgets=ProofBudgets(max_work=0))
     engine = proof_engine_for_schemas(lhs, rhs, options=options)
 
-    proof = engine._bounded_ir_proof(lhs, rhs)
+    proof = engine.bounded_ir_proof(lhs, rhs)
 
     assert proof.status == "resource_exhausted"
     assert proof.reason == "object product exceeded proof work budget"
