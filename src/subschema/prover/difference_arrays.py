@@ -24,6 +24,7 @@ from subschema.ir.evaluation import (
     EvaluationTracePath,
 )
 from subschema.ir.terms import SchemaTerm
+from subschema.prover.array_contains import guaranteed_contains_matches
 from subschema.prover.confirmation import confirm_term_valid
 from subschema.prover.evaluation_traces import evaluation_trace_for_node
 from subschema.prover.finite import (
@@ -1407,16 +1408,19 @@ class ArrayDifferenceModel:
         contains: ArrayContainsConstraint,
         context: ProofContextProtocol,
     ) -> int | None:
-        guaranteed = 0
-        if self.lhs_contains is not None and _subschema_is_proved_by_terms(
-            self.lhs_contains.term, self.lhs, contains.term, self.rhs, context
-        ):
-            guaranteed = max(guaranteed, self.lhs_contains.minimum)
-
-        structural = self._minimum_structural_contains_matches(contains, context)
-        if structural is not None:
-            guaranteed = max(guaranteed, structural)
-        return guaranteed
+        lhs_tail = self.lhs_tail
+        return guaranteed_contains_matches(
+            self.lhs,
+            contains,
+            context,
+            contains_ir=self.rhs,
+            length_constraint=self.lhs_length,
+            term_at_index=self.lhs_item_term_at,
+            tail_start_index=None if lhs_tail is None else lhs_tail.start_index,
+            tail_term=None
+            if lhs_tail is None or lhs_tail.closed
+            else lhs_tail.term,
+        )
 
     def maximum_contains_matches_possible(
         self,

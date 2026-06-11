@@ -20,6 +20,7 @@ from subschema.ir.constraints import (
     StringLengthConstraint,
 )
 from subschema.ir.terms import SchemaTerm
+from subschema.prover.array_contains import guaranteed_contains_matches
 from subschema.prover.confirmation import confirm_valid
 from subschema.prover.finite import (
     finite_complement_excluded_values_for_ir,
@@ -752,8 +753,8 @@ def _array_contains_emptiness_ir(
     ):
         return ProofResult.true()
     if maximum is not None:
-        guaranteed = _guaranteed_contains_matches(ir, contains_term, context)
-        if guaranteed is not None and guaranteed > maximum:
+        guaranteed = guaranteed_contains_matches(ir, contains, context)
+        if guaranteed > maximum:
             return ProofResult.true()
 
     return ProofResult.unsupported(
@@ -776,15 +777,6 @@ def _all_array_items_are_disjoint_from_contains_term(
         if disjoint.status != "proved_true":
             return False
     return True
-
-
-def _guaranteed_contains_matches(
-    ir: LogicalSchemaIR,
-    contains_term: SchemaTerm,
-    context: DisjointnessContext,
-) -> int | None:
-    del ir, contains_term, context
-    return None
 
 
 def _closed_finite_object_disjointness_ir(

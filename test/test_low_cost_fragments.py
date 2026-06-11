@@ -105,6 +105,74 @@ def test_simple_contains_emptiness_is_default_exact():
     )
 
 
+def test_array_contains_emptiness_uses_guaranteed_prefix_matches():
+    schema = {
+        "type": "array",
+        "prefixItems": [{"type": "integer"}, {"type": "integer"}],
+        "minItems": 2,
+        "maxItems": 2,
+        "contains": {"type": "integer"},
+        "minContains": 1,
+        "maxContains": 1,
+    }
+
+    assert is_empty(schema)
+    assert is_subschema(schema, False)
+
+
+def test_array_contains_emptiness_uses_guaranteed_homogeneous_tail_matches():
+    schema = {
+        "type": "array",
+        "items": {"type": "integer"},
+        "minItems": 2,
+        "maxItems": 2,
+        "contains": {"type": "integer"},
+        "minContains": 1,
+        "maxContains": 1,
+    }
+
+    assert is_empty(schema)
+
+
+def test_array_contains_emptiness_uses_own_min_contains_matches():
+    schema = {
+        "type": "array",
+        "contains": {"type": "integer"},
+        "minContains": 2,
+        "maxContains": 1,
+    }
+
+    assert is_empty(schema)
+
+
+def test_array_contains_guaranteed_matches_do_not_count_unproved_items():
+    schema = {
+        "type": "array",
+        "prefixItems": [{"type": "integer"}, {"type": "string"}],
+        "minItems": 2,
+        "maxItems": 2,
+        "contains": {"type": "integer"},
+        "minContains": 1,
+        "maxContains": 1,
+    }
+
+    assert not is_empty(schema)
+    assert not is_subschema(schema, False)
+
+
+def test_array_contains_guaranteed_matches_do_not_infer_open_tail_matches():
+    schema = {
+        "type": "array",
+        "prefixItems": [{"type": "integer"}],
+        "minItems": 2,
+        "contains": {"type": "integer"},
+        "minContains": 1,
+        "maxContains": 1,
+    }
+
+    assert not is_empty(schema)
+
+
 def test_contains_constraints_preserve_exact_zero_length_array_bounds():
     rhs = {
         "type": "array",
